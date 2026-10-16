@@ -1,7 +1,6 @@
 import errno
 import json
 import os
-import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -343,7 +342,7 @@ def test_memory_commands_expose_and_correct_structured_memory(
     evidence = store.add_user_reports(
         [
             UserReport(
-                kind=MemoryKind.EVENT,
+                kind=MemoryKind.PATTERN,
                 content="I avoid calls",
                 evidence_quote="I avoid calls",
             )
@@ -462,7 +461,7 @@ def test_interactive_command_and_output_stay_out_of_transcript(
     store.add_user_reports(
         [
             UserReport(
-                kind=MemoryKind.FACT,
+                kind=MemoryKind.PATTERN,
                 content="Rendered command output.",
                 evidence_quote="Rendered command output.",
             )
@@ -558,7 +557,7 @@ def test_interactive_chat_prints_tool_input_and_output(
         )
         return SimpleNamespace(text="Done.", notice=None, tool_trace=None)
 
-    session = SimpleNamespace(respond=respond, locale="en-US", extract_pending=lambda: 0)
+    session = SimpleNamespace(respond=respond, locale="en-US")
 
     assert _chat(session, store) == 0  # type: ignore[arg-type]
 
@@ -584,7 +583,7 @@ def test_plain_chat_does_not_persist_rejected_draft_in_redirected_output(
         on_event(TurnStreamEvent(TurnStreamKind.REPLY, "Validated reply."))  # type: ignore[operator]
         return SimpleNamespace(text="Validated reply.", notice=None)
 
-    session = SimpleNamespace(respond=respond, locale="en-US", extract_pending=lambda: 0)
+    session = SimpleNamespace(respond=respond, locale="en-US")
     assert _chat(session, store) == 0  # type: ignore[arg-type]
 
     output = capsys.readouterr().out  # type: ignore[attr-defined]
@@ -614,7 +613,6 @@ def test_plain_chat_retries_the_failed_message(
     session = SimpleNamespace(
         respond=respond,
         locale="en-US",
-        extract_pending=lambda: 0,
         failed_text=None,
         memory_mode=MemoryMode.STANDARD,
     )
@@ -626,33 +624,6 @@ def test_plain_chat_retries_the_failed_message(
     assert "filo auth login" in output
     assert "filo> Reply to Busy week." in output
     assert store.last_failure()["kind"] == "login"  # type: ignore[index]
-
-
-def test_plain_chat_survives_a_database_error_during_extraction(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
-) -> None:
-    store = MemoryStore(tmp_path)
-    state = store.load_app_state()
-    state.consent_version = "alpha-4"
-    store.save_app_state(state)
-    inputs = iter(["First.", "Second.", "/quit"])
-    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
-    received: list[str] = []
-
-    def respond(text: str, *, on_event: object) -> SimpleNamespace:
-        received.append(text)
-        return SimpleNamespace(text=f"Reply to {text}", notice=None)
-
-    def extract_pending() -> int:
-        raise sqlite3.OperationalError("database is locked")
-
-    session = SimpleNamespace(respond=respond, locale="en-US", extract_pending=extract_pending)
-    assert _chat(session, store) == 0  # type: ignore[arg-type]
-
-    output = capsys.readouterr().out  # type: ignore[attr-defined]
-    assert received == ["First.", "Second."]
-    assert "filo> Reply to Second." in output
-    assert "Memory extraction error: OperationalError" in output
 
 
 def test_plain_chat_replaces_draft_in_interactive_terminal(
@@ -694,7 +665,7 @@ def test_plain_chat_replaces_draft_in_interactive_terminal(
     monkeypatch.setattr("filo.cli.Console", FakeConsole)
     monkeypatch.setattr("filo.cli.Live", FakeLive)
 
-    session = SimpleNamespace(respond=respond, locale="en-US", extract_pending=lambda: 0)
+    session = SimpleNamespace(respond=respond, locale="en-US")
     assert _chat(session, store) == 0  # type: ignore[arg-type]
     assert updates == ["filo> rejected draft", "filo> Validated reply."]
 

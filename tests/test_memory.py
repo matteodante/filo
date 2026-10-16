@@ -36,7 +36,7 @@ def _message(store: MemoryStore, text: str, now: datetime | None = None) -> int:
 def _report(
     store: MemoryStore,
     text: str,
-    kind: MemoryKind = MemoryKind.FACT,
+    kind: MemoryKind = MemoryKind.PATTERN,
     now: datetime | None = None,
 ):
     message_id = _message(store, text, now)
@@ -49,7 +49,7 @@ def _report(
 
 
 def _hypothesis(store: MemoryStore, text: str, now: datetime | None = None):
-    evidence = _report(store, f"Evidence for {text}", MemoryKind.EVENT, now)
+    evidence = _report(store, f"Evidence for {text}", MemoryKind.PATTERN, now)
     return store.add_hypothesis(
         text,
         linked_claim_ids=[evidence.id],
@@ -71,7 +71,7 @@ def test_retention_policy_rejects_zero_days() -> None:
 
 def test_user_statement_is_a_report_not_external_truth(tmp_path) -> None:
     item = _report(MemoryStore(tmp_path), "I live in Rome")
-    assert item.kind is MemoryKind.FACT
+    assert item.kind is MemoryKind.PATTERN
     assert item.origin is ClaimOrigin.USER_STATEMENT
     assert item.fit is ClaimFit.NOT_APPLICABLE
     assert item.evidence[0].quality is EvidenceQuality.EXACT_QUOTE
@@ -84,7 +84,7 @@ def test_user_report_requires_exact_current_message_quote(tmp_path) -> None:
         store.add_user_reports(
             [
                 UserReport(
-                    kind=MemoryKind.FACT,
+                    kind=MemoryKind.PATTERN,
                     content="I live in Milan",
                     evidence_quote="I live in Milan",
                 )
@@ -100,7 +100,7 @@ def test_user_report_marks_paraphrase_while_keeping_the_users_wording(tmp_path) 
     [verbatim, paraphrased] = store.add_user_reports(
         [
             UserReport(
-                kind=MemoryKind.FACT,
+                kind=MemoryKind.PATTERN,
                 content="I prefer shorter answers",
                 evidence_quote="I prefer shorter answers",
             ),
@@ -155,14 +155,14 @@ def test_restatement_may_drop_words_but_never_substitute_vocabulary(tmp_path) ->
         )
 
 
-def test_user_report_refuses_to_paraphrase_a_fact(tmp_path) -> None:
+def test_user_report_refuses_to_invent_a_condition_from_a_bad_night(tmp_path) -> None:
     store = MemoryStore(tmp_path)
     message_id = _message(store, "I slept badly again last night")
-    with pytest.raises(ValueError, match="exact wording"):
+    with pytest.raises(ValueError, match="must stay inside its quote"):
         store.add_user_reports(
             [
                 UserReport(
-                    kind=MemoryKind.FACT,
+                    kind=MemoryKind.PATTERN,
                     content="The user has chronic insomnia",
                     evidence_quote="I slept badly again last night",
                 )
@@ -282,7 +282,7 @@ def test_user_report_refuses_a_quote_mined_out_of_its_negation(tmp_path, quote, 
     message_id = _message(store, message)
     with pytest.raises(ValueError, match="negation"):
         store.add_user_reports(
-            [UserReport(kind=MemoryKind.FACT, content=quote, evidence_quote=quote)],
+            [UserReport(kind=MemoryKind.PATTERN, content=quote, evidence_quote=quote)],
             message_id,
             message,
         )
@@ -397,7 +397,7 @@ def test_correcting_a_verbatim_claim_by_negation_updates_derived_text(tmp_path) 
     message = "bevo caffè la sera"
     message_id = _message(store, message)
     [claim] = store.add_user_reports(
-        [UserReport(kind=MemoryKind.FACT, content=message, evidence_quote=message)],
+        [UserReport(kind=MemoryKind.PATTERN, content=message, evidence_quote=message)],
         message_id,
         message,
     )
@@ -462,7 +462,7 @@ def test_correction_refuses_a_replacement_mined_out_of_its_negation(tmp_path) ->
     original = "bevo caffè la sera"
     first = _message(store, original)
     [claim] = store.add_user_reports(
-        [UserReport(kind=MemoryKind.FACT, content=original, evidence_quote=original)],
+        [UserReport(kind=MemoryKind.PATTERN, content=original, evidence_quote=original)],
         first,
         original,
     )
@@ -526,7 +526,7 @@ def test_user_report_limit_is_two(tmp_path) -> None:
     with pytest.raises(ValueError, match="two"):
         store.add_user_reports(
             [
-                UserReport(kind=MemoryKind.FACT, content=value, evidence_quote=value)
+                UserReport(kind=MemoryKind.PATTERN, content=value, evidence_quote=value)
                 for value in ("one", "two", "three")
             ],
             1,

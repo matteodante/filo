@@ -11,7 +11,7 @@ def test_semantic_index_is_encrypted_reused_and_reindexed_after_correction(tmp_p
     text = "Le telefonate con il responsabile mi pesano"
     message_id = store.save_turn(session, text, "Capisco.", [])
     claim = store.add_user_reports(
-        [UserReport(kind=MemoryKind.EVENT, content=text, evidence_quote=text)],
+        [UserReport(kind=MemoryKind.PATTERN, content=text, evidence_quote=text)],
         message_id,
         text,
     )[0]

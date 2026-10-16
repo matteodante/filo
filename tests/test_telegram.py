@@ -1,4 +1,3 @@
-import sqlite3
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -75,9 +74,6 @@ class FakeSession:
         if on_event:
             on_event(TurnStreamEvent(TurnStreamKind.REPLY, reply))  # type: ignore[operator]
         return _committed(ChatTurn(reply), on_commit)
-
-    def extract_pending(self) -> int:
-        return 0
 
     def end(self) -> None:
         self.end_calls += 1
@@ -277,7 +273,7 @@ def test_transparency_commands_show_status_memory_case_and_privacy(
     item = store.add_user_reports(
         [
             UserReport(
-                kind=MemoryKind.FACT,
+                kind=MemoryKind.PATTERN,
                 content="I avoid calls",
                 evidence_quote="I avoid calls",
             )
@@ -297,7 +293,7 @@ def test_transparency_commands_show_status_memory_case_and_privacy(
 
     output = "\n".join(message for _, message in bot.messages)
     assert "Active memory: 1 items" in output
-    assert f"{item.id} · fact · user_statement" in output
+    assert f"{item.id} · pattern · user_statement" in output
     assert f"[evidence: {item.id}]" in output
     assert f"Evidence: {message_id}: I avoid calls" in output
     assert "Telegram receives messages" in output
@@ -322,7 +318,7 @@ def test_memory_command_is_paginated(tmp_path: Path) -> None:
         store.add_user_reports(
             [
                 UserReport(
-                    kind=MemoryKind.FACT,
+                    kind=MemoryKind.PATTERN,
                     content=f"fact {index}",
                     evidence_quote=f"fact {index}",
                 )
@@ -335,7 +331,7 @@ def test_memory_command_is_paginated(tmp_path: Path) -> None:
     channel.process_update(private_update(1, 42, "/memory 2"))
 
     assert "page 2/2" in bot.messages[-1][1]
-    assert bot.messages[-1][1].count(" · fact · user_statement") == 2
+    assert bot.messages[-1][1].count(" · pattern · user_statement") == 2
 
 
 def test_normal_turn_discloses_committed_memory_change(tmp_path: Path) -> None:
@@ -354,7 +350,7 @@ def test_normal_turn_discloses_committed_memory_change(tmp_path: Path) -> None:
             store.add_user_reports(
                 [
                     UserReport(
-                        kind=MemoryKind.FACT,
+                        kind=MemoryKind.PATTERN,
                         content=text,
                         evidence_quote=text,
                     )
@@ -374,7 +370,7 @@ def test_normal_turn_discloses_committed_memory_change(tmp_path: Path) -> None:
 
     assert bot.rich_messages[-1] == (42, "Understood.")
     assert "THIS TURN'S RECORD" in bot.messages[-1][1]
-    assert "Saved fact: I work from home" in bot.messages[-1][1]
+    assert "Saved pattern: I work from home" in bot.messages[-1][1]
 
 
 def test_forgotten_claim_is_disclosed_by_id_without_its_content(tmp_path: Path) -> None:
@@ -387,7 +383,7 @@ def test_forgotten_claim_is_disclosed_by_id_without_its_content(tmp_path: Path) 
     text = "my brother crashed the boat"
     message_id = store.save_turn(active, text, "Understood.", [])
     claim = store.add_user_reports(
-        [UserReport(kind=MemoryKind.EVENT, content=text, evidence_quote=text)],
+        [UserReport(kind=MemoryKind.PATTERN, content=text, evidence_quote=text)],
         message_id,
         text,
     )[0]
@@ -409,100 +405,11 @@ def test_forgotten_claim_is_disclosed_by_id_without_its_content(tmp_path: Path) 
     assert "brother" not in bot.messages[-1][1]
 
 
-class SplitSession(FakeSession):
-    """Records a report after the turn, as the split memory-writing arm does."""
-
-    def __init__(self, store: MemoryStore, bot: FakeBot) -> None:
-        super().__init__()
-        self.store = store
-        self.bot = bot
-        self.message_id = 0
-        self.seen_at_extraction: list[tuple[int | None, list[tuple[int, str]]]] = []
-
-    def respond(
-        self, text: str, *, on_event: object | None = None, on_commit: object | None = None
-    ) -> ChatTurn:
-        self.received.append(text)
-        session = self.store.active_session() or self.store.start_session()
-        with self.store.transaction():
-            self.message_id = self.store.save_turn(session, text, "Understood.", [])
-            return _committed(ChatTurn("Understood."), on_commit)
-
-    def extract_pending(self) -> int:
-        if not self.message_id:
-            return 0
-        self.seen_at_extraction.append(
-            (self.store.load_app_state().telegram_update_offset, list(self.bot.rich_messages))
-        )
-        report = UserReport(
-            kind=MemoryKind.FACT, content="I work from home", evidence_quote="I work from home"
-        )
-        self.store.add_user_reports([report], self.message_id, "I work from home")
-        self.message_id = 0
-        return 1
-
-
 def _consented(store: MemoryStore) -> MemoryStore:
     state = store.load_app_state()
     state.telegram_consent_version = "alpha-5"
     store.save_app_state(state)
     return store
-
-
-def test_reports_extracted_after_delivery_are_disclosed_after_the_reply(tmp_path: Path) -> None:
-    bot = FakeBot()
-    store = _consented(MemoryStore(tmp_path))
-    session = SplitSession(store, bot)
-    channel = TelegramChannel(bot, session, store, 42)  # type: ignore[arg-type]
-
-    channel.process_update(private_update(1, 42, "I work from home"))
-
-    # The offset and the reply were stored and delivered before extraction ran.
-    assert session.seen_at_extraction == [(2, [(42, "Understood.")])]
-    assert "Saved fact: I work from home" in bot.messages[-1][1]
-
-
-def test_a_failed_extraction_notice_never_reruns_the_turn(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    class RateLimitedNoticeBot(FakeBot):
-        failures = 1
-
-        def send_message(self, chat_id: int, text: str) -> None:
-            if self.failures:
-                self.failures -= 1
-                raise TelegramError("rate limited", error_code=429, retry_after=7)
-            super().send_message(chat_id, text)
-
-    bot = RateLimitedNoticeBot([[private_update(7, 42, "I work from home")], []])
-    store = _consented(MemoryStore(tmp_path))
-    session = SplitSession(store, bot)
-    monkeypatch.setattr("filo.telegram.time.sleep", lambda _seconds: None)
-    channel = TelegramChannel(bot, session, store, 42)  # type: ignore[arg-type]
-
-    with pytest.raises(KeyboardInterrupt):
-        channel.run()
-
-    assert session.received == ["I work from home"]
-    assert len(store.export()["messages"]) == 2
-    assert [text for _, text in bot.messages if "Saved fact" in text] != []
-    assert store.load_app_state().telegram_update_offset == 8
-
-
-def test_a_database_error_during_extraction_does_not_stop_the_listener(tmp_path: Path) -> None:
-    class BrokenStoreSession(FakeSession):
-        def extract_pending(self) -> int:
-            raise sqlite3.OperationalError("disk I/O error")
-
-    bot = FakeBot([[private_update(7, 42, "hello")], [private_update(8, 42, "again")]])
-    store = _consented(MemoryStore(tmp_path))
-    session = BrokenStoreSession()
-    channel = TelegramChannel(bot, session, store, 42)  # type: ignore[arg-type]
-
-    with pytest.raises(KeyboardInterrupt):
-        channel.run()
-
-    assert session.received == ["hello", "again"]
 
 
 def test_normal_turn_sends_tool_input_and_output_before_reply(tmp_path: Path) -> None:

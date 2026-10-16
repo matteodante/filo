@@ -180,7 +180,7 @@ def _recap_store(tmp_path: Path) -> tuple[MemoryStore, dict[str, str]]:
     (report,) = store.add_user_reports(
         [
             UserReport(
-                kind=MemoryKind.FACT,
+                kind=MemoryKind.PATTERN,
                 content="I sleep six hours on weekdays",
                 evidence_quote="I sleep six hours on weekdays",
             )

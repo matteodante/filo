@@ -3,19 +3,19 @@ cases:
   - name: exact-user-report
     inputs:
       locale: en-US
-      user_text: I moved to Bologna last month.
-      model_reply: How has Bologna felt so far?
+      user_text: I always put off the weekly report until Thursday night.
+      model_reply: What happens on Thursday night?
       tool_calls:
         - name: record_user_reports
           arguments:
             reports:
-              - kind: fact
-                content: I moved to Bologna last month.
-                evidence_quote: I moved to Bologna last month.
+              - kind: pattern
+                content: I always put off the weekly report until Thursday night.
+                evidence_quote: I always put off the weekly report until Thursday night.
     expected_output:
       completed: true
       memory_count: 1
-      reply: How has Bologna felt so far?
+      reply: What happens on Thursday night?
       tool_path: [record_user_reports]
   - name: unsupported-user-report
     inputs:
@@ -26,7 +26,7 @@ cases:
         - name: record_user_reports
           arguments:
             reports:
-              - kind: fact
+              - kind: pattern
                 content: I have two children.
                 evidence_quote: I have two children.
     expected_output:

@@ -26,7 +26,7 @@ def _record_user_report_call() -> dict[int, DeltaToolCall]:
                 {
                     "reports": [
                         {
-                            "kind": "event",
+                            "kind": "pattern",
                             "content": "pressure at work",
                             "evidence_quote": "pressure at work",
                         }

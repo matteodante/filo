@@ -85,10 +85,13 @@ choices, and a derived semantic index.
 - `fit` independently records `fits`, `partly_fits`, `does_not_fit`, `unsure`, or an unreviewed
   state.
 - `lifecycle` independently records `active`, `superseded`, or `archived`.
+- Concrete details of your life are not extracted into claims: they stay in the encrypted
+  conversation archive, where retrieval finds them. Claims are kept only for recurring patterns and
+  stated preferences worth revisiting, plus hypotheses, interventions, and support choices.
 - Exact evidence quotes support new user reports, reviews, corrections, preferences, and support
-  choices. A fact or event stores that quote word for word. A preference or pattern may shorten it
-  by dropping your own words in their original order, never substituting or reordering them and
-  never altering a negation, and the full quote stays beside it.
+  choices. A pattern or preference may store that quote or shorten it by dropping your own words in
+  their original order, never substituting or reordering them and never altering a negation, and
+  the full quote stays beside it.
 - No quote is taken out of the clause that qualified it, so a refusal cannot be recorded as
   agreement to an exercise.
 - A hypothesis remains an agent hypothesis even when the user says it fits.
@@ -103,16 +106,14 @@ choices, and a derived semantic index.
 - Asking in the conversation to forget something you said, in any memory mode, stops it coming back
   through claims, past conversations, and session summaries, even if it never became a claim. The
   archive keeps it until you delete it locally.
+- Correcting a detail you gave earlier ("actually I'm still in Rome") retires the old wording the
+  same way, while your correction stays in memory.
 
 Retrieval combines lexical overlap, local multilingual embeddings, recency, focus, pending
 interventions, process preferences ranked by relevance, conflicts, relevant sessions, the parts of
 the formulation that bear on the message, hypotheses you rejected, and excerpts from every past
 exchange, not only recent ones. The most recent session and today's date are always in context.
 Results are bounded as complete JSON records. Missing embeddings fail closed.
-
-`--memory-writing split` is an experimental alternative under evaluation: instead of the
-conversation agent, one extra model call after each delivered reply records what you reported,
-under the same exact-evidence rules. `inline` remains the default.
 
 ## Privacy modes and retention
 
@@ -150,8 +151,8 @@ copies. See [PRIVACY.md](PRIVACY.md).
 
 ```text
 filo setup
-filo chat [--plain] [--memory-mode standard|transcript-only|ephemeral] [--memory-writing inline|split]
-filo telegram [--memory-mode standard|transcript-only|ephemeral] [--memory-writing inline|split]
+filo chat [--plain] [--memory-mode standard|transcript-only|ephemeral]
+filo telegram [--memory-mode standard|transcript-only|ephemeral]
 filo telegram-service install|status|restart|uninstall
 filo auth login|status|logout
 filo memory show|case|sessions|interventions

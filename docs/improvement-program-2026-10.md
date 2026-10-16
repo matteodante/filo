@@ -444,6 +444,25 @@ recall does not fall.
   also cancels its pending check-in. Regression tests cover each path, because existing export,
   deletion and forgetting code enumerates entity types and will not cover a new one by itself.
 
+**W2.5 Simpler memory (added 2026-10-16 by the maintainer).**
+- *Why:* the preregistered memory study ([results](evidence/results-2026-10.md)) found that
+  structured claims add only five points of probe accuracy over transcript-only memory (78% vs
+  72%), short of the registered ten, with slightly more false memories and lower judged process
+  quality, and outdated facts were never retired. The registration says to simplify rather than
+  defend, and the maintainer chose to.
+- The archived conversation, found by the existing hybrid round retrieval, is the primary memory.
+  `record_user_reports` keeps only recurring `pattern` and stated `preference` claims, which feed
+  the formulation; the `fact` and `event` kinds are removed, with the rule that existed only for
+  them (verbatim wording). Hypotheses and their review, corrections, focus, process feedback,
+  interventions, support choices, forgetting, consolidation, `/recap` and wellbeing are unchanged.
+- The W2.3 `split` arm is removed: inline writing won its measurement, so `MemoryWriting`,
+  `--memory-writing`, the post-turn extractor and the `pending_extractions` table go.
+- A concrete detail the user corrects or retracts is retired with `forget_content` as a correction:
+  the rounds and summaries carrying the old wording are suppressed, the correcting message stays.
+- `filo-1` is unreleased, so the schema is amended directly; a `filo-1` development store created
+  before W2.5 needs a fresh data directory. Extraction recall in the memory study now counts only
+  patterns and preferences (see `tests/TEST_PLAN.md`).
+
 ### Wave 3 — behavior pack v2 (sequential; protocol hashes change)
 
 **W3.1 Risk and scope section.**

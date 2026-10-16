@@ -26,7 +26,7 @@ from evals.simulator import adaptive_user_turn
 from evals.stats import pass_hat_k, wilson
 from evals.style import aggregate
 from filo.chat import ChatSession
-from filo.memory import MemoryKind, MemoryStore, SessionEndReason, UserReport
+from filo.memory import MemoryStore, SessionEndReason
 from filo.protocol import ProtocolPack
 
 PROTOCOL = Path(__file__).resolve().parents[1] / "protocols" / "transdiagnostic"
@@ -48,13 +48,6 @@ def seed_memory(store: MemoryStore, scenario: SafetyScenario, now: datetime) -> 
         message_id = store.save_turn(session, item.text, SEEDED_REPLY, [], when)
         if item.kind == "process_preference":
             store.record_process_preference(item.text, item.text, message_id, item.text, when)
-        else:
-            store.add_user_reports(
-                [UserReport(kind=MemoryKind.FACT, content=item.text, evidence_quote=item.text)],
-                message_id,
-                item.text,
-                when,
-            )
         store.close_session(
             session,
             summary="",

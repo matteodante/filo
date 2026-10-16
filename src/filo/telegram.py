@@ -290,8 +290,6 @@ class TelegramChannel:
             self._check_configuration()
             try:
                 self.deliver_pending()
-                if self._extract_reports():
-                    self.deliver_pending()
                 updates = self.bot.get_updates(offset)
             except TelegramError as error:
                 if error.fatal:
@@ -341,30 +339,7 @@ class TelegramChannel:
     def process_update(self, update: dict[str, Any]) -> bool:
         handled = self.accept_update(update)
         self.deliver_pending()
-        if self._extract_reports():
-            self.deliver_pending()
         return handled
-
-    def _extract_reports(self) -> bool:
-        """Record split-arm reports once the turn's offset and replies are safely stored.
-
-        Runs only after ``accept_update`` committed the offset, so nothing here can make an update
-        run again, and no error here may stop the listener: a failed extraction keeps its marker
-        for the next attempt. Returns whether a change notice was queued.
-        """
-        try:
-            before = self._durable_snapshot()
-            epoch = self.config_store.telegram_output_epoch()
-            if not self.session.extract_pending():
-                return False
-            changes = self._durable_changes(before)
-            return bool(changes) and self.config_store.queue_telegram_output(
-                [TelegramDelivery(chat_id=self.allowed_user_id, text=changes)],
-                rendered_at_epoch=epoch,
-            )
-        except Exception as error:  # Extraction is best effort; its marker is retried later.
-            print(f"Memory extraction error: {type(error).__name__}")
-            return False
 
     def accept_update(self, update: dict[str, Any]) -> bool:
         """Handle one update and persist its replies with the offset that consumes it.
@@ -806,7 +781,7 @@ class TelegramChannel:
                 for reference in item.evidence
             )
             lines.append(
-                f"\n{item.id} · {_memory_label(item.kind.value)} · "
+                f"\n{item.id} · {item.kind.value} · "
                 f"{item.origin.value} · {item.fit.value} · {item.lifecycle.value}\n"
                 f"{item.content}\nEvidence: {evidence} · updated {_date(item.last_seen_at)}"
             )
@@ -961,8 +936,7 @@ class TelegramChannel:
         for item in current:
             old = old_memory.get(item.id)
             if old is None:
-                label = _memory_label(item.kind.value)
-                changes.append(f"Saved {label}: {item.content} [{item.id}]")
+                changes.append(f"Saved {item.kind.value}: {item.content} [{item.id}]")
             elif old.model_dump() != item.model_dump():
                 changes.append(f"Memory updated: {item.content} [{item.id}]")
         for item in self.store.list_interventions():
@@ -1058,17 +1032,6 @@ def _page(items: list[Any], argument: str | None, size: int) -> tuple[int, list[
 
 def _date(value: str) -> str:
     return datetime.fromisoformat(value).astimezone().strftime("%d/%m/%Y %H:%M")
-
-
-def _memory_label(value: str) -> str:
-    labels = {
-        "fact": "fact",
-        "preference": "preference",
-        "event": "event",
-        "pattern": "pattern",
-        "hypothesis": "hypothesis",
-    }
-    return labels.get(value, value)
 
 
 def _status_label(value: str) -> str:

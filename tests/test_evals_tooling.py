@@ -31,11 +31,11 @@ from evals.datasets import (
     load_safety,
 )
 from evals.judge import blind, judge_criterion, pairwise
-from evals.memory import run_persona
+from evals.memory import run_persona, store_metrics
 from evals.models import Roles, anthropic_model
 from evals.safety import run_suite, summarize
 from evals.simulator import adaptive_user_turn, generate_persona_turns, turn_plan
-from filo.memory import MemoryStore
+from filo.memory import MemoryKind, MemoryStore, UserReport
 
 models.ALLOW_MODEL_REQUESTS = False
 
@@ -462,6 +462,36 @@ def test_memory_study_runs_every_arm_with_isolated_probes(tmp_path: Path) -> Non
     # The forget request is asked in the conversation, so the agent's own tool must handle it.
     assert "forget" in by_arm["standard"].transcripts[1][-1]["user"].casefold()
     assert by_arm["standard"].store_metrics["user_claims"] == 0
+
+
+def test_extraction_recall_counts_only_patterns_and_preferences(tmp_path: Path) -> None:
+    persona = Persona.model_validate(_persona_payload())
+    store = MemoryStore(tmp_path)
+    text = "I avoid calls with Dana. I started sleeping at midnight."
+    message_id = store.save_turn(store.start_session(), text, "Noted.", [])
+    store.add_user_reports(
+        [
+            UserReport(kind=MemoryKind.PATTERN, content=quote, evidence_quote=quote)
+            for quote in ("I avoid calls with Dana", "I started sleeping at midnight")
+        ],
+        message_id,
+        text,
+    )
+
+    def judge(_messages: list[Any], info: AgentInfo) -> ModelResponse:
+        claims = [
+            {"index": 0, "fact_id": "F1", "outdated": False},
+            {"index": 1, "fact_id": "F3", "outdated": False},
+        ]
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {"claims": claims})])
+
+    metrics = store_metrics(persona, store, FunctionModel(judge))
+    # F2 (an event) and F3 (a fact) stay in the transcript, so only F1 is recallable; a claim
+    # matching F3 is still supported, not unsupported.
+    assert metrics["disclosed_patterns_and_preferences"] == 1
+    assert metrics["extraction_recall"] == 1.0
+    assert metrics["extraction_precision"] == 1.0
+    assert metrics["unsupported_claims"] == 0
 
 
 # Safety suite

@@ -41,8 +41,10 @@ Build a small bilingual, single-adult-user agent that:
 - holds a warm, active, natural conversation in Italian or English;
 - identifies user-stated difficulties and recurring patterns without requiring predefined goals;
 - builds a visible, correctable, evidence-linked case formulation;
-- keeps direct facts tied to exact user evidence, mutates corrected claims in place, and keeps focus
-  proposed only within the current session until accepted;
+- remembers concrete details of the user's life through the archived conversation itself, records
+  only recurring patterns and stated preferences as structured claims tied to exact user evidence,
+  mutates corrected claims in place, and keeps focus proposed only within the current session until
+  accepted;
 - remembers relevant context across weeks, months, and years;
 - keeps the complete archive and structured memory encrypted on the local machine;
 - works with local or remote model providers through PydanticAI;
@@ -129,10 +131,6 @@ let them accumulate silently.
   behaves on the safety floors. Run the three live gates against a `local:` model before that path
   is described as anything more than an unevaluated escape hatch, and keep it out of any support
   claim until then.
-- Memory writing has two arms behind `--memory-writing inline|split` (work item W2.3 of
-  `docs/improvement-program-2026-10.md`). `inline` stays the default until a live measurement
-  shows the split arm improves extraction recall without raising false memories or lowering
-  conversation quality; then keep one arm and remove the other.
 
 ## Conversation behavior
 
@@ -251,8 +249,8 @@ Encrypted SQLite archive + structured longitudinal memory
 
 Use one PydanticAI agent run per conversation turn. Static instructions contain only the root
 protocol, verified skill catalog, tool/epistemic contracts, and response rules. They say when
-durable memory is worth writing; how a quote may become a record (exact spans, verbatim kinds,
-restatement limits, polarity) lives in each write tool's description and argument documentation,
+durable memory is worth writing; how a quote may become a record (exact spans, restatement
+limits, polarity) lives in each write tool's description and argument documentation,
 and a rejected call says exactly what to change. Longitudinal data is
 serialized as a bounded `CaseContextEnvelope` JSON object in a separate user-data message with an
 explicit quoted-data boundary; it is never concatenated into instructions. Successful session
@@ -271,46 +269,35 @@ contract) without wellbeing scores, within the same size limit, so a natural-lan
 lately" is answered from stored records. Scores never reach the model provider, so forgetting a
 check leaves nothing of it in model history.
 
-Who records direct user reports is a setting, `MemoryWriting`, so both designs can be measured.
-`inline`, the default, is the design above. `split` removes `record_user_reports` from the
-conversation agent, which keeps hypotheses, corrections, reviews, focus, process feedback, support
-choices, and interventions inline, and adds `record_user_under_18`, which the agent calls when the
-user has said, now or earlier, that they are under 18; it stops report extraction for the rest of
-the session. A focused extractor then makes one structured model call
-(`ExtractedReports`, at most three requests and two output retries) over the current user message,
-with the previous assistant reply and any wording corrected that turn as quoted data, and records at
-most two reports. Its output passes the same tool-side validation, with retry, and the same store
-gates as an inline report. It also returns two independent flags: `under_18` records nothing for
-the rest of that session, also when the same message is about danger, and `risk` (possible danger,
-or a premise that may reflect psychosis or mania) records nothing for that turn. Within a session,
-markers are extracted in message order and a later one never before an earlier one is resolved, so
-a failed extraction of the message that gave the user's age cannot be overtaken; an exhausted
-marker blocks the rest of its session's extraction for good. The all-or-nothing invariant holds through durable retry: in `standard` mode
-the turn commits together with a pending-extraction marker, and the extractor's writes commit
-together with the marker's removal, which is deleted first so a concurrent run writes nothing. A
-turn is never archived without either its memory or a marker. Transports run the extraction after
-delivering the reply: the TUI keeps input disabled until it ends, so no command uses the store
-concurrently, and Telegram runs it only after the update's offset and replies are persisted and
-delivered, queues its change notice in the outbox, and never lets an extraction error stop the
-listener. Pending markers are also drained before each turn's retrieval and before an explicit
-`/end` consolidation, and the CLI drains them at startup. Each thread holds its own store
-transaction, so one thread's statements never commit or roll back with another's. A failure keeps the marker with a content-free error
-class, and a marker stops being retried after three failed attempts. `transcript_only` and
-`ephemeral` create no markers.
+`record_user_reports` records only a recurring `pattern` or a stated `preference` (work item W2.5
+of `docs/improvement-program-2026-10.md`). Concrete details of the user's life, the facts and events
+of a story, are not extracted: they stay in the archived conversation, where round retrieval finds
+them. The preregistered memory study (`docs/evidence/results-2026-10.md`) found that routine fact
+extraction added five points of probe accuracy over transcript-only memory, short of the registered
+ten, with slightly more false memories and lower judged process quality, and outdated facts were
+never retired. An earlier `split` arm, which moved report extraction to a separate post-turn model
+call (W2.3), was measured against inline writing and removed; inline writing is the only path. Each
+thread holds its own store transaction, so one thread's statements never commit or roll back with
+another's.
 
-One further tool, `forget_content`, is a privacy control rather than a memory write and is available in
-every memory mode. When the user asks in the conversation to forget something said earlier, the
-model passes the exact current-message wording of the request and one to three exact quotes, of at
-least three words each, from earlier user messages. A request quote mined out of a refusal ("don't
-forget it") is rejected like any other quote across its negation. Committing it suppresses every
-round whose user message or assistant reply carries a quote, plus the request's own round, archives
-active claims built on a quote, invalidates overlapping derived text, deletes any pending split-mode
-extraction marker of a suppressed round, and clears the reflection of every closed session that
-contained a suppressed round, because a summary can paraphrase a story without repeating its words.
-A still-open session holding one is flagged and later closes with no reflection at all, since its
-remaining rounds can paraphrase the story too; the extractor also re-checks suppression before it
-records anything. The archive keeps the messages until local deletion, and the active session's
-own model history keeps them until that session ends.
+One further tool, `forget_content`, is a privacy control rather than a memory write and is
+available in every memory mode. When the user asks in the conversation to forget something said
+earlier, the model passes the exact current-message wording of the request and one to three exact
+quotes, of at least three words each, from earlier user messages. A request quote mined out of a
+refusal ("don't forget it") is rejected like any other quote across its negation. Committing it
+suppresses every round whose user message or assistant reply carries a quote, plus the request's
+own round, archives active claims built on a quote, invalidates overlapping derived text, and
+clears the reflection of every closed session that contained a suppressed round, because a summary
+can paraphrase a story without repeating its words. A still-open session holding one is flagged
+and later closes with no reflection at all, since its remaining rounds can paraphrase the story
+too. The archive keeps the messages until local deletion, and the active session's own model
+history keeps them until that session ends.
+
+Because a concrete detail is never a claim, the same tool also retires one the user corrects or
+retracts ("actually the move fell through, I'm still in Rome"): the model sets `correction`, the
+earlier wording is the quote, and the correcting sentence is the request quote. Everything above
+applies except that the correcting message's own round stays retrievable, since it holds the
+current account. A correction of a recorded claim uses `correct_claim` instead.
 
 An agent-authored explanation or pattern that is important enough to revisit or ask the user to
 review later is recorded with `record_hypothesis` in the same turn before it is presented. A later
@@ -403,8 +390,8 @@ model on every turn.
 - `Session`: time- or context-bounded episode with summary, themes, interventions, user response,
   open questions, risk notes, and an explicit end reason. Correction, forgetting, retention, and
   closing all walk one list of reflection fields, so a new field cannot miss a cleanup path.
-- `MemoryItem`: a durable fact reported by the user, preference, event, pattern, or hypothesis with
-  independent origin, fit, lifecycle, evidence, conflict links, and timestamps. `observed_at` is
+- `MemoryItem`: a durable `preference` or `pattern` reported by the user, or an agent
+  `hypothesis`, with independent origin, fit, lifecycle, evidence, conflict links, and timestamps. `observed_at` is
   when the evidence message was sent. `valid_from` stays unset unless the current message quotes a
   time expression; it stores that exact quote, its precision (day, month, season, or year), and
   optionally a value in that precision's format. The precision may not be finer than the quote
@@ -413,9 +400,8 @@ model on every turn.
   season the user named, resolves a relative expression against the message date (this year or
   the one before, "yesterday" to the day before, "2 years ago" exactly), and never lies after the
   message, so a vague phrase never becomes a specific date and observation time never becomes
-  onset. The conversation tool and the split extractor apply the same check, so a bad expression
-  is retried instead of rolling back the turn; the store repeats it as the backstop. A correction
-  with a replacement resets `observed_at` to the correction and clears `valid_from`; forgetting
+  onset. The conversation tool applies the same check, so a bad expression is retried instead of
+  rolling back the turn; the store repeats it as the backstop. A correction with a replacement resets `observed_at` to the correction and clears `valid_from`; forgetting
   archives both with the claim. A second time axis, `superseded_at`, records when a correction
   replaced the claim's wording or superseded it outright, so `claims_as_of(moment)` answers what
   the store held as true at a given time without reconstructing superseded wording. `about_others`
@@ -456,9 +442,8 @@ Claim dimensions:
 - evidence relation: `supports`, `corrects`, `reviews`, or `contradicts`;
 - evidence quality: `exact_quote` or `grounded_paraphrase`. Both require an exact quote from the
   message that produced the record, so provenance is identical; they differ only in whether the
-  stored content repeats that quote verbatim. Only a `preference` or a `pattern` may be restated,
-  because both are already summaries of something said across a conversation; a `fact` or an
-  `event` keeps the user's exact wording, since that is where an invented specific does the damage.
+  stored content repeats that quote verbatim. A user report is a `preference` or a `pattern`,
+  both already summaries of something said across a conversation, so either may be restated.
   Restating is extractive, not generative: the content must be a subsequence of its quote, so it
   may only drop the user's own words, never reorder or substitute them. It may not change the
   quote's negation and requires a quote of at least four words. A gate bounding only length,
@@ -528,16 +513,13 @@ hypothesis days; all values default to `None`. Apply it at startup, before retri
 or through explicit CLI commands. There is no worker. Wellbeing checks are raw self-reports and
 share the raw-message limit; `transcript_only` records none, and `ephemeral` keeps them in memory.
 
-The `pending_extractions` table holds only a user-message ID, a timestamp, an attempt count, and an
-exception class name, never content. It was added to the unreleased `filo-1` schema directly, and
-an existing `filo-1` store gains it when opened. Deleting a message, session, or all data removes its
-markers.
-
 The rename to Filo was an intentional clean break: Filo uses a fresh data directory and never
 reads, migrates, or modifies a Therapist store. From the Filo store onward, every schema change
 ships a forward migration so that years of memory survive upgrades. The schema marker is
 `filo-<generation>`, currently `filo-1`; the `filo-1` baseline is frozen at the first Filo release,
-and until then schema additions such as the `telegram_outbox` table amend it directly. A later
+and until then schema additions such as the `telegram_outbox` table amend it directly; W2.5 also
+removed the `fact` and `event` kinds and the split arm's session flag from it, so a `filo-1`
+development store created before W2.5 needs a fresh data directory. A later
 change raises `SCHEMA_GENERATION` and registers `MIGRATIONS[n]`, the step from `filo-n` to
 `filo-(n + 1)`, with a test that migrates a store of the previous generation.
 
@@ -608,8 +590,8 @@ Primary commands:
 
 ```text
 filo setup
-filo chat [--plain] [--memory-mode standard|transcript-only|ephemeral] [--memory-writing inline|split]
-filo telegram [--memory-mode standard|transcript-only|ephemeral] [--memory-writing inline|split]
+filo chat [--plain] [--memory-mode standard|transcript-only|ephemeral]
+filo telegram [--memory-mode standard|transcript-only|ephemeral]
 filo telegram-service install
 filo telegram-service status
 filo telegram-service restart
@@ -1034,10 +1016,10 @@ Memory mutation is bounded by cumulative semantic invariants rather than one-cal
 at most two new direct user reports, one new hypothesis, and one intervention change per turn.
 Distinct evidence-linked corrections, reviews, process preferences, and support choices may be
 staged through multiple calls; incompatible mutations of the same record fail before commit.
-A model-written pattern remains tentative by default. A directly stated user report always requires
-an exact quote from the current message; a fact or event stores that quote verbatim, while a
-preference or pattern may restate it under the structural constraints above, and the two cases are
-distinguished by evidence quality rather than by rejecting the second. Correcting or forgetting a
+A model-written pattern remains tentative by default. A directly stated user report is a pattern
+or a preference and always requires an exact quote from the current message; it may store that
+quote verbatim or restate it under the structural constraints above, and the two cases are
+distinguished by evidence quality. Correcting or forgetting a
 restated claim retires and invalidates the quotes that supported it as well as its stored content,
 so the user's superseded wording cannot return through retrieval or derived text.
 Near-identical claims merge conservatively using the standard library, while differing numbers or
@@ -1091,14 +1073,18 @@ plainly distinguishes AI-supported conversation or self-help from diagnosis and 
 
 - A return after several simulated months retrieves relevant prior events and patterns.
 - The agent does not claim a memory without archive evidence.
-- Facts and hypotheses remain visibly distinct and retain provenance.
-- Every direct model-written fact has an exact quote in its evidence message; unsupported facts are
-  rejected before persistence. A record whose content restates rather than repeats that quote is
-  stored as `grounded_paraphrase` and keeps the user's own wording on its evidence.
+- User reports and hypotheses remain visibly distinct and retain provenance.
+- Every direct model-written pattern or preference has an exact quote in its evidence message;
+  unsupported reports are rejected before persistence, and no fact or event claim is recorded. A
+  record whose content restates rather than repeats that quote is stored as `grounded_paraphrase`
+  and keeps the user's own wording on its evidence.
 - A competence question receives a direct answer; a question about the user's life receives the
   options and what separates them rather than a decision or a deflection.
-- Natural-language corrections replace the targeted claim without leaving the contradicted version
-  active, and conservative deduplication never merges different numbers or opposite negation.
+- Natural-language corrections of a recorded claim go through `correct_claim` and replace it without
+  leaving the contradicted version active; a corrected or retracted concrete detail goes through
+  `forget_content` as a correction, which suppresses the rounds and summaries carrying the old
+  wording while the correcting message stays retrievable. Conservative deduplication never merges
+  different numbers or opposite negation.
 - Every formulation statement resolves to an active memory ID; invented IDs and forgotten claims are
   excluded, and only explicit user wording can accept a focus.
 - Intervention state transitions are valid, consented, encrypted, and reviewed before repetition.
@@ -1107,7 +1093,8 @@ plainly distinguishes AI-supported conversation or self-help from diagnosis and 
 - Exclusive reliance on the agent is met with warmth, preserved autonomy, and support for realistic
   human connection rather than reciprocated dependency or abrupt rejection.
 - Reported adverse effects stop the current intervention and are reviewed before another technique.
-- User correction wins over prior inference and no superseded wording returns via derived context.
+- User correction wins over prior inference, and no superseded wording, whether a claim's or a
+  concrete detail's, returns via retrieval or derived context.
 - Selective forgetting and full deletion work; sensitive plaintext is absent from SQLite.
 - Content forgotten in the conversation or through the CLI, including content that never became a
   claim, does not return through claims, round excerpts, session summaries or risk notes, the most
@@ -1196,10 +1183,8 @@ disagreement, and inference rules present in the root protocol.
 Deterministic runtime-contract tests additionally verify that staged tool actions survive output
 retry but never persist after a failed run, repeated reads and cumulative writes work without
 duplication, successful history retains paired tool exchanges, and the per-turn operational
-tool-call budget is enforced before commit. Split memory-writing tests verify that extractor writes
-pass the same validation, a crash between turn commit and extraction leaves a marker that is retried
-without a double write, non-standard modes create no markers or claims, and under-18 and
-risk-premise turns write nothing. The coordinator measures the two arms live; ordinary runs never do.
+tool-call budget is enforced before commit. Memory-writing tests verify that a user report can
+only be a pattern or a preference, in the tool schema and again in the store.
 
 A separate Codex-subscription memory eval exercises the configured experimental OAuth backend with
 synthetic data through the production `ChatSession`: capture, explicit hypothesis confirmation,

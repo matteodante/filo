@@ -34,7 +34,7 @@ from evals.datasets import (
 from evals.judge import Judgment, blind, judge_criterion
 from evals.models import Roles, anthropic_model
 from evals.runs import failed_reply, read_jsonl, run_directory, write_jsonl
-from filo.chat import ChatSession, MemoryWriting
+from filo.chat import ChatSession
 from filo.memory import ClaimLifecycle, MemoryMode, MemoryStore
 from filo.protocol import ProtocolPack
 
@@ -46,6 +46,8 @@ ARMS = {
 }
 TURN_SPACING = timedelta(minutes=4)
 SESSION_HOUR = 19
+# Timeline kinds the agent may record as claims; facts and events stay in the transcript.
+RECORDABLE_KINDS = frozenset({"pattern", "preference"})
 PROBE_CRITERIA = {
     "correct": (
         "The answer satisfies the expected behavior described in reference.expected. When "
@@ -136,9 +138,6 @@ class ArmResult:
     errors: list[str] = field(default_factory=list)
 
 
-MEMORY_WRITING = MemoryWriting.INLINE  # set by --memory-writing; W2.3 compares the two arms
-
-
 def timeline_anchor(persona: Persona, today: datetime) -> datetime:
     """Place the timeline so the probe day is today, keeping retrieval recency realistic."""
     return (today - timedelta(days=persona.probe_day)).replace(
@@ -173,7 +172,6 @@ def replay_history(
         store,
         persona.profile.language,
         memory_mode=ARMS[arm],
-        memory_writing=MEMORY_WRITING,
     )
     last = anchor
     for index, (plan, generated) in enumerate(zip(persona.sessions, turns.sessions, strict=True)):
@@ -183,8 +181,6 @@ def replay_history(
             last = start + position * TURN_SPACING
             try:
                 answer = chat.respond(text, last).text
-                if MEMORY_WRITING is MemoryWriting.SPLIT:
-                    chat.extract_pending()  # as the CLI and Telegram do after delivering a reply
             except Exception as error:  # a failed product turn is a result, not a harness crash
                 answer = failed_reply(error)
                 result.errors.append(f"session {index} turn {position}: {answer}")
@@ -237,7 +233,6 @@ def run_probe(
             store,
             persona.profile.language,
             memory_mode=ARMS[arm],
-            memory_writing=MEMORY_WRITING,
         )
         try:
             return chat.respond(probe.question, when).text
@@ -290,7 +285,12 @@ def judge_probe(
 
 
 def store_metrics(persona: Persona, store: MemoryStore, judge: Model) -> dict[str, Any]:
-    """Extraction recall and precision, unsupported claims, updates, and forgotten absence."""
+    """Extraction recall and precision, unsupported claims, updates, and forgotten absence.
+
+    Since W2.5 the agent records only patterns and preferences, and concrete facts and events stay
+    in the archived conversation. Recall therefore counts only disclosed timeline items of those two
+    kinds; a claim matching any timeline item, whatever its kind, still counts as supported.
+    """
     exported = store.export()
     claims = [claim for claim in exported["claims"] if claim["origin"] == "user_statement"]
     timeline = [
@@ -299,6 +299,7 @@ def store_metrics(persona: Persona, store: MemoryStore, judge: Model) -> dict[st
         for event in session.events
         if event.fact
     ]
+    recordable = {fact.id for fact in persona.facts if fact.kind in RECORDABLE_KINDS}
     disclosed = {
         item["fact"]
         for item in timeline
@@ -327,7 +328,8 @@ def store_metrics(persona: Persona, store: MemoryStore, judge: Model) -> dict[st
         except UnexpectedModelBehavior as error:  # recorded, so a replayed arm is never lost
             match_error = type(error).__name__
     by_index = {match.index: match for match in matches if 0 <= match.index < len(claims)}
-    matched_facts = {m.fact_id for m in by_index.values() if m.fact_id in disclosed}
+    recallable = disclosed & recordable
+    matched_facts = {m.fact_id for m in by_index.values() if m.fact_id in recallable}
     unsupported = sum(
         (match := by_index.get(index)) is None or match.fact_id is None
         for index in range(len(claims))
@@ -355,9 +357,9 @@ def store_metrics(persona: Persona, store: MemoryStore, judge: Model) -> dict[st
     ).casefold()
     return {
         "user_claims": len(claims),
-        "disclosed_facts": len(disclosed),
-        "extraction_recall": len(matched_facts) / len(disclosed)
-        if disclosed and not match_error
+        "disclosed_patterns_and_preferences": len(recallable),
+        "extraction_recall": len(matched_facts) / len(recallable)
+        if recallable and not match_error
         else None,
         "extraction_precision": (len(claims) - unsupported) / len(claims)
         if claims and not match_error
@@ -492,15 +494,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sut", default=None)
     parser.add_argument("--judge", default=None)
     parser.add_argument("--no-process-judging", action="store_true")
-    parser.add_argument("--memory-writing", choices=[m.value for m in MemoryWriting])
     parser.add_argument("--resume", default=None, help="Run ID whose missing personas to complete.")
     parser.add_argument("--dry-run", action="store_true", help="Print the estimate and stop.")
     args = parser.parse_args(argv)
 
     roles = Roles.from_env(sut=args.sut, judge=args.judge)
-    global MEMORY_WRITING
-    if args.memory_writing:
-        MEMORY_WRITING = MemoryWriting(args.memory_writing)
     arms = [arm for arm in args.arms.split(",") if arm]
     if unknown := set(arms) - set(ARMS):
         parser.error(f"unknown arms: {sorted(unknown)}")
@@ -540,7 +538,6 @@ def main(argv: list[str] | None = None) -> int:
                 "roles": roles.__dict__,
                 "arms": arms,
                 "personas": [p.id for p in personas],
-                "memory_writing": MEMORY_WRITING.value,
             }
         ],
     )
