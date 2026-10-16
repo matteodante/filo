@@ -2879,15 +2879,14 @@ def _context_claim_score(item: ContextClaim) -> float:
     return 0.7 * semantic + 0.3 * item.lexical_relevance
 
 
+# Kana, CJK ideographs and Thai are written without spaces between words.
+_UNSPACED_SCRIPT = re.compile("[\u3040-\u30ff\u3400-\u9fff\u0e00-\u0e7f]")
+
+
 def _tokens(text: str) -> set[str]:
     normalized = text.casefold()
     tokens = {token for token in re.findall(r"\w+", normalized) if len(token) >= 4}
-    if any(
-        "\u3040" <= character <= "\u30ff"
-        or "\u3400" <= character <= "\u9fff"
-        or "\u0e00" <= character <= "\u0e7f"
-        for character in normalized
-    ):
+    if _UNSPACED_SCRIPT.search(normalized):
         characters = "".join(
             character
             for character in normalized
