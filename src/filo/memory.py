@@ -451,6 +451,7 @@ class InterventionRecord(StrictModel):
     consent_evidence: EvidenceRef | None = None
     evidence_message_ids: list[int] = Field(default_factory=list)
     prediction: str | None = Field(default=None, max_length=500)
+    planned_for: str | None = Field(default=None, max_length=500)
     context: str | None = Field(default=None, max_length=500)
     outcome: str | None = Field(default=None, max_length=500)
     user_appraisal: str | None = Field(default=None, max_length=500)
@@ -583,6 +584,7 @@ class ContextIntervention(StrictModel):
     description: str
     state: InterventionState
     prediction: str | None
+    planned_for: str | None = None
     outcome: str | None
     user_appraisal: str | None
     unwanted_effects: str | None
@@ -635,6 +637,8 @@ class CaseContextEnvelope(StrictModel):
     conflicts: list[ClaimConflict] = Field(default_factory=list)
     relevant_sessions: list[ContextSession] = Field(default_factory=list)
     active_interventions: list[ContextIntervention] = Field(default_factory=list)
+    # Agreed experiments from before this session with no reported outcome, on its first turn.
+    follow_up_due: list[str] = Field(default_factory=list)
     process_preferences: list[ContextPreference] = Field(default_factory=list)
     support_choices: list[ContextSupportChoice] = Field(default_factory=list)
     relevant_excerpts: list[ContextExcerpt] = Field(default_factory=list)
@@ -1860,6 +1864,7 @@ class MemoryStore:
         consent_quote: str | None = None,
         evidence_text: str | None = None,
         prediction: str | None = None,
+        planned_for: str | None = None,
         context: str | None = None,
         follow_up_information: str | None = None,
         now: datetime | None = None,
@@ -1894,6 +1899,7 @@ class MemoryStore:
             ),
             evidence_message_ids=[evidence_message_id],
             prediction=_normalized(prediction) if prediction else None,
+            planned_for=_normalized(planned_for) if planned_for else None,
             context=_normalized(context) if context else None,
             follow_up_information=(
                 _normalized(follow_up_information) if follow_up_information else None
@@ -1914,6 +1920,7 @@ class MemoryStore:
         consent_quote: str | None = None,
         evidence_text: str | None = None,
         prediction: str | None = None,
+        planned_for: str | None = None,
         context: str | None = None,
         outcome: str | None = None,
         user_appraisal: str | None = None,
@@ -1930,6 +1937,7 @@ class MemoryStore:
         for field_name, value in (
             ("description", description),
             ("prediction", prediction),
+            ("planned_for", planned_for),
             ("context", context),
             ("outcome", outcome),
             ("user_appraisal", user_appraisal),
@@ -1979,7 +1987,13 @@ class MemoryStore:
         *,
         allow_index_write: bool = True,
         now: datetime | None = None,
+        follow_up_before: str | None = None,
     ) -> CaseContextResult:
+        """Bounded case data for one query.
+
+        ``follow_up_before`` is the start of a session on its first turn: experiments the person
+        agreed to before it and has not reported on are then listed in ``follow_up_due``.
+        """
         current = now or _now()
         if not self._ephemeral:
             policy = self.load_app_state().retention_policy
@@ -2105,12 +2119,25 @@ class MemoryStore:
                 claim_round_scores[reference.message_id] = max(
                     claim_round_scores.get(reference.message_id, 0.0), _context_claim_score(item)
                 )
+        follow_up_due = (
+            [
+                item.id
+                for item in self.list_interventions(active_only=True)
+                if item.state is InterventionState.AGREED
+                and not item.outcome
+                and item.updated_at < follow_up_before
+            ][:3]
+            if follow_up_before
+            else []
+        )
         interventions = self._relevant_interventions(
             query,
             query_vector,
             app_state.pending_intervention_id,
             allow_index_write=allow_index_write,
+            pinned=set(follow_up_due),
         )
+        interventions.sort(key=lambda item: item.id not in follow_up_due)
         latest, sessions = self._relevant_sessions(
             query, query_vector, allow_index_write=allow_index_write
         )
@@ -2151,6 +2178,7 @@ class MemoryStore:
             conflicts=conflicts[:5],
             relevant_sessions=sessions[:3],
             active_interventions=interventions[:5],
+            follow_up_due=follow_up_due,
             process_preferences=[
                 ContextPreference(
                     id=item.id,
@@ -2200,6 +2228,7 @@ class MemoryStore:
         pending_id: str | None,
         *,
         allow_index_write: bool,
+        pinned: set[str] | None = None,
     ) -> list[ContextIntervention]:
         items = self.list_interventions(active_only=True)
         text = {
@@ -2208,6 +2237,7 @@ class MemoryStore:
                 for value in (
                     item.description,
                     item.prediction,
+                    item.planned_for,
                     item.context,
                     item.outcome,
                     item.user_appraisal,
@@ -2236,6 +2266,7 @@ class MemoryStore:
                 description=item.description,
                 state=item.state,
                 prediction=item.prediction,
+                planned_for=item.planned_for,
                 outcome=item.outcome,
                 user_appraisal=item.user_appraisal,
                 unwanted_effects=item.unwanted_effects,
@@ -2247,6 +2278,7 @@ class MemoryStore:
             )
             for item in items
             if item.id == pending_id
+            or item.id in (pinned or set())
             or _lexical_score(query, text[item.id]) > 0
             or scores.get(item.id, 0.0) >= MIN_SEMANTIC_RELEVANCE
             or item.unwanted_effects is not None
@@ -2960,6 +2992,7 @@ class MemoryStore:
             if not record.evidence_message_ids:
                 record.description = "Content removed by retention or selective deletion."
                 record.prediction = None
+                record.planned_for = None
                 record.context = None
                 record.outcome = None
                 record.user_appraisal = None
@@ -3025,6 +3058,7 @@ class MemoryStore:
             for field_name in (
                 "description",
                 "prediction",
+                "planned_for",
                 "context",
                 "outcome",
                 "user_appraisal",

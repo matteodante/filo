@@ -854,6 +854,8 @@ class TelegramChannel:
                 f"Method: {item.skill}",
                 item.description,
             ]
+            if item.planned_for:
+                details.append(f"Planned for: {item.planned_for}")
             if item.prediction:
                 details.append(f"Prediction: {item.prediction}")
             if item.outcome:
