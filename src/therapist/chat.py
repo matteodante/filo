@@ -297,7 +297,9 @@ class ChatSession:
         text: str,
         now: datetime | None = None,
         on_event: Callable[[TurnStreamEvent], None] | None = None,
+        on_commit: Callable[[ChatTurn], None] | None = None,
     ) -> ChatTurn:
+        """Run one turn; ``on_commit`` runs inside the turn's storage transaction."""
         if text.lstrip().startswith("/"):
             raise ValueError("Commands must be handled outside the conversation.")
         session = self._current_session(now)
@@ -463,7 +465,10 @@ class ChatSession:
             )
             if self.memory_mode is MemoryMode.STANDARD:
                 self._commit_actions(actions, evidence_id, text, now)
-        return ChatTurn(output.reply, notice, tool_trace, output)
+            turn = ChatTurn(output.reply, notice, tool_trace, output)
+            if on_commit is not None:
+                on_commit(turn)
+        return turn
 
     def _register_write_tools(self, agent: Agent[TurnContext, TherapistTurnOutput]) -> None:
         @agent.tool(sequential=True)

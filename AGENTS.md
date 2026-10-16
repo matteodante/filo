@@ -548,11 +548,20 @@ limit, and persists the validated output with `sendRichMessage`. An HTTP 400 ric
 falls back to plain text; ambiguous transport failures, rate limits, and server failures never
 trigger a second delivery format. Failed tool-event deliveries are retried separately and in order
 before the final reply. Durable-change notices remain separate plain-text messages. Incoming text
-and outgoing content stay below Telegram's limits. The encrypted update offset survives restarts and
-advances only after all output for the update is delivered; transient failures honor Telegram's
-`retry_after` before the update is retried. A crash or ambiguous transport failure between model
-state commit and offset persistence can still cause one update to be processed again; full durable
-inbox idempotency is deferred until `ChatSession` can atomically accept an external idempotency key.
+and outgoing content stay below Telegram's limits. Every reply for an update is written to an
+encrypted outbox in the app state together with the advanced update offset; for a model turn that
+write happens inside the turn's storage transaction through `ChatSession.respond(on_commit=...)`, so
+a committed turn is never handed to the model again and a turn that fails before commit leaves
+neither replies nor offset behind. The listener drains the outbox in order before every poll,
+including after a restart, removes each entry only after Telegram accepts it, and honors
+`retry_after` on transient failures. Delivery is at least once: a crash or ambiguous transport failure
+after Telegram accepted a message but before its removal can send that one message twice. A
+permanent rejection of one queued message is logged and dropped so later replies are not wedged;
+an invalid or revoked token stops the listener. Every network failure, including resets, TLS
+errors, and truncated responses, surfaces as a transient `TelegramError`. The typing indicator is
+repeated every four seconds while a turn runs. In `ephemeral` mode the outbox and offset live in
+the on-disk configuration store while the turn lives in memory, so that write is not atomic with
+the turn.
 
 `thera telegram-service install` validates the saved configuration and starts the listener without
 putting secrets in process arguments. It writes a mode-`0600` LaunchAgent in
@@ -761,7 +770,8 @@ plainly distinguishes AI-supported conversation or self-help from diagnosis and 
 - Telegram rejects unauthorized/non-private input before model invocation, requires channel-specific
   consent, persists its update offset, exposes read-only state with evidence and pagination, reports
   durable turn changes, keeps privileged memory operations local, honors flood-control delays, and
-  does not advance the update offset after failed delivery.
+  queues each committed turn's output with its update offset so a delivery failure or crash never
+  re-runs the model.
 - Telegram background installation uses the native per-user service or task manager, keeps secrets
   out of process arguments and native definitions, and supports status, restart, and clean removal
   on macOS, Linux, and Windows.

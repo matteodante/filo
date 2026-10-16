@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import re
 import secrets
+import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from urllib.error import HTTPError, URLError
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from therapist.chat import ChatSession, TurnStreamEvent, TurnStreamKind
-from therapist.memory import MemoryStore
+from therapist.chat import ChatSession, ChatTurn, TurnStreamEvent, TurnStreamKind
+from therapist.memory import MemoryStore, TelegramDelivery
 
 API_ROOT = "https://api.telegram.org"
 CONSENT_VERSION = "alpha-4"
@@ -22,6 +25,7 @@ MEMORY_PAGE_SIZE = 10
 SESSION_PAGE_SIZE = 5
 INTERVENTION_PAGE_SIZE = 10
 DRAFT_INTERVAL_SECONDS = 0.25
+TYPING_INTERVAL_SECONDS = 4.0
 
 
 class TelegramError(RuntimeError):
@@ -149,9 +153,12 @@ class TelegramBot:
                 error_code=error_code,
                 retry_after=retry_after,
             ) from error
-        except (URLError, TimeoutError, json.JSONDecodeError) as error:
+        except (OSError, http.client.HTTPException, ValueError) as error:
+            # Covers URLError, timeouts, resets, TLS failures, truncated bodies,
+            # and malformed JSON. Only the class name is kept: messages can
+            # carry the request URL, which contains the bot token.
             raise TelegramError(
-                "Telegram is unavailable or returned an invalid response."
+                f"Telegram is unavailable or returned an invalid response ({type(error).__name__})."
             ) from error
         if not isinstance(body, dict) or body.get("ok") is not True:
             description = (
@@ -195,11 +202,12 @@ class TelegramChannel:
         offset = self.config_store.load_app_state().telegram_update_offset
         while True:
             try:
+                self.deliver_pending()
                 updates = self.bot.get_updates(offset)
             except TelegramError as error:
                 if error.fatal:
                     raise
-                print(f"Telegram polling error: {error}")
+                print(f"Telegram polling or delivery error: {error}")
                 time.sleep(error.retry_after or 3)
                 continue
             for update in updates:
@@ -208,27 +216,89 @@ class TelegramChannel:
                     continue
                 if offset is not None and update_id < offset:
                     continue
+                self.accept_update(update)
+                offset = update_id + 1
                 try:
-                    self.process_update(update)
+                    self.deliver_pending()
                 except TelegramError as error:
                     print(f"Telegram delivery error: {error}")
                     if error.fatal:
                         raise
                     time.sleep(error.retry_after or 3)
                     break
-                offset = update_id + 1
-                state = self.config_store.load_app_state()
-                state.telegram_update_offset = offset
-                self.config_store.save_app_state(state)
 
     def process_update(self, update: dict[str, Any]) -> bool:
+        handled = self.accept_update(update)
+        self.deliver_pending()
+        return handled
+
+    def accept_update(self, update: dict[str, Any]) -> bool:
+        """Handle one update and persist its replies with the offset that consumes it.
+
+        A model turn stores its replies inside the turn transaction, so once the
+        turn is committed the update is never handed to the model again.
+        """
+        update_id = update.get("update_id")
+        outbox: list[TelegramDelivery] = []
+
+        def enqueue() -> None:
+            state = self.config_store.load_app_state()
+            state.telegram_outbox.extend(outbox)
+            if isinstance(update_id, int):
+                state.telegram_update_offset = max(state.telegram_update_offset or 0, update_id + 1)
+            self.config_store.save_app_state(state)
+
+        handled, queued = self._handle_update(update, outbox, enqueue)
+        if not queued:
+            enqueue()
+        return handled
+
+    def deliver_pending(self) -> None:
+        """Send queued replies in order, removing each one only after delivery."""
+        while True:
+            state = self.config_store.load_app_state()
+            if not state.telegram_outbox:
+                return
+            delivery = state.telegram_outbox[0]
+            try:
+                self._deliver(delivery)
+            except TelegramError as error:
+                if not error.fatal or error.error_code in {401, 404}:
+                    raise
+                # A permanent rejection of one message (for example a blocked
+                # bot) must not wedge every later reply behind it.
+                print(f"Telegram rejected a queued message permanently: {error}")
+            state = self.config_store.load_app_state()
+            if state.telegram_outbox and state.telegram_outbox[0] == delivery:
+                state.telegram_outbox.pop(0)
+                self.config_store.save_app_state(state)
+
+    def _deliver(self, delivery: TelegramDelivery) -> None:
+        if not delivery.rich:
+            self.bot.send_message(delivery.chat_id, delivery.text)
+            return
+        try:
+            self.bot.send_rich_message(delivery.chat_id, delivery.text)
+        except TelegramError as error:
+            print(f"Telegram rich message delivery error: {error}")
+            if error.error_code != 400:
+                raise
+            self.bot.send_message(delivery.chat_id, delivery.text)
+
+    def _handle_update(
+        self,
+        update: dict[str, Any],
+        outbox: list[TelegramDelivery],
+        enqueue: Callable[[], None],
+    ) -> tuple[bool, bool]:
+        """Return whether the update was handled and whether its replies are already queued."""
         message = update.get("message")
         if not isinstance(message, dict):
-            return False
+            return False, False
         chat = message.get("chat")
         sender = message.get("from")
         if not isinstance(chat, dict) or not isinstance(sender, dict):
-            return False
+            return False, False
         chat_id = chat.get("id")
         if (
             chat.get("type") != "private"
@@ -236,43 +306,45 @@ class TelegramChannel:
             or sender.get("is_bot") is True
             or not isinstance(chat_id, int)
         ):
-            return False
+            return False, False
+
+        def send(text: str, *, rich: bool = False) -> None:
+            if rich:
+                outbox.append(TelegramDelivery(chat_id=chat_id, text=text, rich=True))
+                return
+            outbox.extend(
+                TelegramDelivery(chat_id=chat_id, text=chunk) for chunk in split_message(text)
+            )
+
         text = message.get("text")
         if not isinstance(text, str) or not text.strip():
-            self.bot.send_message(chat_id, self._unsupported_message())
-            return True
+            send(self._unsupported_message())
+            return True, False
         text = text.strip()
         if len(text) > MESSAGE_LIMIT:
-            self.bot.send_message(chat_id, self._message_too_long())
-            return True
+            send(self._message_too_long())
+            return True, False
         command = _command_name(text)
         state = self.config_store.load_app_state()
         if command == "/start":
-            self.bot.send_message(
-                chat_id,
-                self._consent_notice(state.telegram_consent_version == CONSENT_VERSION),
-            )
-            return True
+            send(self._consent_notice(state.telegram_consent_version == CONSENT_VERSION))
+            return True, False
 
         consent = "I UNDERSTAND"
         if state.telegram_consent_version != CONSENT_VERSION:
             if text == f"/consent {consent}":
                 state.telegram_consent_version = CONSENT_VERSION
                 self.config_store.save_app_state(state)
-                self.bot.send_message(chat_id, self._consent_recorded())
+                send(self._consent_recorded())
             else:
-                self.bot.send_message(chat_id, self._consent_notice(False))
-            return True
+                send(self._consent_notice(False))
+            return True, False
 
         if command:
             response = self._command_response(command, _command_argument(text))
-            self.bot.send_message(chat_id, response or self._unknown_command())
-            return True
+            send(response or self._unknown_command())
+            return True, False
         before = self._durable_snapshot()
-        try:
-            self.bot.send_typing(chat_id)
-        except TelegramError as error:
-            print(f"Telegram typing indicator error: {error}")
         draft_id = secrets.randbits(31) or 1
         last_draft_at = 0.0
         draft_retry_at = 0.0
@@ -313,9 +385,24 @@ class TelegramChannel:
                     except TelegramError as fallback_error:
                         print(f"Telegram plain draft delivery error: {fallback_error}")
 
-        succeeded = False
+        def queue_turn(turn: ChatTurn) -> None:
+            for tool_event in undelivered_tool_events:
+                send(tool_event)
+            if turn.notice:
+                send(turn.notice)
+            send(turn.text, rich=_safe_rich_markdown(turn.text))
+            changes = self._durable_changes(before)
+            if changes:
+                send(changes)
+            enqueue()
+
+        typing_stopped = threading.Event()
+        typing = threading.Thread(
+            target=self._keep_typing, args=(chat_id, typing_stopped), daemon=True
+        )
+        typing.start()
         try:
-            turn = self.session.respond(text, on_event=render)
+            self.session.respond(text, on_event=render, on_commit=queue_turn)
         except Exception as error:  # Provider SDKs expose different error types.
             # The class name alone cannot separate a refused request from an
             # unreachable provider. Add the HTTP status when the SDK exposes
@@ -332,31 +419,26 @@ class TelegramChannel:
                 f"Model error while handling Telegram message: "
                 f"{type(error).__name__}{status_note}{cause_note}: {summary}"
             )
-            reply = self._model_error()
-            notice = None
-        else:
-            succeeded = True
-            reply = turn.text
-            notice = getattr(turn, "notice", None)
-        changes = self._durable_changes(before)
-        if succeeded:
-            for tool_event in undelivered_tool_events:
-                self.bot.send_message(chat_id, tool_event)
-        if notice:
-            self.bot.send_message(chat_id, notice)
-        if _safe_rich_markdown(reply):
+            # Any failure inside the turn transaction rolled the queued replies
+            # back with it, so the caller queues this notice instead.
+            outbox.clear()
+            send(self._model_error())
+            return True, False
+        finally:
+            typing_stopped.set()
+            typing.join()
+        return True, True
+
+    def _keep_typing(self, chat_id: int, stopped: threading.Event) -> None:
+        # Telegram shows a chat action for about five seconds; a model turn can
+        # take much longer, so repeat it until the turn ends.
+        while True:
             try:
-                self.bot.send_rich_message(chat_id, reply)
+                self.bot.send_typing(chat_id)
             except TelegramError as error:
-                print(f"Telegram rich message delivery error: {error}")
-                if error.error_code != 400:
-                    raise
-                self.bot.send_message(chat_id, reply)
-        else:
-            self.bot.send_message(chat_id, reply)
-        if changes:
-            self.bot.send_message(chat_id, changes)
-        return True
+                print(f"Telegram typing indicator error: {error}")
+            if stopped.wait(TYPING_INTERVAL_SECONDS):
+                return
 
     def _command_response(self, command: str, argument: str | None) -> str | None:
         if command == "/help":
@@ -754,7 +836,7 @@ def _status_label(value: str) -> str:
 def _http_error_details(error: HTTPError) -> tuple[str, int, int | None]:
     try:
         body = json.loads(error.read())
-    except (OSError, json.JSONDecodeError):
+    except (OSError, http.client.HTTPException, ValueError):
         return f"HTTP {error.code}", error.code, None
     if not isinstance(body, dict):
         return f"HTTP {error.code}", error.code, None

@@ -168,10 +168,17 @@ class RetentionPolicy(StrictModel):
     stale_hypothesis_days: int | None = Field(default=None, ge=1)
 
 
+class TelegramDelivery(StrictModel):
+    chat_id: int
+    text: str = Field(min_length=1)
+    rich: bool = False
+
+
 class AppState(StrictModel):
     consent_version: str | None = None
     telegram_consent_version: str | None = None
     telegram_update_offset: int | None = Field(default=None, ge=0)
+    telegram_outbox: list[TelegramDelivery] = Field(default_factory=list)
     default_model: str | None = None
     default_context_window_tokens: int | None = Field(default=None, ge=16_000, le=128_000)
     default_locale: str | None = None
