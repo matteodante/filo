@@ -846,7 +846,10 @@ def _auth(args: argparse.Namespace, store: MemoryStore) -> int:
                 return 1
             expires = datetime.fromtimestamp(credential.expires_at, UTC).isoformat()
             print(f"Logged in with ChatGPT Codex account {credential.account_id}.")
-            print(f"Access token expires: {expires} (refresh is automatic)")
+            print(
+                f"Access token expires: {expires}. Running chats and the Telegram listener "
+                "refresh it automatically before expiry or after a rejected request."
+            )
         elif args.auth_command == "logout":
             logout_codex(store)
             print("ChatGPT Codex credentials deleted.")
