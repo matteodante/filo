@@ -180,8 +180,8 @@ Parallel PRs then touch different documents instead of one file.
 - live Codex smoke on the maintainer's Mac.
 
 **W0.3 Forward schema migrations.**
-- Replace the clean-break rule with ordered, tested migrations (`schema_version` 3 → 4 …), so the
-  maintainer's existing v3 store survives every later change.
+- The rename to Filo is the last clean break. From the Filo store onward, use ordered, tested
+  migrations, so the maintainer's memory survives every later change.
 - Before migrating, write a one-step encrypted backup (an encrypted copy of the database file), so
   an interrupted migration can be recovered.
 - Reject unknown future versions without modification, as today.
@@ -423,11 +423,14 @@ the cap the maintainer sets.
 
 ## 7. Decisions that belong to the maintainer
 
-1. API budget cap for Wave 1, and whether to continue after the baseline report.
-2. Name and self-presentation (W4.1). The options, from least to most invasive:
-   - keep everything;
-   - change only the agent's self-presentation and Italian-facing copy now;
-   - full rename of the product, command and repository later.
+1. **Decided 2026-10-16:** the API budget is 50 EUR in total. The evaluation tooling enforces a
+   hard cap of $45. Whether to continue after the baseline report is decided then.
+2. **Decided 2026-10-16:** a full rename to **Filo** now, as a clean break. It covers the
+   distribution `filo-cli`, the command `filo`, the package `filo`, the data directory `~/.filo`,
+   the `FILO_` environment prefix and the repository `matteodante/filo`. There are no aliases and
+   no compatibility with Therapist stores. The rename lands before the other work items.
+   **Migrations:** the Filo store is the new baseline, and every later schema change ships a
+   forward migration (W0.3).
 3. **Decided 2026-10-16:** only an Anthropic key for now. Judges use a different Claude generation
    than the system under test (W1.2). A second-family key can be added later without changing the
    design.
