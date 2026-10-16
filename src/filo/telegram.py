@@ -281,6 +281,8 @@ class TelegramChannel:
             self._check_configuration()
             try:
                 self.deliver_pending()
+                if self._extract_reports():
+                    self.deliver_pending()
                 updates = self.bot.get_updates(offset)
             except TelegramError as error:
                 if error.fatal:
@@ -330,7 +332,30 @@ class TelegramChannel:
     def process_update(self, update: dict[str, Any]) -> bool:
         handled = self.accept_update(update)
         self.deliver_pending()
+        if self._extract_reports():
+            self.deliver_pending()
         return handled
+
+    def _extract_reports(self) -> bool:
+        """Record split-arm reports once the turn's offset and replies are safely stored.
+
+        Runs only after ``accept_update`` committed the offset, so nothing here can make an update
+        run again, and no error here may stop the listener: a failed extraction keeps its marker
+        for the next attempt. Returns whether a change notice was queued.
+        """
+        try:
+            before = self._durable_snapshot()
+            epoch = self.config_store.telegram_output_epoch()
+            if not self.session.extract_pending():
+                return False
+            changes = self._durable_changes(before)
+            return bool(changes) and self.config_store.queue_telegram_output(
+                [TelegramDelivery(chat_id=self.allowed_user_id, text=changes)],
+                rendered_at_epoch=epoch,
+            )
+        except Exception as error:  # Extraction is best effort; its marker is retried later.
+            print(f"Memory extraction error: {type(error).__name__}")
+            return False
 
     def accept_update(self, update: dict[str, Any]) -> bool:
         """Handle one update and persist its replies with the offset that consumes it.

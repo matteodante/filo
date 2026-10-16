@@ -92,6 +92,10 @@ interventions, process preferences, conflicts, relevant sessions, and excerpts f
 exchange, not only recent ones. The most recent session and today's date are always in context.
 Results are bounded as complete JSON records. Missing embeddings fail closed.
 
+`--memory-writing split` is an experimental alternative under evaluation: instead of the
+conversation agent, one extra model call after each delivered reply records what you reported,
+under the same exact-evidence rules. `inline` remains the default.
+
 ## Privacy modes and retention
 
 ```bash
@@ -128,8 +132,8 @@ copies. See [PRIVACY.md](PRIVACY.md).
 
 ```text
 filo setup
-filo chat [--plain] [--memory-mode standard|transcript-only|ephemeral]
-filo telegram [--memory-mode standard|transcript-only|ephemeral]
+filo chat [--plain] [--memory-mode standard|transcript-only|ephemeral] [--memory-writing inline|split]
+filo telegram [--memory-mode standard|transcript-only|ephemeral] [--memory-writing inline|split]
 filo telegram-service install|status|restart|uninstall
 filo auth login|status|logout
 filo memory show|case|sessions|interventions
