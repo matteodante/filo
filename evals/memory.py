@@ -311,7 +311,11 @@ def store_metrics(persona: Persona, store: MemoryStore, judge: Model) -> dict[st
             ],
         }
         try:
-            matches = agent.run_sync(blind(json.dumps(payload, ensure_ascii=False))).output.claims
+            # One entry per claim, so the judge's short per-verdict limit would truncate it.
+            matches = agent.run_sync(
+                blind(json.dumps(payload, ensure_ascii=False)),
+                model_settings={"max_tokens": 200 + 60 * len(claims)},
+            ).output.claims
         except UnexpectedModelBehavior as error:  # recorded, so a replayed arm is never lost
             match_error = type(error).__name__
     by_index = {match.index: match for match in matches if 0 <= match.index < len(claims)}
