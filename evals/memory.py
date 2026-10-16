@@ -278,7 +278,7 @@ def store_metrics(persona: Persona, store: MemoryStore, judge: Model) -> dict[st
     match_error = None
     if claims:
         agent = Agent(
-            judge, output_type=StoreMatch, instructions=STORE_MATCH_INSTRUCTIONS, output_retries=3
+            judge, output_type=StoreMatch, instructions=STORE_MATCH_INSTRUCTIONS, retries=3
         )
         payload = {
             "facts": [fact.model_dump() for fact in persona.facts],
