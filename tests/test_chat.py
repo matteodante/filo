@@ -9,6 +9,7 @@ import pytest
 from pydantic_ai import ModelRequest, ModelResponse, models
 from pydantic_ai.messages import ThinkingPart
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
+from pydantic_ai.models.test import TestModel
 
 from filo.chat import CASE_CONTEXT_PREAMBLE, MAX_REPLY_CHARS, ChatSession
 from filo.memory import (
@@ -720,3 +721,16 @@ def test_slash_command_is_rejected_before_model_run(tmp_path) -> None:
             MemoryStore(tmp_path),
             "en-US",
         ).respond("/memory")
+
+
+def test_ephemeral_mode_answers_when_a_read_tool_runs_in_a_worker_thread() -> None:
+    # PydanticAI runs synchronous tools in a worker thread, so the in-memory store must be usable
+    # from a thread other than the one that created it.
+    turn = ChatSession(
+        TestModel(call_tools=["retrieve_case_context"]),
+        _pack(),
+        MemoryStore(ephemeral=True),
+        "en-US",
+        memory_mode=MemoryMode.EPHEMERAL,
+    ).respond("Do you remember where I work?")
+    assert turn.text
