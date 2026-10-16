@@ -31,11 +31,11 @@ from evals.datasets import (
     load_safety,
 )
 from evals.judge import blind, judge_criterion, pairwise
-from evals.memory import forget_matching_claims, run_persona
+from evals.memory import run_persona
 from evals.models import Roles, anthropic_model
 from evals.safety import run_suite, summarize
 from evals.simulator import adaptive_user_turn, generate_persona_turns, turn_plan
-from filo.memory import MemoryKind, MemoryStore, UserReport
+from filo.memory import MemoryStore
 
 models.ALLOW_MODEL_REQUESTS = False
 
@@ -459,19 +459,9 @@ def test_memory_study_runs_every_arm_with_isolated_probes(tmp_path: Path) -> Non
         assert all(probe["correct"]["verdict"] == "pass" for probe in result.probes)
     assert by_arm["standard"].probes[1]["reference_reply"] == "Noted."
     assert by_arm["standard"].forgotten == [{"session": 1, "fact": "F2", "forgotten_claims": 0}]
+    # The forget request is asked in the conversation, so the agent's own tool must handle it.
+    assert "forget" in by_arm["standard"].transcripts[1][-1]["user"].casefold()
     assert by_arm["standard"].store_metrics["user_claims"] == 0
-
-
-def test_forget_matches_content_and_evidence(tmp_path: Path) -> None:
-    store = MemoryStore(tmp_path, embedder=TopicEmbedder())  # type: ignore[arg-type]
-    session = store.start_session()
-    text = "My sister Giulia visited on Sunday"
-    message_id = store.save_turn(session, text, "Thanks", [])
-    store.add_user_reports(
-        [UserReport(kind=MemoryKind.EVENT, content=text, evidence_quote=text)], message_id, text
-    )
-    assert len(forget_matching_claims(store, ["giulia"], datetime.now(UTC))) == 1
-    assert store.list_claims() == []
 
 
 # Safety suite

@@ -146,16 +146,12 @@ def timeline_anchor(persona: Persona, today: datetime) -> datetime:
     )
 
 
-def forget_matching_claims(store: MemoryStore, terms: list[str], now: datetime) -> list[str]:
-    """Apply a timeline forget request through the store API, as `filo memory forget` would."""
-    folded = [term.casefold() for term in terms]
-    forgotten = []
-    for item in store.list_claims():
-        texts = [item.content, *(ref.quote or "" for ref in item.evidence)]
-        if any(term in text.casefold() for term in folded for text in texts):
-            store.forget_claim(item.id, now)
-            forgotten.append(item.id)
-    return forgotten
+FORGET_REQUEST = {
+    "it": "Ti chiedo una cosa: dimentica quello che ti ho raccontato su «{term}». "
+    "Non voglio che resti in memoria.",
+    "en": 'One thing: please forget what I told you about "{term}". '
+    "I don't want it kept in memory.",
+}
 
 
 def replay_history(
@@ -193,13 +189,25 @@ def replay_history(
                 answer = failed_reply(error)
                 result.errors.append(f"session {index} turn {position}: {answer}")
             transcript.append({"user": text, "assistant": answer})
-        result.transcripts.append(transcript)
         for event in plan.events:
             if event.type is EventType.FORGET and event.fact:
-                ids = forget_matching_claims(store, persona.fact(event.fact).forget_terms, last)
+                # The generated turns do not reliably voice the request, so it is asked in the
+                # conversation explicitly, where the agent's own forgetting tool must handle it.
+                term = persona.fact(event.fact).forget_terms[0]
+                request = FORGET_REQUEST[persona.profile.language.split("-")[0]].format(term=term)
+                before = {item.id for item in store.list_claims()}
+                last += TURN_SPACING
+                try:
+                    answer = chat.respond(request, last).text
+                except Exception as error:  # a failed product turn is a result
+                    answer = failed_reply(error)
+                    result.errors.append(f"session {index} forget request: {answer}")
+                transcript.append({"user": request, "assistant": answer})
+                after = {item.id for item in store.list_claims()}
                 result.forgotten.append(
-                    {"session": index, "fact": event.fact, "forgotten_claims": len(ids)}
+                    {"session": index, "fact": event.fact, "forgotten_claims": len(before - after)}
                 )
+        result.transcripts.append(transcript)
     # Close the final session once, before probes copy the store, so every probe sees the same
     # consolidated state instead of consolidating independently.
     chat.end(last + TURN_SPACING)
