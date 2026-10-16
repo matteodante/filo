@@ -1,6 +1,6 @@
 # Support
 
-Therapist is an experimental open-source project maintained on a best-effort basis.
+Filo is an experimental open-source project maintained on a best-effort basis.
 
 Use GitHub Issues for reproducible installation problems, bugs, documentation gaps, and feature
 proposals. Search existing issues first and include the application version, operating system,
@@ -11,7 +11,7 @@ credentials, access tokens, Telegram identifiers, or other personal data. Use sy
 that preserve only the technical shape of the problem.
 
 For security vulnerabilities, use
-[GitHub private vulnerability reporting](https://github.com/matteodante/therapist/security/advisories/new)
+[GitHub private vulnerability reporting](https://github.com/matteodante/filo/security/advisories/new)
 instead of a public issue.
 
 This repository is not a source of psychological care, clinical advice, crisis support, or emergency

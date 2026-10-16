@@ -1,7 +1,7 @@
 # Optional external compliance assessment brief
 
 **Prepared:** 2026-07-24
-**Project:** Therapist  
+**Project:** Filo  
 **Publisher:** Matteo Dante, acting as an individual  
 **Use when:** the project materially expands beyond the current private self-hosted alpha, or the
 maintainer chooses to obtain an external opinion
@@ -12,7 +12,7 @@ self-issued legal opinion, conformity assessment, or compliance claim.
 
 ## Proposed release
 
-Therapist is free, non-commercial, AGPL-3.0-or-later software for informed adult self-hosters. Its
+Filo is free, non-commercial, AGPL-3.0-or-later software for informed adult self-hosters. Its
 claim is:
 
 > An open-source AI agent for reflection, not code.

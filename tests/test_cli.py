@@ -10,8 +10,8 @@ from pydantic_ai import ModelRequest, ModelResponse, UserPromptPart
 from pydantic_ai.messages import TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
-from therapist.chat import TurnStreamEvent, TurnStreamKind
-from therapist.cli import (
+from filo.chat import TurnStreamEvent, TurnStreamKind
+from filo.cli import (
     DEFAULT_CODEX_MODEL,
     DEFAULT_EMBEDDING_MODEL,
     DEFAULT_EMBEDDING_REPO,
@@ -28,7 +28,7 @@ from therapist.cli import (
     build_parser,
     main,
 )
-from therapist.memory import MemoryKind, MemoryStore, UserReport
+from filo.memory import MemoryKind, MemoryStore, UserReport
 
 
 def test_guided_setup_advertises_only_the_supported_chatgpt_provider(
@@ -40,8 +40,8 @@ def test_guided_setup_advertises_only_the_supported_chatgpt_provider(
         captured.update(kwargs)
         return SimpleNamespace(ask=lambda: DEFAULT_CODEX_MODEL)
 
-    monkeypatch.setattr("therapist.cli.questionary.select", select)
-    monkeypatch.setattr("therapist.cli._local_model_names", list)
+    monkeypatch.setattr("filo.cli.questionary.select", select)
+    monkeypatch.setattr("filo.cli._local_model_names", list)
 
     assert _select_model() == DEFAULT_CODEX_MODEL
     choices = captured["choices"]
@@ -60,8 +60,8 @@ def test_guided_setup_offers_a_reachable_local_server_before_chatgpt(
         captured.update(kwargs)
         return SimpleNamespace(ask=lambda: "local:small")
 
-    monkeypatch.setattr("therapist.cli.questionary.select", select)
-    monkeypatch.setattr("therapist.cli._local_model_names", lambda: ["small", "large"])
+    monkeypatch.setattr("filo.cli.questionary.select", select)
+    monkeypatch.setattr("filo.cli._local_model_names", lambda: ["small", "large"])
 
     assert _select_model() == "local:small"
     choices = captured["choices"]
@@ -93,8 +93,8 @@ def test_local_model_names_reads_the_openai_compatible_catalogue(
         requested.append(url)
         return Response()
 
-    monkeypatch.setenv("THERA_LOCAL_BASE_URL", "https://example.invalid/v1/")
-    monkeypatch.setattr("therapist.cli.urlopen", urlopen)
+    monkeypatch.setenv("FILO_LOCAL_BASE_URL", "https://example.invalid/v1/")
+    monkeypatch.setattr("filo.cli.urlopen", urlopen)
 
     assert _local_model_names() == ["small"]
     assert requested == ["https://example.invalid/v1/models"]
@@ -106,7 +106,7 @@ def test_local_model_names_is_empty_when_the_server_is_unreachable(
     def urlopen(url: str, timeout: float) -> object:
         raise OSError("unreachable")
 
-    monkeypatch.setattr("therapist.cli.urlopen", urlopen)
+    monkeypatch.setattr("filo.cli.urlopen", urlopen)
 
     assert _local_model_names() == []
 
@@ -117,8 +117,8 @@ def test_local_endpoint_report_names_the_local_network_block(
     def urlopen(url: str, timeout: float) -> object:
         raise URLError(OSError(errno.EHOSTUNREACH, "No route to host"))
 
-    monkeypatch.setenv("THERA_LOCAL_BASE_URL", "http://rig.invalid:8080/v1")
-    monkeypatch.setattr("therapist.cli.urlopen", urlopen)
+    monkeypatch.setenv("FILO_LOCAL_BASE_URL", "http://rig.invalid:8080/v1")
+    monkeypatch.setattr("filo.cli.urlopen", urlopen)
 
     report = _local_endpoint_report()
 
@@ -132,7 +132,7 @@ def test_local_endpoint_report_separates_other_failures(
     def urlopen(url: str, timeout: float) -> object:
         raise URLError(OSError(errno.ECONNREFUSED, "Connection refused"))
 
-    monkeypatch.setattr("therapist.cli.urlopen", urlopen)
+    monkeypatch.setattr("filo.cli.urlopen", urlopen)
 
     report = _local_endpoint_report()
 
@@ -143,8 +143,8 @@ def test_local_endpoint_report_separates_other_failures(
 def test_local_conversation_model_targets_the_configured_server_with_high_effort(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("THERA_LOCAL_BASE_URL", "https://example.invalid/v1")
-    monkeypatch.delenv("THERA_LOCAL_API_KEY", raising=False)
+    monkeypatch.setenv("FILO_LOCAL_BASE_URL", "https://example.invalid/v1")
+    monkeypatch.delenv("FILO_LOCAL_API_KEY", raising=False)
 
     model = _conversation_model(MemoryStore(tmp_path), "local:qwen")
 
@@ -158,7 +158,7 @@ def test_setup_builds_questionary_selects_with_available_defaults(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     answers = iter([DEFAULT_CODEX_MODEL, "it-IT", "128000", False, False])
-    monkeypatch.setattr("therapist.cli._ask", lambda _: next(answers))
+    monkeypatch.setattr("filo.cli._ask", lambda _: next(answers))
 
     assert _setup(MemoryStore(tmp_path), SimpleNamespace()) == 0
 
@@ -175,11 +175,11 @@ def test_chat_consent_discloses_scope_fallibility_and_data_flow(
     assert _ensure_chat_consent(store)
 
     output = capsys.readouterr().out  # type: ignore[attr-defined]
-    assert "Therapist is experimental AI" in output
+    assert "Filo is experimental AI" in output
     assert "at least 18" in output
     assert "output can be wrong" in output
     assert "separate bounded case-data envelope" in output
-    assert store.load_app_state().consent_version == "alpha-3"
+    assert store.load_app_state().consent_version == "alpha-4"
 
 
 def test_openai_responses_storage_is_disabled(
@@ -230,7 +230,7 @@ def test_embedding_model_commands_manage_only_the_model_cache(
             strategy if revisions == (DEFAULT_EMBEDDING_REVISION,) else None
         )
     )
-    monkeypatch.setattr("therapist.cli._embedding_cache_info", lambda: (cache, model, []))
+    monkeypatch.setattr("filo.cli._embedding_cache_info", lambda: (cache, model, []))
 
     prefix = ["--data-dir", str(tmp_path), "memory", "model"]
     assert main([*prefix, "status"]) == 0
@@ -241,7 +241,7 @@ def test_embedding_model_commands_manage_only_the_model_cache(
     assert DEFAULT_EMBEDDING_REVISION in output
     assert "Encrypted memory data was not changed" in output
     assert strategy.executed
-    assert not (tmp_path / "thera.db").exists()
+    assert not (tmp_path / "filo.db").exists()
 
 
 def test_embedding_model_verify_checks_checksums_and_local_inference(
@@ -257,16 +257,16 @@ def test_embedding_model_verify_checks_checksums_and_local_inference(
     model = SimpleNamespace(revisions=[revision])
     result = SimpleNamespace(mismatches=[], checked_count=11)
     monkeypatch.setattr(
-        "therapist.cli._embedding_cache_info",
+        "filo.cli._embedding_cache_info",
         lambda: (SimpleNamespace(), model, []),
     )
     monkeypatch.setattr(
-        "therapist.cli.HfApi",
+        "filo.cli.HfApi",
         lambda: SimpleNamespace(verify_repo_checksums=lambda *args, **kwargs: result),
     )
     inferred_models: list[object] = []
     monkeypatch.setattr(
-        "therapist.cli._verify_embedding_inference",
+        "filo.cli._verify_embedding_inference",
         lambda embedder: inferred_models.append(embedder) or 1024,
     )
 
@@ -285,10 +285,10 @@ def test_embedding_model_install_uses_setup_smoke_test(
     state.embedding_model = "old:model"
     store.save_app_state(state)
     monkeypatch.setattr(
-        "therapist.cli._prepare_semantic_memory",
+        "filo.cli._prepare_semantic_memory",
         lambda: prepared.append(True) or True,
     )
-    monkeypatch.setattr("therapist.cli._print_embedding_model_status", lambda: True)
+    monkeypatch.setattr("filo.cli._print_embedding_model_status", lambda: True)
 
     assert main(["--data-dir", str(tmp_path), "memory", "model", "install"]) == 0
 
@@ -448,7 +448,7 @@ def test_interactive_chat_prints_tool_input_and_output(
 ) -> None:
     store = MemoryStore(tmp_path)
     state = store.load_app_state()
-    state.consent_version = "alpha-3"
+    state.consent_version = "alpha-4"
     store.save_app_state(state)
     inputs = iter(["Please remember this.", "/quit"])
     monkeypatch.setattr("builtins.input", lambda _: next(inputs))
@@ -479,7 +479,7 @@ def test_interactive_chat_prints_tool_input_and_output(
     assert "TOOL INPUT · record_user_reports" in output
     assert '"content": "detail"' in output
     assert "TOOL OUTPUT · record_user_reports · success" in output
-    assert output.index("TOOL INPUT") < output.index("thera> Done.")
+    assert output.index("TOOL INPUT") < output.index("filo> Done.")
 
 
 def test_plain_chat_does_not_persist_rejected_draft_in_redirected_output(
@@ -487,7 +487,7 @@ def test_plain_chat_does_not_persist_rejected_draft_in_redirected_output(
 ) -> None:
     store = MemoryStore(tmp_path)
     state = store.load_app_state()
-    state.consent_version = "alpha-3"
+    state.consent_version = "alpha-4"
     store.save_app_state(state)
     inputs = iter(["Please answer.", "/quit"])
     monkeypatch.setattr("builtins.input", lambda _: next(inputs))
@@ -501,7 +501,7 @@ def test_plain_chat_does_not_persist_rejected_draft_in_redirected_output(
 
     output = capsys.readouterr().out  # type: ignore[attr-defined]
     assert "rejected draft" not in output
-    assert output.count("thera> Validated reply.") == 1
+    assert output.count("filo> Validated reply.") == 1
 
 
 def test_plain_chat_replaces_draft_in_interactive_terminal(
@@ -509,7 +509,7 @@ def test_plain_chat_replaces_draft_in_interactive_terminal(
 ) -> None:
     store = MemoryStore(tmp_path)
     state = store.load_app_state()
-    state.consent_version = "alpha-3"
+    state.consent_version = "alpha-4"
     store.save_app_state(state)
     inputs = iter(["Please answer.", "/quit"])
     monkeypatch.setattr("builtins.input", lambda _: next(inputs))
@@ -540,11 +540,11 @@ def test_plain_chat_replaces_draft_in_interactive_terminal(
         on_event(TurnStreamEvent(TurnStreamKind.REPLY, "Validated reply."))  # type: ignore[operator]
         return SimpleNamespace(text="Validated reply.", notice=None)
 
-    monkeypatch.setattr("therapist.cli.Console", FakeConsole)
-    monkeypatch.setattr("therapist.cli.Live", FakeLive)
+    monkeypatch.setattr("filo.cli.Console", FakeConsole)
+    monkeypatch.setattr("filo.cli.Live", FakeLive)
 
     assert _chat(SimpleNamespace(respond=respond), store) == 0  # type: ignore[arg-type]
-    assert updates == ["thera> rejected draft", "thera> Validated reply."]
+    assert updates == ["filo> rejected draft", "filo> Validated reply."]
 
 
 def test_export_outputs_all_user_owned_layers(tmp_path: Path, capsys: object) -> None:
@@ -632,7 +632,7 @@ def test_ollama_context_window_is_detected_and_capped(
         def read(self) -> bytes:
             return json.dumps({"model_info": {"model.context_length": 262_144}}).encode()
 
-    monkeypatch.setattr("therapist.cli.urlopen", lambda *args, **kwargs: Response())
+    monkeypatch.setattr("filo.cli.urlopen", lambda *args, **kwargs: Response())
 
     assert _model_context_window("ollama:test") == 128_000
 
@@ -649,9 +649,9 @@ def test_ollama_conversation_is_forced_to_loopback(
     state.consent_version = "alpha-2"
     store.save_app_state(state)
     monkeypatch.setenv("OLLAMA_BASE_URL", "https://example.invalid/v1")
-    monkeypatch.setattr("therapist.cli._default_embedder", lambda **_: object())
-    monkeypatch.setattr("therapist.cli.ChatSession", lambda *_args, **_kwargs: object())
-    monkeypatch.setattr("therapist.cli._chat", lambda *_: 0)
+    monkeypatch.setattr("filo.cli._default_embedder", lambda **_: object())
+    monkeypatch.setattr("filo.cli.ChatSession", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr("filo.cli._chat", lambda *_: 0)
 
     assert main(["--data-dir", str(tmp_path), "chat", "--plain"]) == 0
     assert os.environ["OLLAMA_BASE_URL"] == "http://localhost:11434/v1"
@@ -673,9 +673,9 @@ def test_context_override_cannot_exceed_saved_model_limit(
         captured["context_window_tokens"] = context_window_tokens
         return object()
 
-    monkeypatch.setattr("therapist.cli._default_embedder", lambda **_: object())
-    monkeypatch.setattr("therapist.cli.ChatSession", chat_session)
-    monkeypatch.setattr("therapist.cli._chat", lambda *_: 0)
+    monkeypatch.setattr("filo.cli._default_embedder", lambda **_: object())
+    monkeypatch.setattr("filo.cli.ChatSession", chat_session)
+    monkeypatch.setattr("filo.cli._chat", lambda *_: 0)
 
     assert (
         main(
@@ -704,14 +704,14 @@ def test_tui_preloads_embedding_model_before_start(
     embedder = object()
     verified: list[object] = []
 
-    monkeypatch.setattr("therapist.cli._uses_tui", lambda _: True)
-    monkeypatch.setattr("therapist.cli._default_embedder", lambda **_: embedder)
+    monkeypatch.setattr("filo.cli._uses_tui", lambda _: True)
+    monkeypatch.setattr("filo.cli._default_embedder", lambda **_: embedder)
     monkeypatch.setattr(
-        "therapist.cli._verify_embedding_inference",
+        "filo.cli._verify_embedding_inference",
         lambda value: verified.append(value) or 1024,
     )
-    monkeypatch.setattr("therapist.cli.ChatSession", lambda *_args, **_kwargs: object())
-    monkeypatch.setattr("therapist.cli._chat_tui", lambda *_: 0)
+    monkeypatch.setattr("filo.cli.ChatSession", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr("filo.cli._chat_tui", lambda *_: 0)
 
     assert main(["--data-dir", str(tmp_path), "chat"]) == 0
     assert verified == [embedder]
@@ -730,25 +730,25 @@ def test_telegram_service_install_uses_saved_configuration(
     store.save_app_state(state)
     captured: list[tuple[list[str], Path, dict[str, str]]] = []
     monkeypatch.setattr(
-        "therapist.cli.telegram_service.install",
+        "filo.cli.telegram_service.install",
         lambda command, data_dir, environment: (
             captured.append((command, data_dir, environment)) or tmp_path / "service.plist"
         ),
     )
-    monkeypatch.setenv("THERA_LOCAL_BASE_URL", "http://rig.invalid:8080/v1")
-    monkeypatch.setattr("therapist.cli.sys.argv", [str(tmp_path / "thera")])
-    (tmp_path / "thera").write_text("#!/bin/sh\n")
-    (tmp_path / "thera").chmod(0o755)
+    monkeypatch.setenv("FILO_LOCAL_BASE_URL", "http://rig.invalid:8080/v1")
+    monkeypatch.setattr("filo.cli.sys.argv", [str(tmp_path / "filo")])
+    (tmp_path / "filo").write_text("#!/bin/sh\n")
+    (tmp_path / "filo").chmod(0o755)
 
     assert main(["--data-dir", str(tmp_path), "telegram-service", "install"]) == 0
 
     command, data_dir, environment = captured[0]
-    assert command[0] == str((tmp_path / "thera").resolve())
+    assert command[0] == str((tmp_path / "filo").resolve())
     assert command[-1] == "telegram"
     assert command[1:3] == ["--data-dir", str(tmp_path.resolve())]
     assert data_dir == tmp_path.resolve()
     assert environment == {
-        "THERA_LOCAL_BASE_URL": "http://rig.invalid:8080/v1",
+        "FILO_LOCAL_BASE_URL": "http://rig.invalid:8080/v1",
         "PYTHONUNBUFFERED": "1",
     }
     assert "installed and started" in capsys.readouterr().out  # type: ignore[attr-defined]
@@ -758,13 +758,13 @@ def test_telegram_service_status_does_not_create_memory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
 ) -> None:
     monkeypatch.setattr(
-        "therapist.cli.telegram_service.status",
+        "filo.cli.telegram_service.status",
         lambda: SimpleNamespace(installed=False, running=False, detail=""),
     )
 
     assert main(["--data-dir", str(tmp_path), "telegram-service", "status"]) == 1
 
-    assert not (tmp_path / "thera.db").exists()
+    assert not (tmp_path / "filo.db").exists()
     assert "Installed: no" in capsys.readouterr().out  # type: ignore[attr-defined]
 
 
@@ -777,7 +777,7 @@ def test_semantic_memory_is_mandatory_for_conversation_commands(
         configured_models.append(embedding_model)
         return MemoryStore(directory)
 
-    monkeypatch.setattr("therapist.cli.MemoryStore", memory_store)
+    monkeypatch.setattr("filo.cli.MemoryStore", memory_store)
 
     assert main(["--data-dir", str(tmp_path), "telegram", "--model", "test"]) == 2
     assert configured_models == [None]
@@ -795,22 +795,22 @@ def test_telegram_fails_closed_without_channel_credentials(
     state.embedding_model = DEFAULT_EMBEDDING_MODEL
     store.save_app_state(state)
     monkeypatch.setattr(  # type: ignore[attr-defined]
-        "therapist.cli._default_embedder", lambda **_: object()
+        "filo.cli._default_embedder", lambda **_: object()
     )
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)  # type: ignore[attr-defined]
     monkeypatch.delenv("TELEGRAM_ALLOWED_USER_ID", raising=False)  # type: ignore[attr-defined]
 
     assert main(["--data-dir", str(tmp_path), "telegram", "--model", "test"]) == 2
-    assert "Run `thera setup`" in capsys.readouterr().out  # type: ignore[attr-defined]
+    assert "Run `filo setup`" in capsys.readouterr().out  # type: ignore[attr-defined]
 
 
 def test_setup_stops_when_semantic_memory_cannot_be_prepared(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("therapist.cli._prepare_semantic_memory", lambda: False)
+    monkeypatch.setattr("filo.cli._prepare_semantic_memory", lambda: False)
 
     assert main(["--data-dir", str(tmp_path), "setup"]) == 2
-    assert not (tmp_path / "thera.db").exists()
+    assert not (tmp_path / "filo.db").exists()
     assert not (tmp_path / "memory.key").exists()
 
 
@@ -818,27 +818,27 @@ def test_setup_saves_encrypted_defaults_used_by_telegram(
     tmp_path: Path, monkeypatch: object, capsys: object
 ) -> None:
     selections = iter(["test", "en-US", True, True, False])
-    monkeypatch.setattr("therapist.cli._prepare_semantic_memory", lambda: True)  # type: ignore[attr-defined]
+    monkeypatch.setattr("filo.cli._prepare_semantic_memory", lambda: True)  # type: ignore[attr-defined]
     monkeypatch.setattr(  # type: ignore[attr-defined]
-        "therapist.cli.questionary.select",
+        "filo.cli.questionary.select",
         lambda *args, **kwargs: type("Prompt", (), {"ask": lambda _: next(selections)})(),
     )
     monkeypatch.setattr(  # type: ignore[attr-defined]
-        "therapist.cli.questionary.text",
+        "filo.cli.questionary.text",
         lambda *args, **kwargs: type("Prompt", (), {"ask": lambda _: kwargs["default"]})(),
     )
     monkeypatch.setattr(  # type: ignore[attr-defined]
-        "therapist.cli.questionary.password",
+        "filo.cli.questionary.password",
         lambda *args, **kwargs: type("Prompt", (), {"ask": lambda _: "secret-bot-token"})(),
     )
-    monkeypatch.setattr("therapist.cli.secrets.token_urlsafe", lambda _: "pair-code")  # type: ignore[attr-defined]
+    monkeypatch.setattr("filo.cli.secrets.token_urlsafe", lambda _: "pair-code")  # type: ignore[attr-defined]
 
     class PairingBot:
         def __init__(self, token: str) -> None:
             assert token == "secret-bot-token"
 
         def get_me(self) -> dict[str, str]:
-            return {"username": "test_therapist_bot"}
+            return {"username": "test_filo_bot"}
 
         def delete_webhook(self) -> None:
             pass
@@ -857,15 +857,15 @@ def test_setup_saves_encrypted_defaults_used_by_telegram(
                 }
             ]
 
-    monkeypatch.setattr("therapist.cli.TelegramBot", PairingBot)  # type: ignore[attr-defined]
+    monkeypatch.setattr("filo.cli.TelegramBot", PairingBot)  # type: ignore[attr-defined]
     monkeypatch.setattr(  # type: ignore[attr-defined]
-        "therapist.cli.TelegramChannel.run", lambda _: None
+        "filo.cli.TelegramChannel.run", lambda _: None
     )
     monkeypatch.setattr(  # type: ignore[attr-defined]
-        "therapist.cli._default_embedder", lambda **_: object()
+        "filo.cli._default_embedder", lambda **_: object()
     )
-    monkeypatch.delenv("THERA_MODEL", raising=False)  # type: ignore[attr-defined]
-    monkeypatch.delenv("THERA_LOCALE", raising=False)  # type: ignore[attr-defined]
+    monkeypatch.delenv("FILO_MODEL", raising=False)  # type: ignore[attr-defined]
+    monkeypatch.delenv("FILO_LOCALE", raising=False)  # type: ignore[attr-defined]
     monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)  # type: ignore[attr-defined]
     monkeypatch.delenv("TELEGRAM_ALLOWED_USER_ID", raising=False)  # type: ignore[attr-defined]
 
@@ -890,20 +890,20 @@ def test_setup_can_install_telegram_background_service(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
 ) -> None:
     selections = iter(["test", "en-US", True, True, True])
-    monkeypatch.setattr("therapist.cli._prepare_semantic_memory", lambda: True)
+    monkeypatch.setattr("filo.cli._prepare_semantic_memory", lambda: True)
     monkeypatch.setattr(
-        "therapist.cli.questionary.select",
+        "filo.cli.questionary.select",
         lambda *args, **kwargs: type("Prompt", (), {"ask": lambda _: next(selections)})(),
     )
     monkeypatch.setattr(
-        "therapist.cli.questionary.text",
+        "filo.cli.questionary.text",
         lambda *args, **kwargs: type("Prompt", (), {"ask": lambda _: kwargs["default"]})(),
     )
     monkeypatch.setattr(
-        "therapist.cli.questionary.password",
+        "filo.cli.questionary.password",
         lambda *args, **kwargs: type("Prompt", (), {"ask": lambda _: "secret-bot-token"})(),
     )
-    monkeypatch.setattr("therapist.cli.secrets.token_urlsafe", lambda _: "pair-code")
+    monkeypatch.setattr("filo.cli.secrets.token_urlsafe", lambda _: "pair-code")
 
     class PairingBot:
         def __init__(self, _: str) -> None:
@@ -930,13 +930,13 @@ def test_setup_can_install_telegram_background_service(
             ]
 
     installed: list[list[str]] = []
-    executable = tmp_path / "thera"
+    executable = tmp_path / "filo"
     executable.write_text("#!/bin/sh\n")
     executable.chmod(0o755)
-    monkeypatch.setattr("therapist.cli.TelegramBot", PairingBot)
-    monkeypatch.setattr("therapist.cli.sys.argv", [str(executable)])
+    monkeypatch.setattr("filo.cli.TelegramBot", PairingBot)
+    monkeypatch.setattr("filo.cli.sys.argv", [str(executable)])
     monkeypatch.setattr(
-        "therapist.cli.telegram_service.install",
+        "filo.cli.telegram_service.install",
         lambda command, _, environment: installed.append(command) or "native service",
     )
 
@@ -948,17 +948,17 @@ def test_setup_can_install_telegram_background_service(
 
 def test_setup_stores_remote_provider_key_encrypted(tmp_path: Path, monkeypatch: object) -> None:
     selections = iter(["openai:gpt-5.6-sol", "en-US", False])
-    monkeypatch.setattr("therapist.cli._prepare_semantic_memory", lambda: True)  # type: ignore[attr-defined]
+    monkeypatch.setattr("filo.cli._prepare_semantic_memory", lambda: True)  # type: ignore[attr-defined]
     monkeypatch.setattr(  # type: ignore[attr-defined]
-        "therapist.cli.questionary.select",
+        "filo.cli.questionary.select",
         lambda *args, **kwargs: type("Prompt", (), {"ask": lambda _: next(selections)})(),
     )
     monkeypatch.setattr(  # type: ignore[attr-defined]
-        "therapist.cli.questionary.text",
+        "filo.cli.questionary.text",
         lambda *args, **kwargs: type("Prompt", (), {"ask": lambda _: kwargs["default"]})(),
     )
     monkeypatch.setattr(  # type: ignore[attr-defined]
-        "therapist.cli.questionary.password",
+        "filo.cli.questionary.password",
         lambda *args, **kwargs: type("Prompt", (), {"ask": lambda _: "private-api-key"})(),
     )
 
@@ -982,9 +982,9 @@ def test_setup_displays_and_overwrites_saved_context_limit(
     store.save_app_state(state)
     selections = iter(["test", "en-US", False])
     context_prompt: dict[str, object] = {}
-    monkeypatch.setattr("therapist.cli._prepare_semantic_memory", lambda: True)
+    monkeypatch.setattr("filo.cli._prepare_semantic_memory", lambda: True)
     monkeypatch.setattr(
-        "therapist.cli.questionary.select",
+        "filo.cli.questionary.select",
         lambda *args, **kwargs: type("Prompt", (), {"ask": lambda _: next(selections)})(),
     )
 
@@ -992,7 +992,7 @@ def test_setup_displays_and_overwrites_saved_context_limit(
         context_prompt.update(kwargs)
         return type("Prompt", (), {"ask": lambda _: "64000"})()
 
-    monkeypatch.setattr("therapist.cli.questionary.text", text_prompt)
+    monkeypatch.setattr("filo.cli.questionary.text", text_prompt)
 
     assert main(["--data-dir", str(tmp_path), "setup"]) == 0
 
@@ -1006,13 +1006,13 @@ def test_setup_does_not_persist_provider_secret_when_later_cancelled(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     selections = iter(["openai:gpt-5.6-sol", None])
-    monkeypatch.setattr("therapist.cli._prepare_semantic_memory", lambda: True)
+    monkeypatch.setattr("filo.cli._prepare_semantic_memory", lambda: True)
     monkeypatch.setattr(
-        "therapist.cli.questionary.select",
+        "filo.cli.questionary.select",
         lambda *args, **kwargs: type("Prompt", (), {"ask": lambda _: next(selections)})(),
     )
     monkeypatch.setattr(
-        "therapist.cli.questionary.password",
+        "filo.cli.questionary.password",
         lambda *args, **kwargs: type("Prompt", (), {"ask": lambda _: "must-not-persist"})(),
     )
 
@@ -1020,3 +1020,44 @@ def test_setup_does_not_persist_provider_secret_when_later_cancelled(
     store = MemoryStore(tmp_path)
     assert store.load_secret("openai_api_key") is None
     assert store.load_app_state().default_model is None
+
+
+def test_setup_keeps_listener_state_written_while_it_waits_at_a_prompt(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    store = MemoryStore(tmp_path)
+    store.save_secret("telegram_bot_token", b"secret-bot-token")
+    state = store.load_app_state()
+    state.telegram_allowed_user_id = 42
+    state.telegram_update_offset = 5
+    store.save_app_state(state)
+    selections = iter(["test", "en-US", True, False])
+
+    def listener_writes_meanwhile(*args: object, **kwargs: object) -> object:
+        running = MemoryStore(tmp_path)
+        current = running.load_app_state()
+        current.telegram_update_offset = 99
+        current.telegram_consent_version = "listener-consent"
+        running.save_app_state(current)
+        return type("Prompt", (), {"ask": lambda _: kwargs["default"]})()
+
+    monkeypatch.setattr("filo.cli._prepare_semantic_memory", lambda: True)  # type: ignore[attr-defined]
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        "filo.cli.questionary.select",
+        lambda *args, **kwargs: type("Prompt", (), {"ask": lambda _: next(selections)})(),
+    )
+    monkeypatch.setattr("filo.cli.questionary.text", listener_writes_meanwhile)  # type: ignore[attr-defined]
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        "filo.cli.questionary.password",
+        lambda *args, **kwargs: type("Prompt", (), {"ask": lambda _: ""})(),
+    )
+    monkeypatch.delenv("FILO_MODEL", raising=False)  # type: ignore[attr-defined]
+    monkeypatch.delenv("FILO_LOCALE", raising=False)  # type: ignore[attr-defined]
+
+    assert main(["--data-dir", str(tmp_path), "setup"]) == 0
+
+    state = MemoryStore(tmp_path).load_app_state()
+    assert state.default_model == "test"
+    assert state.telegram_allowed_user_id == 42
+    assert state.telegram_update_offset == 99
+    assert state.telegram_consent_version == "listener-consent"

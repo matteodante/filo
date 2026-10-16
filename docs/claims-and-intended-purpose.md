@@ -20,7 +20,7 @@ Mandatory nearby limitation:
 
 ## Intended purpose
 
-Therapist is intended to support adult self-reflection and organization of user-provided thoughts.
+Filo is intended to support adult self-reflection and organization of user-provided thoughts.
 It is not intended for diagnosis, prevention, monitoring, prediction, prognosis, treatment, or
 alleviation of any disease, disorder, injury, or disability.
 
@@ -39,7 +39,7 @@ reviewers, and records source availability verification dated 2026-07-24.
 
 ## Initial release assumptions
 
-- the project name is Therapist and the publisher is Matteo Dante acting as an individual;
+- the project name is Filo and the publisher is Matteo Dante acting as an individual;
 - source and installers are distributed without charge and outside commercial activity;
 - there is no donation, sponsorship, paid support, or other monetization program;
 - one adult operates one private self-hosted instance;

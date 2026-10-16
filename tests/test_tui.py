@@ -4,9 +4,9 @@ from pathlib import Path
 from textual.containers import VerticalScroll
 from textual.widgets import Input, Markdown, Static
 
-from therapist.chat import ChatTurn, TurnStreamEvent, TurnStreamKind
-from therapist.memory import MemoryStore
-from therapist.tui import TherapistApp
+from filo.chat import ChatTurn, TurnStreamEvent, TurnStreamKind
+from filo.memory import MemoryStore
+from filo.tui import FiloApp
 
 
 class FakeSession:
@@ -32,11 +32,11 @@ def test_tui_loads_history_and_renders_streamed_markdown(tmp_path: Path) -> None
     store = MemoryStore(tmp_path)
     session = store.start_session()
     store.save_turn(session, "Earlier user message.", "**Earlier reply.**", [])
-    app = TherapistApp(FakeSession(), store, lambda *_: False)  # type: ignore[arg-type]
+    app = FiloApp(FakeSession(), store, lambda *_: False)  # type: ignore[arg-type]
 
     async def scenario() -> None:
         async with app.run_test() as pilot:
-            assert app.title == "Therapist"
+            assert app.title == "Filo"
             assert len(app.query(".user")) == 1
             assert len(app.query(".assistant")) == 1
 
@@ -50,7 +50,7 @@ def test_tui_loads_history_and_renders_streamed_markdown(tmp_path: Path) -> None
             assert len(app.query(".user")) == 2
             assert len(app.query(".tool")) == 2
             reply = app.query(".assistant").last(Markdown).source
-            assert reply.startswith("**Therapist**")
+            assert reply.startswith("**Filo**")
             assert reply.endswith("**Streaming reply.**")
             assert app.query(".notice").last(Static).content == "Context notice."
             assert not app.query_one("#input", Input).disabled
@@ -68,7 +68,7 @@ def test_tui_opens_at_latest_history(tmp_path: Path) -> None:
             f"Earlier assistant reply {index} with enough text to fill the viewport.",
             [],
         )
-    app = TherapistApp(FakeSession(), store, lambda *_: False)  # type: ignore[arg-type]
+    app = FiloApp(FakeSession(), store, lambda *_: False)  # type: ignore[arg-type]
 
     async def scenario() -> None:
         async with app.run_test(size=(80, 24)) as pilot:

@@ -7,9 +7,9 @@ from pydantic_ai import models
 from pydantic_ai.exceptions import AgentRunError, UsageLimitExceeded
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 
-from therapist.chat import ChatSession, TurnStreamEvent, TurnStreamKind
-from therapist.memory import MemoryStore
-from therapist.protocol import ProtocolPack
+from filo.chat import ChatSession, TurnStreamEvent, TurnStreamKind
+from filo.memory import MemoryStore
+from filo.protocol import ProtocolPack
 
 models.ALLOW_MODEL_REQUESTS = False
 

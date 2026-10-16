@@ -12,7 +12,7 @@ Long polling requires no public ingress or TLS configuration and is OpenClaw's d
 - Reuse the configured model, protocol pack, conversational locale, `MemoryStore`, and
   `ChatSession`; keep the static transport interface in English.
 - Read the bot token and positive numeric user ID from the encrypted local configuration written by
-  `thera setup`; never print or export the token.
+  `filo setup`; never print or export the token.
 - Validate with `getMe`, remove a webhook without dropping pending messages, install the command menu,
   and poll only `message` updates with a positive timeout.
 - Authorize before commands or model execution: private chat, non-bot sender, exact numeric allowlist.

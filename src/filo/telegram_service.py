@@ -11,9 +11,9 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-SERVICE_LABEL = "io.github.matteodante.therapist.telegram"
-SYSTEMD_UNIT = "therapist-telegram.service"
-WINDOWS_TASK = "Therapist Telegram"
+SERVICE_LABEL = "io.github.matteodante.filo.telegram"
+SYSTEMD_UNIT = "filo-telegram.service"
+WINDOWS_TASK = "Filo Telegram"
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 
@@ -42,7 +42,7 @@ def install(
     if platform == "darwin":
         path = home / "Library" / "LaunchAgents" / f"{SERVICE_LABEL}.plist"
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        log_path = data_dir / "telegram-service.log"
+        log_path = data_dir / "filo-telegram.log"
         domain = f"gui/{os.getuid()}"
         current = runner(
             ["launchctl", "print", f"{domain}/{SERVICE_LABEL}"],
@@ -71,7 +71,7 @@ def install(
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         unit = (
             "[Unit]\n"
-            "Description=Therapist private Telegram listener\n"
+            "Description=Filo private Telegram listener\n"
             "After=network-online.target\n\n"
             "[Service]\n"
             "Type=simple\n"

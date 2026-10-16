@@ -5,10 +5,10 @@ from pydantic_evals import Dataset
 from pydantic_evals.evaluators import EqualsExpected
 
 PACK_ROOT = Path("protocols/transdiagnostic")
-CASES_PATH = Path(__file__).parent / "cases" / "therapeutic_skills.yaml"
+CASES_PATH = Path(__file__).parent / "cases" / "conversation_skills.yaml"
 
 
-def test_written_therapeutic_skill_contracts() -> None:
+def test_written_conversation_skill_contracts() -> None:
     loaded = Dataset[dict[str, Any], dict[str, bool], dict[str, Any]].from_file(CASES_PATH)
     dataset = Dataset(
         name=loaded.name,

@@ -1,32 +1,35 @@
-# Therapist
+# Filo
 
 **Experimental, self-hosted AI conversation for adult self-reflection.**
 
-Therapist runs in a terminal or one private, allowlisted Telegram chat. It supports Italian and
+Filo runs in a terminal or one private, allowlisted Telegram chat. It supports Italian and
 English, keeps local state encrypted, and separates direct user reports from tentative agent
 hypotheses.
 
+Formerly published as Therapist (v0.1–v0.3).
+
 > [!WARNING]
-> Therapist is an AI, not a psychologist or psychotherapist. It is not therapy, diagnosis, medical
+> Filo is an AI, not a psychologist or psychotherapist. It is not therapy, diagnosis, medical
 > advice, emergency care, or human monitoring. Its output can be wrong. The protocol is
 > experimental and has not been clinically validated.
 
 ## Install
 
-macOS or Linux:
+Until the first release published under the Filo name, install from a checkout. This needs Git and
+[uv](https://docs.astral.sh/uv/):
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/matteodante/therapist/main/install.sh | sh
+git clone https://github.com/matteodante/filo.git
+cd filo
+uv tool install --python 3.12 .
+filo setup
+filo doctor
 ```
 
-Windows PowerShell:
-
-```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/matteodante/therapist/main/install.ps1 | iex"
-```
-
-The tagged-alpha installer needs no administrator privileges, existing Python, or Git checkout. It
-installs an isolated Python 3.12 tool, runs guided setup, and finishes with `thera doctor`.
+The one-line bootstrap installers (`install.sh`, `install.ps1`) still pin `v0.3.1`, which predates
+the rename, so they are not usable until that release. They need no administrator privileges,
+existing Python, or Git checkout, install an isolated Python 3.12 tool, run guided setup, and
+finish with `filo doctor`.
 
 ## Architecture
 
@@ -43,7 +46,7 @@ message
 ```
 
 The root protocol is never concatenated with user data. A skill body is loaded only if the model
-semantically calls `load_therapeutic_skill`; no skill is also valid. At most one skill and one
+semantically calls `load_skill`; no skill is also valid. At most one skill and one
 intervention approach are used per turn. There is no keyword router, process classifier, state
 machine, or stored chain-of-thought.
 
@@ -85,29 +88,30 @@ bounded as complete JSON records. Missing embeddings fail closed.
 ## Privacy modes and retention
 
 ```bash
-thera chat --memory-mode standard
-thera chat --memory-mode transcript-only
-thera chat --memory-mode ephemeral
-thera privacy show
-thera privacy set-default ephemeral
+filo chat --memory-mode standard
+filo chat --memory-mode transcript-only
+filo chat --memory-mode ephemeral
+filo privacy show
+filo privacy set-default ephemeral
 ```
 
 - `standard`: encrypted transcript/history plus all structured and semantic state.
 - `transcript-only`: encrypted transcript/history, with no new claims, formulation mutations,
   intervention records, or support choices.
-- `ephemeral`: process memory only; nothing is written to disk.
+- `ephemeral`: process memory only; no conversation content is written to disk (Telegram still saves
+  its update position).
 
 Changing mode does not delete earlier data. Retention is disabled by default and can be configured
 and applied explicitly:
 
 ```bash
-thera retention show
-thera retention set --raw-message-days 90 --session-summary-days none \
+filo retention show
+filo retention set --raw-message-days 90 --session-summary-days none \
   --stale-hypothesis-days 180
-thera retention dry-run
-thera retention apply
-thera delete-session <id>
-thera delete-before 2026-01-01
+filo retention dry-run
+filo retention apply
+filo delete-session <id>
+filo delete-before 2026-01-01
 ```
 
 Local deletion cannot remove provider, Telegram, plaintext export, backup, or terminal-capture
@@ -116,29 +120,31 @@ copies. See [PRIVACY.md](PRIVACY.md).
 ## Commands
 
 ```text
-thera setup
-thera chat [--plain] [--memory-mode standard|transcript-only|ephemeral]
-thera telegram [--memory-mode standard|transcript-only|ephemeral]
-thera telegram-service install|status|restart|uninstall
-thera auth login|status|logout
-thera memory show|case|sessions|interventions
-thera memory review <id> fits|partly_fits|does_not_fit|unsure <evidence>
-thera memory correct <id> <exact-replacement>
-thera memory forget <id>
-thera memory model status|verify|install|remove
-thera privacy show|set-default
-thera retention show|set|dry-run|apply
-thera export [--output path]
-thera delete-session <id>
-thera delete-before <ISO-date>
-thera delete-data
-thera protocol validate
-thera doctor
+filo setup
+filo chat [--plain] [--memory-mode standard|transcript-only|ephemeral]
+filo telegram [--memory-mode standard|transcript-only|ephemeral]
+filo telegram-service install|status|restart|uninstall
+filo auth login|status|logout
+filo memory show|case|sessions|interventions
+filo memory review <id> fits|partly_fits|does_not_fit|unsure <evidence>
+filo memory correct <id> <exact-replacement>
+filo memory forget <id>
+filo memory model status|verify|install|remove
+filo privacy show|set-default
+filo retention show|set|dry-run|apply
+filo export [--output path]
+filo delete-session <id>
+filo delete-before <ISO-date>
+filo delete-data
+filo protocol validate
+filo doctor
 ```
 
 The supported first-alpha provider is a personal ChatGPT Plus/Pro account through the experimental
-`codex:` OAuth path. Setup also lists the models of an OpenAI-compatible `local:` server when one is
-reachable, so conversations can stay on your own hardware; set `THERA_LOCAL_BASE_URL` when that
+`codex:` OAuth path. A running chat or Telegram listener renews the ChatGPT token on its own before
+it expires or after a rejected request, and picks up `filo auth logout` or a new login without a
+restart. Setup also lists the models of an OpenAI-compatible `local:` server when one is
+reachable, so conversations can stay on your own hardware; set `FILO_LOCAL_BASE_URL` when that
 server is not on `http://localhost:8080/v1`. That path carries no support claim, and the remaining
 PydanticAI providers stay technical escape hatches. Telegram checks private-chat type and numeric
 allowlist and keeps configuration secrets out of process arguments.
@@ -156,10 +162,10 @@ creates a plaintext migration backup.
 uv sync --all-groups --extra dev
 uv run ruff format --check .
 uv run ruff check .
-uv run ty check src/therapist
+uv run ty check src/filo
 uv run coverage run -m pytest -m "not live"
 uv run coverage report
-uv run thera protocol validate
+uv run filo protocol validate
 uv build
 ```
 

@@ -1,7 +1,7 @@
 # Source boundaries
 
 Verified on 2026-07-24. These links inform original, bounded abstractions for observable helping
-skills, progressive understanding, collaboration, review, and governance. Therapist does not copy
+skills, progressive understanding, collaboration, review, and governance. Filo does not copy
 the source protocols, implement complete treatment programs, or claim their validation transfers to
 this experimental AI conversation agent.
 

@@ -1,6 +1,6 @@
 # Code of Conduct
 
-Therapist is a mental-health-adjacent engineering project. Contributors and maintainers must keep
+Filo is a mental-health-adjacent engineering project. Contributors and maintainers must keep
 its spaces respectful, technically focused, and safe for people who may encounter sensitive subject
 matter.
 
@@ -20,7 +20,7 @@ disruption, and encouraging self-harm or violence are not accepted.
 ## Scope and enforcement
 
 This policy covers repository issues, pull requests, reviews, discussions, and other spaces where
-someone represents Therapist. The maintainer may edit or remove content, lock threads, reject
+someone represents Filo. The maintainer may edit or remove content, lock threads, reject
 contributions, limit participation, or block accounts. Responses are proportionate to context,
 severity, history, and the safety of affected people.
 
@@ -30,7 +30,7 @@ explicit alpha limitation, not a promise of private case handling:
 - for conduct on GitHub that may violate GitHub policy, use GitHub's private
   [report-abuse flow](https://docs.github.com/en/communities/maintaining-your-safety-on-github/reporting-abuse-or-spam);
 - if a project-specific concern is safe to publish, use the
-  [conduct issue form](https://github.com/matteodante/therapist/issues/new?template=conduct.yml);
+  [conduct issue form](https://github.com/matteodante/filo/issues/new?template=conduct.yml);
 - if public reporting would expose personal, health, or safety information and the conduct is not
   covered by GitHub's reporting flow, do not publish it here. The project cannot currently accept
   that report confidentially.

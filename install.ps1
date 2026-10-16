@@ -6,18 +6,18 @@ $UvReleaseUrl = "https://github.com/astral-sh/uv/releases/download/$UvVersion"
 $UvChecksumsSha256 = "cae3a06391dd65895dc22246115fd998250fa43ab3aa8ffd0d6ab71ae301b4e1"
 $UvLicenseUrl = "https://raw.githubusercontent.com/astral-sh/uv/b7fdec626cdafcfb0d0db54d39d3d5f114aefb5c/LICENSE-MIT"
 $UvLicenseSha256 = "860e3d7a86b84e6a7012c7a635fc64df475cebc6cce34dfeb73a5982ec58176c"
-$TherapistVersion = "v0.3.1"
-$SourceUrl = "https://github.com/matteodante/therapist/archive/refs/tags/$TherapistVersion.zip"
+$FiloVersion = "v0.3.1"
+$SourceUrl = "https://github.com/matteodante/filo/archive/refs/tags/$FiloVersion.zip"
 
 if ($env:OS -ne "Windows_NT") {
     throw "This installer is for Windows. Use install.sh on macOS or Linux."
 }
 if (-not [Environment]::UserInteractive) {
-    throw "Therapist setup requires an interactive terminal."
+    throw "Filo setup requires an interactive terminal."
 }
 
 $TemporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) (
-    "therapist-install-" + [Guid]::NewGuid().ToString("N")
+    "filo-install-" + [Guid]::NewGuid().ToString("N")
 )
 New-Item -ItemType Directory -Path $TemporaryDirectory | Out-Null
 
@@ -88,23 +88,23 @@ try {
         $Uv = $UvCommand.Source
     }
 
-    $Archive = Join-Path $TemporaryDirectory "therapist.zip"
+    $Archive = Join-Path $TemporaryDirectory "filo.zip"
     $SourceDirectory = Join-Path $TemporaryDirectory "source"
 
-    Write-Host "Downloading Therapist $TherapistVersion..."
+    Write-Host "Downloading Filo $FiloVersion..."
     Invoke-WebRequest -Uri $SourceUrl -OutFile $Archive
     Expand-Archive -LiteralPath $Archive -DestinationPath $SourceDirectory
     $ProjectDirectory = Get-ChildItem -LiteralPath $SourceDirectory -Directory |
         Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "pyproject.toml") } |
         Select-Object -First 1
     if ($null -eq $ProjectDirectory) {
-        throw "The downloaded Therapist source is incomplete."
+        throw "The downloaded Filo source is incomplete."
     }
 
-    Write-Host "Installing Therapist..."
+    Write-Host "Installing Filo..."
     & $Uv tool install --force --python 3.12 $ProjectDirectory.FullName
     if ($LASTEXITCODE -ne 0) {
-        throw "uv could not install Therapist."
+        throw "uv could not install Filo."
     }
     & $Uv tool update-shell
     if ($LASTEXITCODE -ne 0) {
@@ -115,23 +115,23 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "uv could not locate its tool directory."
     }
-    $Thera = Join-Path $ToolBin "thera.exe"
-    if (-not (Test-Path -LiteralPath $Thera -PathType Leaf)) {
-        throw "Therapist was installed but $Thera is unavailable."
+    $Filo = Join-Path $ToolBin "filo.exe"
+    if (-not (Test-Path -LiteralPath $Filo -PathType Leaf)) {
+        throw "Filo was installed but $Filo is unavailable."
     }
 
-    & $Thera setup
+    & $Filo setup
     if ($LASTEXITCODE -ne 0) {
-        throw "Therapist setup did not complete."
+        throw "Filo setup did not complete."
     }
-    & $Thera doctor
+    & $Filo doctor
     if ($LASTEXITCODE -ne 0) {
-        throw "Therapist doctor reported an error."
+        throw "Filo doctor reported an error."
     }
 
     Write-Host ""
-    Write-Host "Therapist is ready. Start it with: thera chat"
-    Write-Host "If thera is not found in a new command, restart PowerShell."
+    Write-Host "Filo is ready. Start it with: filo chat"
+    Write-Host "If filo is not found in a new command, restart PowerShell."
 } finally {
     Remove-Item -LiteralPath $TemporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
 }

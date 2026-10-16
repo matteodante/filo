@@ -9,7 +9,7 @@ against official screening criteria and records the proportionate release decisi
 
 ## Release facts
 
-- Therapist is free, non-commercial, open-source software for one adult self-hoster.
+- Filo is free, non-commercial, open-source software for one adult self-hoster.
 - It supports private self-reflection and organization of user-provided thoughts; it is not intended
   for diagnosis, treatment, monitoring, or emergency use.
 - The maintainer provides source and installers but does not host inference, operate user instances,
@@ -87,7 +87,7 @@ provider deletion.
 ## Release decision and change triggers
 
 - Publishing this source alpha is not treated as operating a hosted processing service.
-- The repository notice documents local and external recipients without claiming that Therapist,
+- The repository notice documents local and external recipients without claiming that Filo,
   Telegram, or ChatGPT is confidential, anonymous, zero-retention, or GDPR compliant.
 - A dedicated privacy email, external GDPR opinion, processor contract, and full DPIA are not gates
   for this release because the publisher does not receive normal application data.

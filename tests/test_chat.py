@@ -9,9 +9,10 @@ import pytest
 from pydantic_ai import ModelRequest, ModelResponse, models
 from pydantic_ai.messages import ThinkingPart
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
+from pydantic_ai.models.test import TestModel
 
-from therapist.chat import CASE_CONTEXT_PREAMBLE, MAX_REPLY_CHARS, ChatSession
-from therapist.memory import (
+from filo.chat import CASE_CONTEXT_PREAMBLE, MAX_REPLY_CHARS, ChatSession
+from filo.memory import (
     ClaimFit,
     ClaimOrigin,
     MemoryKind,
@@ -19,7 +20,7 @@ from therapist.memory import (
     MemoryStore,
     UserReport,
 )
-from therapist.protocol import ProtocolPack
+from filo.protocol import ProtocolPack
 
 models.ALLOW_MODEL_REQUESTS = False
 ROOT = Path("protocols/transdiagnostic")
@@ -190,9 +191,9 @@ def test_agent_can_reply_without_loading_skill_or_using_tool(tmp_path) -> None:
 
 def test_agent_loads_one_verified_skill_and_records_metadata(tmp_path) -> None:
     async def stream(messages: list[Any], _info: Any):
-        if not _has_return(messages, "load_therapeutic_skill"):
+        if not _has_return(messages, "load_skill"):
             yield _tool(
-                "load_therapeutic_skill",
+                "load_skill",
                 {"skill_id": "repair-misattunement"},
                 "skill",
             )
@@ -217,7 +218,7 @@ def test_loaded_skill_body_is_redacted_from_persisted_history(tmp_path) -> None:
         yield (
             "I am sorry I missed that."
             if _has_return(messages)
-            else _tool("load_therapeutic_skill", {"skill_id": "repair-misattunement"})
+            else _tool("load_skill", {"skill_id": "repair-misattunement"})
         )
 
     store = MemoryStore(tmp_path)
@@ -245,11 +246,11 @@ def test_second_skill_load_in_same_turn_is_rejected(tmp_path) -> None:
             for part in message.parts
         )
         if returns == 0:
-            yield _tool("load_therapeutic_skill", {"skill_id": "build-shared-formulation"})
+            yield _tool("load_skill", {"skill_id": "build-shared-formulation"})
         elif retries == 0:
             attempts += 1
             yield _tool(
-                "load_therapeutic_skill",
+                "load_skill",
                 {"skill_id": "solve-practical-problems"},
                 "second",
             )
@@ -720,3 +721,16 @@ def test_slash_command_is_rejected_before_model_run(tmp_path) -> None:
             MemoryStore(tmp_path),
             "en-US",
         ).respond("/memory")
+
+
+def test_ephemeral_mode_answers_when_a_read_tool_runs_in_a_worker_thread() -> None:
+    # PydanticAI runs synchronous tools in a worker thread, so the in-memory store must be usable
+    # from a thread other than the one that created it.
+    turn = ChatSession(
+        TestModel(call_tools=["retrieve_case_context"]),
+        _pack(),
+        MemoryStore(ephemeral=True),
+        "en-US",
+        memory_mode=MemoryMode.EPHEMERAL,
+    ).respond("Do you remember where I work?")
+    assert turn.text

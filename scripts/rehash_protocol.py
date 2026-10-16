@@ -5,7 +5,7 @@ that an unreviewed edit invalidates the pack at load time. Editing protocol text
 recomputing those digests. This rewrites only the digest values, preserving manifest formatting,
 comments, and key order.
 
-This is a maintainer tool, not part of the product CLI: `thera` loads and verifies the pack before
+This is a maintainer tool, not part of the product CLI: `filo` loads and verifies the pack before
 dispatching any command, so it cannot repair a manifest it refuses to load.
 
     uv run python scripts/rehash_protocol.py protocols/transdiagnostic

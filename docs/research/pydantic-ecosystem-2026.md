@@ -2,7 +2,7 @@
 
 > Historical design review. Its "Now" section describes the implementation before commit
 > `e5382b7`; the normal turn now returns plain text and uses validated state tools. Consult
-> `AGENTS.md`, `README.md`, and `src/therapist/chat.py` for the current contract.
+> `AGENTS.md`, `README.md`, and `src/filo/chat.py` for the current contract.
 
 ## Scope and conclusion
 
@@ -21,7 +21,7 @@ fallback providers, MCP, or multi-agent orchestration yet.
 
 ### 1. Bound every model-written field
 
-`TherapistReply.reply` is bounded, but observations, hypotheses, IDs, focus,
+`FiloReply.reply` is bounded, but observations, hypotheses, IDs, focus,
 and every `SessionReflection` string and collection remain unbounded. Add
 Pydantic length constraints to each model-written field and item. This limits
 memory amplification, prompt growth, retry cost, and malformed large outputs.

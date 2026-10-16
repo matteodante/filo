@@ -67,10 +67,10 @@ cases:
       user_text: You misunderstood me; I wanted space to explain.
       model_reply: I moved too quickly into advice. What did I miss?
       tool_calls:
-        - name: load_therapeutic_skill
+        - name: load_skill
           arguments: {skill_id: repair-misattunement}
     expected_output:
       completed: true
       memory_count: 0
       reply: I moved too quickly into advice. What did I miss?
-      tool_path: [load_therapeutic_skill]
+      tool_path: [load_skill]

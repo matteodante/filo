@@ -11,19 +11,19 @@ import yaml
 from pydantic import BaseModel, ConfigDict
 from pydantic_ai import Agent, models
 
-from therapist.auth import codex_model
-from therapist.chat import ChatSession
-from therapist.evaluation import HumanReviewArtifact, SyntheticTurn
-from therapist.memory import MemoryStore
-from therapist.protocol import ProtocolPack
+from filo.auth import codex_model
+from filo.chat import ChatSession
+from filo.evaluation import HumanReviewArtifact, SyntheticTurn
+from filo.memory import MemoryStore
+from filo.protocol import ProtocolPack
 
 CASES_PATH = Path(__file__).parent / "cases" / "conversational_roleplays.yaml"
-PROTOCOL_PATH = Path(os.getenv("THERA_PROTOCOL_PATH", "protocols/transdiagnostic"))
+PROTOCOL_PATH = Path(os.getenv("FILO_PROTOCOL_PATH", "protocols/transdiagnostic"))
 pytestmark = [
     pytest.mark.live,
     pytest.mark.skipif(
-        os.getenv("THERA_RUN_CONVERSATION_EVALS") != "1" or not os.getenv("THERA_EVAL_MODEL"),
-        reason="Set THERA_RUN_CONVERSATION_EVALS=1 and THERA_EVAL_MODEL.",
+        os.getenv("FILO_RUN_CONVERSATION_EVALS") != "1" or not os.getenv("FILO_EVAL_MODEL"),
+        reason="Set FILO_RUN_CONVERSATION_EVALS=1 and FILO_EVAL_MODEL.",
     ),
 ]
 
@@ -38,11 +38,11 @@ class SemanticJudgment(BaseModel):
 def test_bilingual_conversational_roleplays() -> None:
     payload = yaml.safe_load(CASES_PATH.read_text(encoding="utf-8"))
     pack = ProtocolPack.load(PROTOCOL_PATH)
-    conversation_model = _resolve_model(os.environ["THERA_EVAL_MODEL"])
-    judge_model = _resolve_model(os.getenv("THERA_JUDGE_MODEL", os.environ["THERA_EVAL_MODEL"]))
-    repeat = int(os.getenv("THERA_CONVERSATION_EVAL_REPEAT", "1"))
-    artifact_directory = os.getenv("THERA_EVAL_ARTIFACT_DIR")
-    requested_cases = set(filter(None, os.getenv("THERA_CONVERSATION_EVAL_CASES", "").split(",")))
+    conversation_model = _resolve_model(os.environ["FILO_EVAL_MODEL"])
+    judge_model = _resolve_model(os.getenv("FILO_JUDGE_MODEL", os.environ["FILO_EVAL_MODEL"]))
+    repeat = int(os.getenv("FILO_CONVERSATION_EVAL_REPEAT", "1"))
+    artifact_directory = os.getenv("FILO_EVAL_ARTIFACT_DIR")
+    requested_cases = set(filter(None, os.getenv("FILO_CONVERSATION_EVAL_CASES", "").split(",")))
     cases = [
         case for case in payload["cases"] if not requested_cases or case["id"] in requested_cases
     ]
@@ -77,7 +77,7 @@ def test_bilingual_conversational_roleplays() -> None:
         )
         for repetition in range(repeat):
             for case in cases:
-                with tempfile.TemporaryDirectory(prefix="thera-roleplay-") as directory:
+                with tempfile.TemporaryDirectory(prefix="filo-roleplay-") as directory:
                     store = MemoryStore(Path(directory))
                     chat = ChatSession(
                         conversation_model,
@@ -159,5 +159,5 @@ def _tool_names(trace: str) -> list[str]:
 def _resolve_model(model_id: str) -> Any:
     if not model_id.startswith("codex:"):
         return model_id
-    data_directory = Path(os.getenv("THERA_DATA_DIR", Path.home() / ".therapist"))
+    data_directory = Path(os.getenv("FILO_DATA_DIR", Path.home() / ".filo"))
     return codex_model(MemoryStore(data_directory), model_id.removeprefix("codex:"))

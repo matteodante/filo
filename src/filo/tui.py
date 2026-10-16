@@ -12,14 +12,14 @@ from textual.containers import VerticalScroll
 from textual.message import Message
 from textual.widgets import Footer, Header, Input, Markdown, Static
 
-from therapist.chat import ChatSession, ChatTurn, TurnStreamEvent, TurnStreamKind
-from therapist.memory import MemoryStore
+from filo.chat import ChatSession, ChatTurn, TurnStreamEvent, TurnStreamKind
+from filo.memory import MemoryStore
 
 CommandHandler = Callable[[str, Callable[[str], None]], bool]
 
 
-class TherapistApp(App[None]):
-    TITLE = "Therapist"
+class FiloApp(App[None]):
+    TITLE = "Filo"
     SUB_TITLE = "Experimental AI conversation"
     CSS = """
     Screen {
@@ -174,7 +174,7 @@ class TherapistApp(App[None]):
             if self._reply is None:
                 self._reply = Markdown(classes="message assistant", open_links=True)
                 await self.query_one("#conversation", VerticalScroll).mount(self._reply)
-            await self._reply.update(f"**Therapist**\n\n{message.event.text}")
+            await self._reply.update(f"**Filo**\n\n{message.event.text}")
         else:
             await self._mount_static(message.event.text, "message tool")
         self._scroll_end()
@@ -198,7 +198,7 @@ class TherapistApp(App[None]):
                 await self._mount_static(message.turn.notice, "message notice")
             if self._reply is None:
                 self._reply = Markdown(
-                    f"**Therapist**\n\n{message.turn.text}",
+                    f"**Filo**\n\n{message.turn.text}",
                     classes="message assistant",
                     open_links=True,
                 )
@@ -213,7 +213,7 @@ class TherapistApp(App[None]):
     async def _mount_message(self, role: str, content: str) -> None:
         if role == "assistant":
             widget = Markdown(
-                f"**Therapist**\n\n{content}",
+                f"**Filo**\n\n{content}",
                 classes="message assistant",
                 open_links=True,
             )
