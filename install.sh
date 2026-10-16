@@ -139,7 +139,13 @@ if [ ! -f "$TEMP_DIRECTORY/pyproject.toml" ]; then
 fi
 
 echo "Installing Filo..."
-"$UV" tool install --force --python 3.12 "$TEMP_DIRECTORY"
+# uv tool install does not read uv.lock, so the tested versions are passed as constraints. The
+# embedding model runs on CPU, so the CPU build of torch avoids gigabytes of unused CUDA libraries.
+CONSTRAINTS="$TEMP_DIRECTORY/filo-constraints.txt"
+"$UV" export --project "$TEMP_DIRECTORY" --frozen --no-dev --no-emit-project --no-hashes \
+    --quiet --output-file "$CONSTRAINTS"
+"$UV" tool install --force --python 3.12 --torch-backend cpu --constraints "$CONSTRAINTS" \
+    "$TEMP_DIRECTORY"
 "$UV" tool update-shell
 
 TOOL_BIN="$("$UV" tool dir --bin)"

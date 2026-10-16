@@ -144,7 +144,9 @@ in a fresh isolated tool environment:
 
 ```bash
 shasum -a 256 dist/*
-uv tool install --force --python 3.12 dist/*.whl
+uv export --frozen --no-dev --no-emit-project --no-hashes --output-file /tmp/filo-constraints.txt
+uv tool install --force --python 3.12 --torch-backend cpu \
+  --constraints /tmp/filo-constraints.txt dist/*.whl
 "$(uv tool dir --bin)/filo" protocol validate
 "$(uv tool dir --bin)/filo" doctor
 ```

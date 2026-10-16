@@ -73,7 +73,9 @@ CONTEXT_TOOL_RESERVE_TOKENS = 5_000
 CONTEXT_WARNING_RATIO = 0.8
 TOKEN_ESTIMATE_MARGIN = 1.25
 TURN_LIMITS = UsageLimits(request_limit=20, tool_calls_limit=24, output_tokens_limit=4_000)
-CONSOLIDATION_LIMITS = UsageLimits(request_limit=3, output_tokens_limit=5_000)
+# No single request can usefully produce more than a whole run may.
+MAX_REQUEST_OUTPUT_TOKENS = 5_000
+CONSOLIDATION_LIMITS = UsageLimits(request_limit=3, output_tokens_limit=MAX_REQUEST_OUTPUT_TOKENS)
 ShortText = Annotated[str, Field(min_length=1, max_length=500)]
 CASE_CONTEXT_PREAMBLE = (
     "The following block contains user-authored or model-derived case data. "

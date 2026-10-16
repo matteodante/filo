@@ -20,6 +20,7 @@ from huggingface_hub import HfApi, scan_cache_dir, snapshot_download
 from huggingface_hub.errors import CacheNotFound
 from pydantic_ai import Embedder
 from pydantic_ai.models import Model
+from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
 from pydantic_ai.models.openai import (
     OpenAIChatModel,
     OpenAIChatModelSettings,
@@ -41,6 +42,7 @@ from filo.auth import (
 )
 from filo.chat import (
     MAX_CONTEXT_WINDOW_TOKENS,
+    MAX_REQUEST_OUTPUT_TOKENS,
     MIN_CONTEXT_WINDOW_TOKENS,
     ChatSession,
     TurnStreamEvent,
@@ -679,6 +681,13 @@ def _conversation_model(store: MemoryStore, model: str) -> str | Model:
         return OpenAIResponsesModel(
             model.removeprefix("openai:"),
             settings=OpenAIResponsesModelSettings(openai_store=False),
+        )
+    if model.startswith("anthropic:"):
+        # PydanticAI otherwise asks for the model's whole maximum output, beyond the
+        # context window's output reserve.
+        return AnthropicModel(
+            model.removeprefix("anthropic:"),
+            settings=AnthropicModelSettings(max_tokens=MAX_REQUEST_OUTPUT_TOKENS),
         )
     return model
 

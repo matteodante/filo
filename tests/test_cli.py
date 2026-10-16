@@ -8,9 +8,10 @@ from urllib.error import URLError
 import pytest
 from pydantic_ai import ModelRequest, ModelResponse, UserPromptPart
 from pydantic_ai.messages import TextPart, ToolCallPart, ToolReturnPart
+from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
-from filo.chat import TurnStreamEvent, TurnStreamKind
+from filo.chat import MAX_REQUEST_OUTPUT_TOKENS, TurnStreamEvent, TurnStreamKind
 from filo.cli import (
     DEFAULT_CODEX_MODEL,
     DEFAULT_EMBEDDING_MODEL,
@@ -191,6 +192,17 @@ def test_openai_responses_storage_is_disabled(
 
     assert isinstance(model, OpenAIResponsesModel)
     assert model.settings["openai_store"] is False
+
+
+def test_anthropic_requests_stay_within_the_output_reserve(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    model = _conversation_model(MemoryStore(tmp_path), "anthropic:claude-sonnet-5-5")
+
+    assert isinstance(model, AnthropicModel)
+    assert model.settings["max_tokens"] == MAX_REQUEST_OUTPUT_TOKENS
 
 
 def test_hugging_face_telemetry_is_disabled() -> None:

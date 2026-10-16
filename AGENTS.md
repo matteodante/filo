@@ -384,6 +384,16 @@ release updates the alpha without deleting encrypted application state or the sh
 model cache. `uv tool uninstall filo-cli` removes the application command but intentionally
 leaves user data in place.
 
+Every installation path installs the tested dependency set. `uv tool install` does not read
+`uv.lock`, so the installers, the documented checkout installation, the release wheel check, and the
+CI wheel smoke tests first run `uv export --frozen --no-dev --no-emit-project --no-hashes` and pass
+the result as `--constraints`. They also pass `--torch-backend cpu`. `torch` is a direct dependency
+whose `[tool.uv.sources]` entry resolves it from the PyTorch CPU index on Linux, so `uv.lock` and
+`uv sync` carry the CPU build too: the embedding model runs on the CPU, and the default Linux build
+adds several gigabytes of unused CUDA libraries. `httpx2`, which `filo.auth` imports, is declared
+directly rather than relied on transitively. Anthropic requests set `max_tokens` explicitly, since
+PydanticAI otherwise requests the model's whole maximum output, beyond the context output reserve.
+
 Once a Filo release exists, the public README uses `main` only as a small latest-alpha bootstrap
 channel; that script always
 downloads one explicit immutable release tag. On macOS, the piped bootstrap starts interactive
@@ -484,7 +494,7 @@ Conversation-time embedding loads use only the verified local revision.
 After `filo auth login`, omitting `--model` selects `codex:gpt-5.6-sol`. An explicit model can be
 selected with `--model codex:<model-id>`. Access and refresh tokens are encrypted in the same local
 store and are never included in exports. The provider attaches the current token to every request
-through an `httpx` auth flow rather than a fixed API key, so the Telegram listener and the TUI keep
+through an `httpx2` auth flow rather than a fixed API key, so the Telegram listener and the TUI keep
 working across token expiry: the encrypted store is read on every request, so a logout or a new
 login applies to running processes; the token is refreshed within 60 seconds of expiry and, after a
 401, refreshed once and the request retried once. A token obtained because of a 401 is marked as

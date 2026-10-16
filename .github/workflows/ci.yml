@@ -22,7 +22,7 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
       - name: Install uv and Python
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "0.11.31"
           python-version: "3.12"
@@ -51,7 +51,9 @@ jobs:
       - name: Smoke-test installed wheel
         run: |
           wheel="$(find dist -name '*.whl' -print -quit)"
-          uv tool install --python 3.12 "$wheel"
+          constraints="$RUNNER_TEMP/filo-constraints.txt"
+          uv export --frozen --no-dev --no-emit-project --no-hashes --output-file "$constraints"
+          uv tool install --python 3.12 --torch-backend cpu --constraints "$constraints" "$wheel"
           "$(uv tool dir --bin)/filo" protocol validate
           "$(uv tool dir --bin)/filo" doctor
 
@@ -66,7 +68,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install uv and Python
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "0.11.31"
           python-version: "3.12"
@@ -85,7 +87,9 @@ jobs:
         shell: bash
         run: |
           wheel="$(find dist -name '*.whl' -print -quit)"
-          uv tool install --python 3.12 "$wheel"
+          constraints="$RUNNER_TEMP/filo-constraints.txt"
+          uv export --frozen --no-dev --no-emit-project --no-hashes --output-file "$constraints"
+          uv tool install --python 3.12 --torch-backend cpu --constraints "$constraints" "$wheel"
           filo="$(uv tool dir --bin)/filo"
           if [ -f "$filo.exe" ]; then filo="$filo.exe"; fi
           "$filo" protocol validate

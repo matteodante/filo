@@ -7,7 +7,7 @@ from typing import ClassVar
 
 from textual import on, work
 from textual.app import App, ComposeResult
-from textual.binding import Binding
+from textual.binding import Binding, BindingType
 from textual.containers import VerticalScroll
 from textual.message import Message
 from textual.widgets import Footer, Header, Input, Markdown, Static
@@ -82,7 +82,7 @@ class FiloApp(App[None]):
         margin: 0 1 1 1;
     }
     """
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         Binding("ctrl+q", "safe_quit", "Quit"),
         Binding("pageup", "page_up", "Scroll up", show=False),
         Binding("pagedown", "page_down", "Scroll down", show=False),

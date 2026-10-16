@@ -102,7 +102,16 @@ try {
     }
 
     Write-Host "Installing Filo..."
-    & $Uv tool install --force --python 3.12 $ProjectDirectory.FullName
+    # uv tool install does not read uv.lock, so the tested versions are passed as constraints. The
+    # embedding model runs on CPU, so the CPU build of torch avoids unused CUDA libraries.
+    $Constraints = Join-Path $TemporaryDirectory "filo-constraints.txt"
+    & $Uv export --project $ProjectDirectory.FullName --frozen --no-dev --no-emit-project `
+        --no-hashes --quiet --output-file $Constraints
+    if ($LASTEXITCODE -ne 0) {
+        throw "uv could not read the Filo lockfile."
+    }
+    & $Uv tool install --force --python 3.12 --torch-backend cpu --constraints $Constraints `
+        $ProjectDirectory.FullName
     if ($LASTEXITCODE -ne 0) {
         throw "uv could not install Filo."
     }

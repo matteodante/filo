@@ -21,10 +21,16 @@ Until the first release published under the Filo name, install from a checkout. 
 ```bash
 git clone https://github.com/matteodante/filo.git
 cd filo
-uv tool install --python 3.12 .
+uv export --frozen --no-dev --no-emit-project --no-hashes --output-file filo-constraints.txt
+uv tool install --python 3.12 --torch-backend cpu --constraints filo-constraints.txt .
 filo setup
 filo doctor
 ```
+
+The constraints file pins the versions in `uv.lock`, which `uv tool install` does not read, so the
+installation matches the tested set. `--torch-backend cpu` selects the CPU build of PyTorch: the
+embedding model runs on the CPU, and the default Linux build adds several gigabytes of CUDA
+libraries.
 
 The one-line bootstrap installers (`install.sh`, `install.ps1`) still pin `v0.3.1`, which predates
 the rename, so they are not usable until that release. They need no administrator privileges,
