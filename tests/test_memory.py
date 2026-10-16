@@ -818,10 +818,10 @@ def test_invalid_intervention_transition_is_rejected(tmp_path) -> None:
         )
 
 
-def test_clean_break_rejects_previous_schema_without_migration(tmp_path) -> None:
+def test_store_with_a_non_filo_marker_is_rejected(tmp_path) -> None:
     store = MemoryStore(tmp_path)
     store._write_state("schema_version", b"2")
-    with pytest.raises(MemoryError, match="migration is not supported"):
+    with pytest.raises(MemoryError, match="unknown or newer schema"):
         MemoryStore(tmp_path)
 
 
@@ -950,7 +950,7 @@ def test_store_with_older_schema_marker_is_rejected_without_modification(tmp_pat
         database.execute("DROP TABLE semantic_index")
     before = store.database_path.read_bytes()
 
-    with pytest.raises(MemoryError, match="incompatible schema"):
+    with pytest.raises(MemoryError, match="unknown or newer schema"):
         MemoryStore(tmp_path)
 
     assert store.database_path.read_bytes() == before
@@ -970,7 +970,7 @@ def test_unmarked_store_with_state_table_is_rejected_without_modification(tmp_pa
         )
     before = database_path.read_bytes()
 
-    with pytest.raises(MemoryError, match="incompatible schema"):
+    with pytest.raises(MemoryError, match="unknown or newer schema"):
         MemoryStore(tmp_path)
 
     assert database_path.read_bytes() == before

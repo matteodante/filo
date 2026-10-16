@@ -113,9 +113,6 @@ operation.
 Known gaps in the current state of the repository. Close them or record why they stay open; do not
 let them accumulate silently.
 
-- Forward schema migrations are required from the Filo store onward, but the migration framework
-  does not exist yet. Build it before the first change to the Filo schema after the first Filo
-  release.
 - The installers pin the release named in `pyproject.toml`. Until the first release tagged under
   the Filo name exists, that tag still contains the Therapist package and the installers cannot
   complete, so `README.md` documents the checkout installation instead of the bootstrap. The
@@ -136,10 +133,6 @@ let them accumulate silently.
   `docs/improvement-program-2026-10.md`). `inline` stays the default until a live measurement
   shows the split arm improves extraction recall without raising false memories or lowering
   conversation quality; then keep one arm and remove the other.
-- SQLite foreign keys are enforced only inside `MemoryStore.transaction()`. Plain connections use
-  `autocommit=False`, which opens a transaction on connect, where SQLite ignores
-  `PRAGMA foreign_keys = ON`. Deletion code removes dependent rows explicitly instead of relying on
-  cascades; fix the pragma together with the migration framework.
 
 ## Conversation behavior
 
@@ -479,7 +472,7 @@ Claim dimensions:
   negation lands on, and can drop an unmarked qualifier such as a condition, turning "only when I
   drink coffee" into an unconditional claim. No lexical check closes either, and the exact quote is
   retained beside the content so both stay auditable. No unquoted records are created because the
-  Filo store started as a clean break without migration.
+  Filo store started as a clean break from Therapist.
 
 The complete archive is retained until the user deletes it. Corrections and forgotten items must be
 removed from derived formulation and summaries and suppressed from future retrieval. Suppression
@@ -525,15 +518,29 @@ an existing `filo-1` store gains it when opened. Deleting a message, session, or
 markers.
 
 The rename to Filo was an intentional clean break: Filo uses a fresh data directory and never
-reads, migrates, or modifies a Therapist store. From the Filo store onward, every schema change must
-ship a forward migration so that years of memory survive upgrades; the migration framework is a
-separate work item and does not exist yet. Do not add legacy aliases, schema fallbacks, or plaintext
-backups. The Filo schema marker is `filo-1`. The `filo-1` baseline is frozen at the first Filo
-release; until then no store carrying it exists outside development, so schema additions such as
-the `telegram_outbox` table amend `filo-1` directly, and from that release on every change ships a
-forward migration (W0.3). Reject an unknown or future schema version before
+reads, migrates, or modifies a Therapist store. From the Filo store onward, every schema change
+ships a forward migration so that years of memory survive upgrades. The schema marker is
+`filo-<generation>`, currently `filo-1`; the `filo-1` baseline is frozen at the first Filo release,
+and until then schema additions such as the `telegram_outbox` table amend it directly. A later
+change raises `SCHEMA_GENERATION` and registers `MIGRATIONS[n]`, the step from `filo-n` to
+`filo-(n + 1)`, with a test that migrates a store of the previous generation.
+
+Opening a store reads its marker, runs every pending step in order, and applies the schema
+statements inside one transaction that holds the SQLite write lock from the start, so a concurrent
+process waits and then finds the store already migrated, and a process running an older release
+rejects the newer marker instead of acting on one it read earlier. A process that cannot get the
+lock in time reports that another Filo process is updating the store. Before commit, the migrated
+store must pass `integrity_check` and `foreign_key_check`, with foreign keys enforced during the
+steps, and decrypt its new marker. Any failure rolls the transaction back, and SQLite's rollback
+journal does the same for a process that dies before the commit completes, so a store is either
+fully migrated or unchanged. No recovery copy is taken: it would never be used on any of those paths
+and would double the disk an upgrade needs. The generation is also kept in SQLite's
+`user_version`, which every connection checks, so a process started before an upgrade, such as a
+Telegram listener left running, stops with a restart notice instead of writing the old layout into
+the migrated store. Do
+not add legacy aliases or schema fallbacks. Reject an unknown or newer schema version before
 creating any table, and refuse a data directory containing a Therapist `thera.db` before creating,
-chmodding, or reading anything in it.
+chmodding, or reading anything in it. Every connection enforces SQLite foreign keys.
 
 ## CLI contract
 

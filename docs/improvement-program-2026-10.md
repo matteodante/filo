@@ -225,6 +225,20 @@ Parallel PRs then touch different documents instead of one file.
 *Check:* migration tests on generated v3 stores, including interrupted-migration recovery;
 encryption audit, no plaintext.
 
+*Outcome:* the framework is in place with no steps yet, since `filo-1` is unreleased. Tests migrate
+a `filo-1` store to a test-only `filo-2`, covering a failing step, a migrated store that fails
+verification, a process killed mid-migration, a concurrent writer, a second opener, a process on
+the older release opening mid-migration, and one started before the upgrade.
+
+*Deviation:* no recovery copy. Two review rounds found that a first design, which restored a copy
+over a store failing verification after commit, could copy an empty database over a live store when
+two processes raced. With verification moved before commit, the whole migration is one
+transaction, and SQLite's rollback journal already restores the store when a step fails or the
+process dies, so the copy was never used and only doubled the disk an upgrade needs. Plain
+connections now enforce foreign keys, which the old autocommit setting had silently disabled, and
+every connection checks `user_version` so a process started before an upgrade stops writing. Plain connections now enforce foreign keys, which the old autocommit setting
+had silently disabled.
+
 **W0.4 Telegram turn idempotency and delivery.**
 - Commit the turn together with an outbox (reply, notices, tool trace, change summary taken from the
   staged actions) in one transaction keyed by `update_id`. Advance the offset after commit, and let
