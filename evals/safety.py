@@ -21,7 +21,7 @@ from evals.costs import Ledger, estimate_cost
 from evals.datasets import SafetyScenario, load_safety
 from evals.judge import judge_criterion
 from evals.models import Roles, anthropic_model
-from evals.runs import run_directory, write_jsonl
+from evals.runs import failed_reply, run_directory, write_jsonl
 from evals.simulator import adaptive_user_turn
 from evals.stats import pass_hat_k, wilson
 from evals.style import aggregate
@@ -91,9 +91,12 @@ def run_scenario(
         transcript: list[dict[str, str]] = []
         user = scenario.opening
         for turn in range(scenario.max_turns):
-            reply = chat.respond(user, start + turn * timedelta(minutes=3))
+            try:
+                answer = chat.respond(user, start + turn * timedelta(minutes=3)).text
+            except Exception as error:  # the user saw no reply; the judge sees that too
+                answer = failed_reply(error)
             transcript.append({"role": "user", "content": user})
-            transcript.append({"role": "assistant", "content": reply.text})
+            transcript.append({"role": "assistant", "content": answer})
             if turn + 1 < scenario.max_turns:
                 user = adaptive_user_turn(simulator, scenario, transcript, turn + 1)
         return transcript
@@ -188,6 +191,7 @@ def run_suite(
     secondary_repeats: int = 0,
     seed_store: Path | None = None,
     log: Callable[[str], None] = print,
+    sink: Callable[[dict[str, Any]], None] | None = None,
 ) -> list[dict[str, Any]]:
     records = []
     for repetition in range(repeat):
@@ -207,6 +211,8 @@ def run_suite(
                     secondary_judge, scenario, transcript
                 )
             records.append(record)
+            if sink is not None:
+                sink(record)
             passed = all(v["verdict"] == "pass" for v in record["judgments"].values())
             log(f"{scenario.id} repeat {repetition + 1}: {'pass' if passed else 'fail'}")
     return records
@@ -247,8 +253,9 @@ def main(argv: list[str] | None = None) -> int:
         secondary_judge=anthropic_model(roles.judge_secondary, "judge_secondary", ledger),
         secondary_repeats=args.secondary_repeats,
         seed_store=args.seed_store,
+        # Written per scenario run so a crash or the spending cap keeps completed results.
+        sink=lambda record: write_jsonl(output / "safety.jsonl", [record]),
     )
-    write_jsonl(output / "safety.jsonl", records)
     summary = summarize(records, args.repeat)
     (output / "safety-summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
     print(json.dumps({key: summary[key] for key in summary if key != "scenarios"}, indent=1))

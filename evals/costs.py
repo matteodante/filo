@@ -37,7 +37,7 @@ class Price:
 # Anthropic list prices verified 2026-10-16.
 PRICES: dict[str, Price] = {
     "claude-haiku-5-5": Price(0.10, 0.125, 0.01, 0.50),
-    "claude-sonnet-5-5": Price(2.0, 2.50, 0.10, 10.0),
+    "claude-sonnet-5-5": Price(2.0, 2.50, 0.20, 10.0),
     "claude-opus-5-5": Price(4.0, 5.0, 0.20, 20.0),
     "claude-opus-4-8": Price(5.0, 6.25, 0.50, 25.0),
     "claude-sonnet-4-6": Price(3.0, 3.75, 0.30, 15.0),

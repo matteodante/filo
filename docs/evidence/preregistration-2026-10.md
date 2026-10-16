@@ -171,3 +171,6 @@ These are deterministic and computed over every assistant reply:
 - 2026-10-16, before any live run: the Anthropic key is read from the first set of
   `FILO_EVAL_ANTHROPIC_API_KEY`, `CLAUDE_API_KEY`, `ANTHROPIC_API_KEY`, because cloud sessions do not pass the last one through. No design
   change.
+- 2026-10-16, before any live run: the ledger's cache-read price for `claude-sonnet-5-5` is raised
+  from $0.10 to $0.20 per million tokens to match the current list price. This can only overstate
+  spend. No design change.

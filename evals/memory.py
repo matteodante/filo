@@ -32,7 +32,7 @@ from evals.datasets import (
 )
 from evals.judge import Judgment, blind, judge_criterion
 from evals.models import Roles, anthropic_model
-from evals.runs import run_directory, write_jsonl
+from evals.runs import failed_reply, run_directory, write_jsonl
 from therapist.chat import ChatSession
 from therapist.memory import ClaimLifecycle, MemoryMode, MemoryStore
 from therapist.protocol import ProtocolPack
@@ -149,8 +149,12 @@ def replay_history(
         transcript = []
         for position, text in enumerate(generated.turns):
             last = start + position * TURN_SPACING
-            reply = chat.respond(text, last)
-            transcript.append({"user": text, "assistant": reply.text})
+            try:
+                answer = chat.respond(text, last).text
+            except Exception as error:  # a failed product turn is a result, not a harness crash
+                answer = failed_reply(error)
+                result.errors.append(f"session {index} turn {position}: {answer}")
+            transcript.append({"user": text, "assistant": answer})
         result.transcripts.append(transcript)
         for event in plan.events:
             if event.type is EventType.FORGET and event.fact:
@@ -182,7 +186,10 @@ def run_probe(
             shutil.copytree(source, copy)
             store = MemoryStore(copy, embedding_model="eval:injected", embedder=embedder)
         chat = ChatSession(model, pack, store, persona.profile.language, memory_mode=ARMS[arm])
-        return chat.respond(probe.question, when).text
+        try:
+            return chat.respond(probe.question, when).text
+        except Exception as error:  # judged like any other answer, so it fails `correct`
+            return failed_reply(error)
 
 
 def judge_probe(
