@@ -10,7 +10,8 @@ import re
 import sqlite3
 import threading
 import unicodedata
-from collections.abc import Iterable, Iterator
+from collections import OrderedDict
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager, nullcontext, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -92,6 +93,12 @@ MIN_FORGET_QUOTE_WORDS = 3
 # catches an assistant reply echoing the story in slightly different order or inflection.
 ROUND_CARRY_COVERAGE = 0.75
 CONSOLIDATION_CLAIM_LIMIT = 50
+# Decrypted round text is cached only for recently used rounds; scans that touch the whole
+# archive (forgetting, quote lookup) decrypt as they go and keep nothing.
+ROUND_TEXT_CACHE_SIZE = 1_024
+# Rounds whose text is read for lexical scoring in one retrieval: the best semantic matches plus
+# the most recent ones. Everything else is ranked by its vector alone.
+ROUND_LEXICAL_CANDIDATES = 200
 
 
 def _now() -> datetime:
@@ -398,6 +405,9 @@ class SessionRecord(StrictModel):
     # Set when the user said in this session that they are under 18; the post-turn extractor then
     # records no user report for the rest of the session.
     user_reports_withheld: bool = False
+    # Set when content in this still-open session was forgotten; it then closes without a
+    # reflection, exactly as a closed session holding forgotten content loses its own.
+    reflection_withheld: bool = False
 
 
 SESSION_REFLECTION_LIST_FIELDS = (
@@ -621,6 +631,77 @@ class MemoryError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class _RoundRef:
+    """Plaintext metadata of a round, read without decrypting anything."""
+
+    id: int
+    session_id: str
+    created_at: str
+    reply_id: int | None
+
+
+class _VectorTable:
+    """Unit vectors of one entity type, kept as one float32 matrix and updated in place.
+
+    Rows are added and removed as entities change; scoring is one matrix-vector product over
+    the occupied rows. Memory is one row per indexed entity and nothing else.
+    """
+
+    def __init__(self) -> None:
+        self.ids: list[str] = []
+        self.rows: dict[str, int] = {}
+        self.hashes: dict[str, str] = {}
+        self.matrix = np.zeros((0, 0), dtype=np.float32)
+
+    def reserve(self, rows: int, dimensions: int) -> None:
+        """Grow once to hold ``rows`` vectors, instead of doubling while loading them."""
+        if self.matrix.shape[1] != dimensions:
+            # Empty, or about to be reset by put() for a new dimension.
+            self.__init__()
+            self.matrix = np.zeros((max(rows, 16), dimensions), dtype=np.float32)
+        elif rows > self.matrix.shape[0]:
+            grown = np.zeros((rows, dimensions), dtype=np.float32)
+            grown[: len(self.ids)] = self.matrix[: len(self.ids)]
+            self.matrix = grown
+
+    def put(self, entity_id: str, content_hash: str, unit: np.ndarray) -> None:
+        if self.matrix.shape[1] != unit.size:
+            # A different model or dimension invalidates every row at once.
+            self.__init__()
+            self.matrix = np.zeros((16, unit.size), dtype=np.float32)
+        row = self.rows.get(entity_id)
+        if row is None:
+            row = len(self.ids)
+            if row == self.matrix.shape[0]:
+                grown = np.zeros((max(16, row * 2), unit.size), dtype=np.float32)
+                grown[:row] = self.matrix[:row]
+                self.matrix = grown
+            self.ids.append(entity_id)
+            self.rows[entity_id] = row
+        self.matrix[row] = unit
+        self.hashes[entity_id] = content_hash
+
+    def remove(self, entity_id: str) -> None:
+        row = self.rows.pop(entity_id, None)
+        self.hashes.pop(entity_id, None)
+        if row is None:
+            return
+        last = len(self.ids) - 1
+        if row != last:
+            moved = self.ids[last]
+            self.ids[row] = moved
+            self.rows[moved] = row
+            self.matrix[row] = self.matrix[last]
+        self.ids.pop()
+
+    def scores(self, query_vector: np.ndarray) -> dict[str, float]:
+        if not self.ids or self.matrix.shape[1] != query_vector.size:
+            return {}
+        values = self.matrix[: len(self.ids)] @ query_vector
+        return dict(zip(self.ids, values.tolist(), strict=True))
+
+
+@dataclass(frozen=True)
 class _Round:
     """A user message and the assistant reply saved with it, keyed by the user message ID."""
 
@@ -667,8 +748,8 @@ class MemoryStore:
         # decrypted text of archived rounds, which never change once written. Both are rebuilt
         # from SQLite on demand and pruned when their source rows disappear.
         self._cache_lock = threading.Lock()
-        self._vector_cache: dict[tuple[str, str], tuple[str, np.ndarray]] = {}
-        self._round_cache: dict[int, _Round] = {}
+        self._vector_tables: dict[str, _VectorTable] = {}
+        self._round_cache: OrderedDict[int, _Round] = OrderedDict()
         if ephemeral:
             self.directory = Path(":memory:")
             self.database_path = Path(":memory:")
@@ -715,6 +796,9 @@ class MemoryStore:
                     database.execute(statement)
             if not tables:
                 self._write_state("schema_version", SCHEMA_VERSION)
+            # Earlier filo-1 development stores indexed user messages as "message"; rounds
+            # replaced them, and nothing else would ever delete those vectors.
+            database.execute("DELETE FROM semantic_index WHERE entity_type = 'message'")
 
     def load_app_state(self) -> AppState:
         payload = self._read_state("app")
@@ -1142,7 +1226,12 @@ class MemoryStore:
             _require_grounded_paraphrase(content, quote, "a user report")
             _require_quoted_aliases(report.aliases, evidence_text)
             if report.valid_from is not None:
-                _require_quoted_time(report.valid_from, evidence_text)
+                observed = self._message_time(evidence_message_id)
+                _require_quoted_time(
+                    report.valid_from,
+                    evidence_text,
+                    datetime.fromisoformat(observed) if observed else now or _now(),
+                )
             duplicate = next(
                 (
                     item
@@ -1395,7 +1484,14 @@ class MemoryStore:
                 self._invalidate_derived_text(wording, replacement)
             # A later round that repeats the superseded wording would bring it straight back as an
             # excerpt, although it is not the claim's evidence.
-            self._suppress_rounds(self._rounds_carrying([old, *superseded_quotes]))
+            self._forget_rounds(
+                self._rounds_carrying([old, *superseded_quotes])
+                | {
+                    reference.message_id
+                    for reference in item.evidence
+                    if reference.relation is EvidenceRelation.SUPPORTS
+                }
+            )
             self._clear_pending_hypothesis(item.id)
             return item
 
@@ -1495,10 +1591,16 @@ class MemoryStore:
 
     def has_user_quote(self, quote: str, *, before_id: int | None = None) -> bool:
         """Whether an archived user message contains this exact wording."""
+        sql = "SELECT payload FROM messages WHERE role = 'user'"
+        parameters: tuple[int, ...] = ()
+        if before_id is not None:
+            sql += " AND id < ?"
+            parameters = (before_id,)
+        with self._connect() as database:
+            rows = database.execute(sql, parameters).fetchall()
         return any(
-            _supported_quote(quote, item.user)
-            for item in self._rounds()
-            if before_id is None or item.id < before_id
+            _supported_quote(quote, self._decrypt_json(payload).get("content", ""))
+            for (payload,) in rows
         )
 
     def forget_content(
@@ -1556,13 +1658,28 @@ class MemoryStore:
         return {"rounds": len(rounds), "claims": [item.id for item in forgotten]}
 
     def _forget_rounds(self, round_ids: set[int]) -> None:
+        """Suppress rounds and every reflection that may paraphrase them."""
         self._suppress_rounds(round_ids)
-        session_ids = {item.session_id for item in self._rounds() if item.id in round_ids}
+        session_ids = {item.session_id for item in self._round_refs() if item.id in round_ids}
         for session in self.list_sessions():
-            if session.id in session_ids and session.ended_at:
+            if session.id not in session_ids:
+                continue
+            if session.ended_at:
                 _clear_session_reflection(session)
-                self.save_session(session)
                 self._delete_semantic_entities("session", [session.id])
+            else:
+                session.reflection_withheld = True
+            self.save_session(session)
+
+    def reflection_withheld(self, session_id: str) -> bool:
+        with self._connect() as database:
+            row = database.execute(
+                "SELECT payload FROM sessions WHERE id = ?", (session_id,)
+            ).fetchone()
+        return row is not None and self._decrypt_model(row[0], SessionRecord).reflection_withheld
+
+    def round_suppressed(self, round_id: int) -> bool:
+        return round_id in self._suppressed_round_ids()
 
     def list_claims(self, include_inactive: bool = False) -> list[MemoryItem]:
         sql = "SELECT payload FROM memory_items"
@@ -2096,23 +2213,38 @@ class MemoryStore:
         allow_index_write: bool,
     ) -> list[ContextExcerpt]:
         excluded = self._excluded_round_ids()
-        rounds = [item for item in self._rounds() if item.id not in excluded]
-        # Newest first, so the embedding budget below goes to the rounds most likely to matter.
-        rounds.reverse()
-        indexed = self._indexed_entity_ids("round")
-        budget = MAX_ROUND_EMBEDDINGS_PER_RETRIEVAL
-        texts: dict[str, str] = {}
-        for item in rounds:
-            key = str(item.id)
-            if key in indexed or budget > 0:
-                texts[key] = item.text
-                budget -= key not in indexed
-        scores = self._semantic_text_scores(
-            query_vector, "round", texts, allow_index_write=allow_index_write
+        refs = {item.id: item for item in self._round_refs() if item.id not in excluded}
+        # A round never changes once written, so its ID and timestamp identify its content
+        # without decrypting it; both are plaintext columns already, so the key reveals nothing
+        # an HMAC would hide. Newest first: the embedding budget goes to recent rounds.
+        expected = {
+            str(item.id): f"round:{item.id}:{item.created_at}"
+            for item in sorted(refs.values(), key=lambda ref: ref.id, reverse=True)
+        }
+        scores = self._semantic_scores(
+            query_vector,
+            "round",
+            expected,
+            lambda ids: {
+                str(item.id): item.text
+                for item in self._decrypt_rounds([refs[int(entity_id)] for entity_id in ids])
+            },
+            allow_index_write=allow_index_write,
+            embed_limit=MAX_ROUND_EMBEDDINGS_PER_RETRIEVAL,
         )
+        # Only a bounded candidate set is decrypted for lexical scoring: the best semantic
+        # matches, the most recent rounds (which also covers rounds not yet embedded), and the
+        # rounds that matching claims point to.
+        best = sorted(scores, key=scores.__getitem__, reverse=True)[:ROUND_LEXICAL_CANDIDATES]
+        candidate_ids = {
+            *(int(item) for item in best),
+            *sorted(refs, reverse=True)[:ROUND_LEXICAL_CANDIDATES],
+            *(item for item in claim_round_scores if item in refs),
+        }
+        rounds = self._cached_rounds([refs[item] for item in sorted(candidate_ids)])
         query_tokens = _tokens(query)
         candidates: list[tuple[float, int, _Round, float | None, int]] = []
-        for item in rounds:
+        for item in rounds.values():
             semantic = scores.get(str(item.id))
             overlap = len(query_tokens & item.tokens)
             pointer = claim_round_scores.get(item.id)
@@ -2141,15 +2273,16 @@ class MemoryStore:
         write forgotten or superseded content back into its summary.
         """
         excluded = self._excluded_round_ids()
-        return [
-            (item.created_at, item.user, item.assistant)
-            for item in self._rounds()
+        refs = [
+            item
+            for item in self._round_refs()
             if item.session_id == session_id and item.id not in excluded
         ]
+        return [(item.created_at, item.user, item.assistant) for item in self._decrypt_rounds(refs)]
 
     def consolidation_claims(self, session_id: str) -> list[MemoryItem]:
         """Active claims for consolidation: this session's own first, then the most recent."""
-        session_rounds = {item.id for item in self._rounds() if item.session_id == session_id}
+        session_rounds = {item.id for item in self._round_refs() if item.session_id == session_id}
         claims = self.list_claims()
         own = [
             item
@@ -2354,9 +2487,7 @@ class MemoryStore:
                 database.execute(f"DELETE FROM {table}")
             self._write_state("schema_version", SCHEMA_VERSION)
             self._write_state("telegram_output_epoch", str(epoch).encode())
-        with self._cache_lock:
-            self._vector_cache.clear()
-            self._round_cache.clear()
+        self._clear_caches()
 
     def _save_claim(self, item: MemoryItem) -> None:
         with self._connect() as database:
@@ -2423,62 +2554,89 @@ class MemoryStore:
             raise KeyError(f"Unknown intervention: {record_id}")
         return self._decrypt_model(row[0], InterventionRecord)
 
-    def _rounds(self) -> list[_Round]:
-        """Every archived round in ID order, decrypting only rounds not already cached."""
+    def _round_refs(self) -> list[_RoundRef]:
+        """Every archived round in ID order, from plaintext columns only."""
         with self._connect() as database:
             rows = database.execute(
-                "SELECT id, session_id, role FROM messages ORDER BY id"
+                "SELECT id, session_id, role, created_at FROM messages ORDER BY id"
             ).fetchall()
-        pairs: dict[int, int | None] = {}
-        for index, (message_id, session_id, role) in enumerate(rows):
+        refs = []
+        for index, (message_id, session_id, role, created_at) in enumerate(rows):
             if role != "user":
                 continue
             following = rows[index + 1] if index + 1 < len(rows) else None
-            pairs[message_id] = (
+            reply_id = (
                 following[0]
                 if following and following[2] == "assistant" and following[1] == session_id
                 else None
             )
-        with self._cache_lock:
-            for stale in set(self._round_cache) - set(pairs):
-                del self._round_cache[stale]
-            missing = [item for item in pairs if item not in self._round_cache]
-        for start in range(0, len(missing), 500):
-            batch = missing[start : start + 500]
-            wanted = [*batch, *(pairs[item] for item in batch if pairs[item] is not None)]
+            refs.append(_RoundRef(message_id, session_id, created_at, reply_id))
+        return refs
+
+    def _decrypt_rounds(self, refs: list[_RoundRef]) -> Iterator[_Round]:
+        """Decrypt rounds in batches, without caching them."""
+        for start in range(0, len(refs), 500):
+            batch = refs[start : start + 500]
+            wanted = [
+                message_id
+                for ref in batch
+                for message_id in (ref.id, ref.reply_id)
+                if message_id is not None
+            ]
             with self._connect() as database:
-                found = {
-                    row[0]: row
-                    for row in database.execute(
-                        "SELECT id, session_id, created_at, payload FROM messages WHERE id IN "
+                payloads = dict(
+                    database.execute(
+                        "SELECT id, payload FROM messages WHERE id IN "
                         f"({','.join('?' for _ in wanted)})",
                         wanted,
                     ).fetchall()
-                }
-            loaded = {}
-            for user_id in batch:
-                if user_id not in found:
+                )
+            for ref in batch:
+                if ref.id not in payloads:
                     continue
-                _id, session_id, created_at, payload = found[user_id]
-                user = self._decrypt_json(payload).get("content", "")
-                reply_id = pairs[user_id]
+                user = self._decrypt_json(payloads[ref.id]).get("content", "")
                 assistant = (
-                    self._decrypt_json(found[reply_id][3]).get("content", "")
-                    if reply_id is not None and reply_id in found
+                    self._decrypt_json(payloads[ref.reply_id]).get("content", "")
+                    if ref.reply_id is not None and ref.reply_id in payloads
                     else ""
                 )
-                loaded[user_id] = _Round(
-                    id=user_id,
-                    session_id=session_id,
-                    created_at=created_at,
+                yield _Round(
+                    id=ref.id,
+                    session_id=ref.session_id,
+                    created_at=ref.created_at,
                     user=user,
                     assistant=assistant,
                     tokens=frozenset(_tokens(f"{user}\n{assistant}")),
                 )
-            with self._cache_lock:
-                self._round_cache.update(loaded)
+
+    def _cached_rounds(self, refs: list[_RoundRef]) -> dict[int, _Round]:
+        """Decrypt a bounded set of rounds through a small LRU of recently used ones.
+
+        A cached round is reused only if its timestamp still matches: an ID can come back with
+        other content after a rolled-back transaction.
+        """
+        found: dict[int, _Round] = {}
+        missing: list[_RoundRef] = []
         with self._cache_lock:
-            return [self._round_cache[item] for item in pairs if item in self._round_cache]
+            for ref in refs:
+                cached = self._round_cache.get(ref.id)
+                if cached is not None and cached.created_at == ref.created_at:
+                    self._round_cache.move_to_end(ref.id)
+                    found[ref.id] = cached
+                else:
+                    missing.append(ref)
+        loaded = {item.id: item for item in self._decrypt_rounds(missing)}
+        found.update(loaded)
+        with self._cache_lock:
+            self._round_cache.update(loaded)
+            while len(self._round_cache) > ROUND_TEXT_CACHE_SIZE:
+                self._round_cache.popitem(last=False)
+        return found
+
+    def _clear_caches(self) -> None:
+        with self._cache_lock:
+            self._vector_tables.clear()
+            self._round_cache.clear()
 
     def _message_time(self, message_id: int) -> str | None:
         with self._connect() as database:
@@ -2506,6 +2664,12 @@ class MemoryStore:
         suppressed = self._suppressed_round_ids() | round_ids
         self._write_state("suppressed_rounds", json.dumps(sorted(suppressed)).encode())
         self._delete_semantic_entities("round", [str(item) for item in round_ids])
+        # A pending split-mode extraction would otherwise record the forgotten wording later.
+        with self._connect() as database:
+            database.executemany(
+                "DELETE FROM pending_extractions WHERE message_id = ?",
+                ((item,) for item in round_ids),
+            )
 
     def _rounds_carrying(self, wordings: Iterable[str]) -> set[int]:
         """Rounds whose user message or assistant reply repeats any of these wordings.
@@ -2520,20 +2684,12 @@ class MemoryStore:
         ]
         return {
             item.id
-            for item in self._rounds()
+            for item in self._decrypt_rounds(self._round_refs())
             if any(
                 _carries(wording, item.user) or _carries(wording, item.assistant)
                 for wording in wordings
             )
         }
-
-    def _indexed_entity_ids(self, entity_type: str) -> set[str]:
-        with self._connect() as database:
-            rows = database.execute(
-                "SELECT entity_id FROM semantic_index WHERE model = ? AND entity_type = ?",
-                (self._embedding_model, entity_type),
-            ).fetchall()
-        return {row[0] for row in rows}
 
     def _query_vector(self, query: str) -> np.ndarray | None:
         if not self._embedder or not self._embedding_model or not query.strip():
@@ -2553,81 +2709,127 @@ class MemoryStore:
         *,
         allow_index_write: bool,
     ) -> dict[str, float]:
+        return self._semantic_scores(
+            query_vector,
+            entity_type,
+            {entity_id: self._content_hash(text) for entity_id, text in texts.items()},
+            lambda ids: {entity_id: texts[entity_id] for entity_id in ids},
+            allow_index_write=allow_index_write,
+        )
+
+    def _semantic_scores(
+        self,
+        query_vector: np.ndarray | None,
+        entity_type: str,
+        expected: dict[str, str],
+        texts_for: Callable[[list[str]], dict[str, str]],
+        *,
+        allow_index_write: bool,
+        embed_limit: int | None = None,
+    ) -> dict[str, float]:
+        """Score every expected entity, loading or embedding only what the table lacks.
+
+        ``expected`` maps entity IDs to content hashes, in the order to embed missing ones.
+        Rows the table holds for anything not expected, or under another hash, are dropped, so
+        deletion, suppression and correction reach the in-process table without a callback.
+        """
         embedder = self._embedder
-        if query_vector is None or embedder is None or not texts:
+        if query_vector is None or embedder is None:
             return {}
         try:
-            expected = {entity_id: self._content_hash(text) for entity_id, text in texts.items()}
-            vectors: dict[str, np.ndarray] = {}
             with self._cache_lock:
-                for entity_id, content_hash in expected.items():
-                    cached = self._vector_cache.get((entity_type, entity_id))
-                    if cached is not None and cached[0] == content_hash:
-                        vectors[entity_id] = cached[1]
-            missing = [entity_id for entity_id in expected if entity_id not in vectors]
+                table = self._vector_tables.setdefault(entity_type, _VectorTable())
+                for entity_id in [
+                    item for item in table.ids if expected.get(item) != table.hashes[item]
+                ]:
+                    table.remove(entity_id)
+                missing = [item for item in expected if item not in table.rows]
+            found: set[str] = set()
             loaded: dict[str, np.ndarray] = {}
-            if missing:
-                wanted = set(missing)
+            capacity = len(table.ids) + len(missing)
+            for start in range(0, len(missing), 500):
+                batch = missing[start : start + 500]
                 with self._connect() as database:
                     rows = database.execute(
                         "SELECT entity_id, content_hash, dimensions, payload FROM semantic_index "
-                        "WHERE model = ? AND entity_type = ?",
-                        (self._embedding_model, entity_type),
+                        "WHERE model = ? AND entity_type = ? AND entity_id IN "
+                        f"({','.join('?' for _ in batch)})",
+                        (self._embedding_model, entity_type, *batch),
                     ).fetchall()
+                batch_loaded: dict[str, np.ndarray] = {}
                 for entity_id, content_hash, dimensions, payload in rows:
-                    if entity_id not in wanted or expected[entity_id] != content_hash:
+                    if expected[entity_id] != content_hash:
                         continue
                     raw = self._decrypt(payload)
                     # Packed little-endian float32; any other layout is rebuilt below.
                     if len(raw) == dimensions * 4:
                         unit = _unit(np.frombuffer(raw, dtype="<f4"))
                         if unit is not None:
-                            loaded[entity_id] = unit
-                embed = [entity_id for entity_id in missing if entity_id not in loaded]
-                if embed:
-                    result = embedder.embed_documents_sync([texts[item] for item in embed])
-                    rows_to_write = []
-                    for entity_id, vector in zip(embed, result.embeddings, strict=True):
-                        packed = np.asarray(vector, dtype="<f4")
-                        unit = _unit(packed)
-                        if unit is None:
-                            continue
-                        loaded[entity_id] = unit
-                        rows_to_write.append(
-                            (
-                                entity_type,
-                                entity_id,
-                                self._embedding_model,
-                                expected[entity_id],
-                                packed.size,
-                                self._cipher.encrypt(packed.tobytes()),
-                            )
+                            batch_loaded[entity_id] = unit
+                # Straight into the matrix, so a cold start never holds the vectors twice.
+                self._put_vectors(table, expected, batch_loaded, capacity)
+                found.update(batch_loaded)
+            embed = [item for item in missing if item not in found][:embed_limit]
+            if embed:
+                texts = texts_for(embed)
+                embed = [item for item in embed if item in texts]
+                result = embedder.embed_documents_sync([texts[item] for item in embed])
+                rows_to_write = []
+                for entity_id, vector in zip(embed, result.embeddings, strict=True):
+                    packed = np.asarray(vector, dtype="<f4")
+                    unit = _unit(packed)
+                    if unit is None:
+                        continue
+                    loaded[entity_id] = unit
+                    rows_to_write.append(
+                        (
+                            entity_type,
+                            entity_id,
+                            self._embedding_model,
+                            expected[entity_id],
+                            packed.size,
+                            self._cipher.encrypt(packed.tobytes()),
                         )
-                    if allow_index_write and rows_to_write:
-                        with self._connect() as database:
-                            database.executemany(
-                                "INSERT INTO semantic_index(entity_type, entity_id, model, "
-                                "content_hash, dimensions, payload) VALUES (?, ?, ?, ?, ?, ?) "
-                                "ON CONFLICT(entity_type, entity_id) DO UPDATE SET "
-                                "model = excluded.model, content_hash = excluded.content_hash, "
-                                "dimensions = excluded.dimensions, payload = excluded.payload",
-                                rows_to_write,
-                            )
-                with self._cache_lock:
-                    for entity_id, unit in loaded.items():
-                        self._vector_cache[(entity_type, entity_id)] = (expected[entity_id], unit)
-                vectors.update(loaded)
-            ids = [item for item, vector in vectors.items() if vector.size == query_vector.size]
-            if not ids:
-                return {}
-            scores = np.stack([vectors[item] for item in ids]) @ query_vector
-            return dict(zip(ids, scores.tolist(), strict=True))
+                    )
+                if allow_index_write and rows_to_write:
+                    with self._connect() as database:
+                        database.executemany(
+                            "INSERT INTO semantic_index(entity_type, entity_id, model, "
+                            "content_hash, dimensions, payload) VALUES (?, ?, ?, ?, ?, ?) "
+                            "ON CONFLICT(entity_type, entity_id) DO UPDATE SET "
+                            "model = excluded.model, content_hash = excluded.content_hash, "
+                            "dimensions = excluded.dimensions, payload = excluded.payload",
+                            rows_to_write,
+                        )
+            self._put_vectors(table, expected, loaded, capacity)
+            with self._cache_lock:
+                return {
+                    entity_id: score
+                    for entity_id, score in table.scores(query_vector).items()
+                    if entity_id in expected
+                }
         except MemoryError:
             raise
         except Exception as error:
             raise MemoryError(
                 "Semantic memory is unavailable. Run `filo setup` and try again."
             ) from error
+
+    def _put_vectors(
+        self,
+        table: _VectorTable,
+        expected: dict[str, str],
+        vectors: dict[str, np.ndarray],
+        capacity: int,
+    ) -> None:
+        if not vectors:
+            return
+        with self._cache_lock:
+            table.reserve(
+                max(capacity, len(table.ids) + len(vectors)), next(iter(vectors.values())).size
+            )
+            for entity_id, unit in vectors.items():
+                table.put(entity_id, expected[entity_id], unit)
 
     def _delete_semantic_entities(self, entity_type: str, entity_ids: list[str]) -> None:
         if not entity_ids:
@@ -2637,9 +2839,6 @@ class MemoryStore:
                 "DELETE FROM semantic_index WHERE entity_type = ? AND entity_id = ?",
                 ((entity_type, entity_id) for entity_id in entity_ids),
             )
-        with self._cache_lock:
-            for entity_id in entity_ids:
-                self._vector_cache.pop((entity_type, entity_id), None)
 
     def _delete_message_ids(self, message_ids: list[int]) -> None:
         if not message_ids:
@@ -2903,6 +3102,11 @@ class MemoryStore:
             try:
                 with self._ephemeral_database:
                     yield
+            except BaseException:
+                # SQLite hands a rolled-back row ID out again, so nothing read inside the
+                # transaction may outlive it.
+                self._clear_caches()
+                raise
             finally:
                 self._transaction = None
             return
@@ -2923,6 +3127,7 @@ class MemoryStore:
             except BaseException:
                 if database.in_transaction:
                     database.execute("ROLLBACK")
+                self._clear_caches()
                 raise
             database.execute("COMMIT")
         finally:
@@ -3347,8 +3552,169 @@ def _carries(wording: str, text: str) -> bool:
     return len(wanted & _tokens(text)) / len(wanted) >= ROUND_CARRY_COVERAGE
 
 
-def _require_quoted_time(expression: TimeExpression, evidence: str) -> None:
+_MONTHS = {
+    name: number
+    for number, names in enumerate(
+        (
+            ("january", "gennaio"),
+            ("february", "febbraio"),
+            ("march", "marzo"),
+            ("april", "aprile"),
+            ("may", "maggio"),
+            ("june", "giugno"),
+            ("july", "luglio"),
+            ("august", "agosto"),
+            ("september", "settembre"),
+            ("october", "ottobre"),
+            ("november", "novembre"),
+            ("december", "dicembre"),
+        ),
+        start=1,
+    )
+    for name in names
+}
+_SEASONS = {
+    "spring": "spring",
+    "primavera": "spring",
+    "summer": "summer",
+    "estate": "summer",
+    "autumn": "autumn",
+    "fall": "autumn",
+    "autunno": "autumn",
+    "winter": "winter",
+    "inverno": "winter",
+}
+_SEASON_START_MONTH = {"spring": 3, "summer": 6, "autumn": 9, "winter": 12}
+_MONTH_NAME = "|".join(_MONTHS)
+_DAY_ANCHOR = re.compile(
+    r"\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b"
+    rf"|\b\d{{1,2}}\s+(?:di\s+)?(?:{_MONTH_NAME})\b|\b(?:{_MONTH_NAME})\s+\d{{1,2}}\b"
+    r"|\b(?:yesterday|today|tonight|ieri|oggi|stamattina|stasera|stanotte)\b"
+    r"|\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|luned[iì]|marted[iì]"
+    r"|mercoled[iì]|gioved[iì]|venerd[iì]|sabato|domenica)\b"
+    r"|\b\d+\s+(?:days?|giorni)\s+(?:ago|fa)\b"
+)
+_MONTH_ANCHOR = re.compile(
+    rf"\b(?:{_MONTH_NAME})\b|\b\d{{4}}-\d{{2}}\b"
+    r"|\b(?:last|this)\s+month\b|\bmese\s+scorso\b|\bquesto\s+mese\b"
+    r"|\b\d+\s+(?:months?|mesi)\s+(?:ago|fa)\b"
+)
+_SEASON_ANCHOR = re.compile(rf"\b(?:{'|'.join(_SEASONS)})\b")
+_YEAR_ANCHOR = re.compile(
+    r"\b\d{4}\b|\b(?:last|this)\s+year\b|\banno\s+scorso\b|\bquest'anno\b"
+    r"|\b\d+\s+(?:years?|anni)\s+(?:ago|fa)\b"
+)
+_PRECISION_RANK = {
+    TimePrecision.YEAR: 0,
+    TimePrecision.SEASON: 1,
+    TimePrecision.MONTH: 2,
+    TimePrecision.DAY: 3,
+}
+
+
+def _supported_precision(quote: str) -> TimePrecision | None:
+    """The finest precision a time expression itself carries, or None if it dates nothing.
+
+    "Lately" or "for a while" carry no date at all, "last spring" a season, "in March" a month.
+    A recorded precision may be coarser than this, never finer.
+    """
+    folded = _fold_apostrophes(quote)
+    for precision, anchor in (
+        (TimePrecision.DAY, _DAY_ANCHOR),
+        (TimePrecision.MONTH, _MONTH_ANCHOR),
+        (TimePrecision.SEASON, _SEASON_ANCHOR),
+        (TimePrecision.YEAR, _YEAR_ANCHOR),
+    ):
+        if anchor.search(folded):
+            return precision
+    return None
+
+
+def _period_start(expression: TimeExpression) -> datetime:
+    value = expression.value or ""
+    year = int(value[:4])
+    if expression.precision is TimePrecision.DAY:
+        return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=UTC)
+    if expression.precision is TimePrecision.MONTH:
+        return datetime(year, int(value[5:7]), 1, tzinfo=UTC)
+    if expression.precision is TimePrecision.SEASON:
+        return datetime(year, _SEASON_START_MONTH[value[5:]], 1, tzinfo=UTC)
+    return datetime(year, 1, 1, tzinfo=UTC)
+
+
+def time_expression_problem(
+    expression: TimeExpression, evidence: str, message_time: datetime
+) -> str | None:
+    """Explain why a time expression cannot be recorded, or return None if it can.
+
+    Shared by the conversation tool and the extractor, where the model can retry, and the
+    store, where it is the backstop. The value may only resolve what the quote says, against
+    the date of the message that said it.
+    """
     if not _supported_quote(expression.quote, evidence):
-        raise ValueError("A time expression must be an exact quote from the current message.")
+        return "valid_from.quote must be an exact span of the current user message."
     if not quote_keeps_clause_polarity(expression.quote, evidence):
-        raise ValueError("A time expression may not quote across the negation that qualified it.")
+        return "valid_from.quote may not be taken out of the negation that qualified it."
+    supported = _supported_precision(expression.quote)
+    if supported is None:
+        return (
+            "valid_from.quote names no date, month, season or year; leave valid_from unset "
+            "for a vague phrase such as 'lately'."
+        )
+    if _PRECISION_RANK[expression.precision] > _PRECISION_RANK[supported]:
+        return (
+            f"valid_from.precision {expression.precision.value} is finer than the quote "
+            f"supports ({supported.value}); use {supported.value} or coarser."
+        )
+    if expression.value is None:
+        return None
+    folded = _fold_apostrophes(expression.quote)
+    message_date = message_time.astimezone(UTC) if message_time.tzinfo else message_time
+    message_date = message_date.replace(tzinfo=UTC)
+    if _period_start(expression) > message_date:
+        return "valid_from.value lies after the message that dated it."
+    months = {number for name, number in _MONTHS.items() if re.search(rf"\b{name}\b", folded)}
+    if (
+        months
+        and expression.precision in {TimePrecision.MONTH, TimePrecision.DAY}
+        and int(expression.value[5:7]) not in months
+    ):
+        return "valid_from.value must keep the month the user named."
+    seasons = {season for name, season in _SEASONS.items() if re.search(rf"\b{name}\b", folded)}
+    if (
+        seasons
+        and expression.precision is TimePrecision.SEASON
+        and expression.value[5:] not in seasons
+    ):
+        return "valid_from.value must keep the season the user named."
+    if re.search(r"\b\d{4}\b", folded):
+        return None
+    year = int(expression.value[:4])
+    ago = re.search(r"\b(\d+)\s+(?:years?|anni)\s+(?:ago|fa)\b", folded)
+    if ago:
+        expected = {message_date.year - int(ago.group(1))}
+    elif re.search(r"\blast\s+year\b|\banno\s+scorso\b", folded):
+        expected = {message_date.year - 1}
+    elif re.search(r"\bthis\s+year\b|\bquest'anno\b", folded):
+        expected = {message_date.year}
+    else:
+        # A relative expression without a year ("last spring", "in March") resolves against the
+        # message date: this year or the one before, never an arbitrary one.
+        expected = {message_date.year, message_date.year - 1}
+    if year not in expected:
+        return "valid_from.value must resolve the quote against the message date."
+    relative_days = {"yesterday": 1, "ieri": 1, "today": 0, "oggi": 0, "tonight": 0}
+    for word, offset in relative_days.items():
+        if (
+            re.search(rf"\b{word}\b", folded)
+            and expression.precision is TimePrecision.DAY
+            and expression.value != (message_date - timedelta(days=offset)).date().isoformat()
+        ):
+            return "valid_from.value must resolve the quote against the message date."
+    return None
+
+
+def _require_quoted_time(expression: TimeExpression, evidence: str, message_time: datetime) -> None:
+    problem = time_expression_problem(expression, evidence, message_time)
+    if problem:
+        raise ValueError(problem)

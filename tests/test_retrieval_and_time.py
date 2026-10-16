@@ -19,6 +19,7 @@ from filo.chat import (
 )
 from filo.memory import (
     MAX_ROUND_EMBEDDINGS_PER_RETRIEVAL,
+    ROUND_TEXT_CACHE_SIZE,
     ClaimCorrection,
     MemoryKind,
     MemoryMode,
@@ -27,6 +28,7 @@ from filo.memory import (
     TimeExpression,
     TimePrecision,
     UserReport,
+    time_expression_problem,
 )
 from filo.protocol import ProtocolPack
 
@@ -135,12 +137,14 @@ def test_rounds_beyond_the_last_thousand_user_messages_are_retrievable(tmp_path)
         )
         for index in range(1_050):
             store.save_turn(session, f"filler {index}", "ok", [], start + timedelta(minutes=index))
-    context = store.retrieve_case_context("greenhouse tomatoes at night")
+    # Indexing a large unindexed archive is spread across retrievals instead of one turn, and
+    # the oldest round is found once indexing reaches it.
+    for _ in range(1_051 // MAX_ROUND_EMBEDDINGS_PER_RETRIEVAL + 1):
+        before = embedder.documents
+        context = store.retrieve_case_context("greenhouse tomatoes at night")
+        assert embedder.documents - before <= MAX_ROUND_EMBEDDINGS_PER_RETRIEVAL
     assert context.relevant_excerpts[0].quote == "The greenhouse tomatoes finally ripened at night"
     assert context.relevant_excerpts[0].assistant_reply == "What did that mean to you?"
-    # Indexing a large unindexed archive is spread across retrievals instead of one turn.
-    assert embedder.documents <= MAX_ROUND_EMBEDDINGS_PER_RETRIEVAL
-    assert len(embedder.queries) == 1
 
 
 def test_assistant_reply_is_part_of_the_indexed_round(tmp_path) -> None:
@@ -393,7 +397,7 @@ def test_claims_carry_observation_time_and_only_a_quoted_valid_from(tmp_path) ->
     context = store.retrieve_case_context("I wake at four")
     assert context.user_reports[0].valid_from == claim.valid_from
     assert context.user_reports[0].observed_at == when.isoformat()
-    with pytest.raises(ValueError, match="exact quote"):
+    with pytest.raises(ValueError, match="exact span"):
         store.add_user_reports(
             [
                 UserReport(
@@ -539,3 +543,171 @@ def test_transcript_chunks_keep_whole_rounds_and_a_bounded_count() -> None:
     assert sum(chunk.count("user:") for chunk in chunks) == 100
     small = _transcript_chunks([("2026-01-01T00:00:00+00:00", "hi", "hello")])
     assert len(small) == 1 and len(small[0]) < CONSOLIDATION_CHUNK_CHARS
+
+
+def test_forgetting_in_the_open_session_withholds_its_reflection(tmp_path) -> None:
+    store = _store(tmp_path)
+    session = store.start_session()
+    store.save_turn(session, f"Last summer {STORY}", "That sounds frightening.", [])
+    # Paraphrases the story without three quarters of its words, so no wording matches it.
+    store.save_turn(session, "The family holiday went badly", "What happened?", [])
+    calls: list[int] = []
+
+    async def stream(messages: list[Any], info: Any):
+        if info.output_tools:
+            calls.append(1)
+            yield _tool("final_result", {"summary": "A family holiday went badly."})
+        elif _has_return(messages, "forget_content"):
+            yield "Done."
+        else:
+            yield _tool(
+                "forget_content", {"request_quote": "please forget", "content_quotes": [STORY]}
+            )
+
+    chat = ChatSession(FunctionModel(stream_function=stream), _pack(), store, "en-US")
+    chat.respond("Please forget the boat story.")
+    closed = chat.end()
+    assert closed is not None and closed.summary == "" and calls == []
+    assert store.retrieve_case_context("hi").latest_session.summary == ""  # type: ignore[union-attr]
+
+
+def test_correction_clears_the_reflection_of_sessions_holding_the_old_wording(tmp_path) -> None:
+    store = _store(tmp_path)
+    old = "I drink coffee at midnight every day"
+    first_session = store.start_session(datetime.now(UTC) - timedelta(days=2))
+    first = store.save_turn(first_session, old, "Noted.", [])
+    claim = store.add_user_reports(
+        [UserReport(kind=MemoryKind.FACT, content=old, evidence_quote=old)], first, old
+    )[0]
+    store.close_session(first_session, summary="Late caffeine is a habit.", themes=["caffeine"])
+    correction = "No, I only drink tea"
+    second = store.save_turn(store.start_session(), correction, "Thanks.", [])
+    store.correct_claim(
+        ClaimCorrection(
+            memory_id=claim.id, correction_quote=correction, replacement_quote="I only drink tea"
+        ),
+        second,
+        correction,
+    )
+    closed = next(item for item in store.list_sessions() if item.id == first_session.id)
+    assert closed.summary == "" and closed.themes == []
+
+
+def test_legacy_message_vectors_are_deleted_on_open(tmp_path) -> None:
+    store = _store(tmp_path)
+    with store._connect() as database:
+        database.execute(
+            "INSERT INTO semantic_index(entity_type, entity_id, model, content_hash, dimensions, "
+            "payload) VALUES ('message', '1', 'test:concept', 'h', 1, ?)",
+            (store._cipher.encrypt(b"x"),),
+        )
+    reopened = _store(tmp_path)
+    with reopened._connect() as database:
+        assert not database.execute(
+            "SELECT 1 FROM semantic_index WHERE entity_type = 'message'"
+        ).fetchall()
+
+
+MESSAGE_TIME = datetime(2026, 10, 16, 12, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("quote", "precision", "value", "problem"),
+    [
+        ("lately", TimePrecision.MONTH, None, "names no date"),
+        ("last spring", TimePrecision.DAY, None, "finer than the quote"),
+        ("last spring", TimePrecision.SEASON, "2019-spring", "message date"),
+        ("last spring", TimePrecision.SEASON, "2026-summer", "season"),
+        ("in March", TimePrecision.MONTH, "2026-04", "month"),
+        ("yesterday", TimePrecision.DAY, "2026-10-10", "message date"),
+        ("in December", TimePrecision.MONTH, "2026-12", "after the message"),
+        ("two years ago", TimePrecision.YEAR, "2023", "names no date"),
+        ("2 years ago", TimePrecision.YEAR, "2023", "message date"),
+    ],
+)
+def test_time_expression_cannot_claim_more_than_its_quote(
+    quote: str, precision: TimePrecision, value: str | None, problem: str
+) -> None:
+    expression = TimeExpression(quote=quote, precision=precision, value=value)
+    found = time_expression_problem(expression, f"It started {quote}.", MESSAGE_TIME)
+    assert found is not None and problem in found
+
+
+@pytest.mark.parametrize(
+    ("quote", "precision", "value"),
+    [
+        ("last spring", TimePrecision.SEASON, "2026-spring"),
+        ("last spring", TimePrecision.YEAR, None),
+        ("in March", TimePrecision.MONTH, "2026-03"),
+        ("a marzo", TimePrecision.MONTH, "2025-03"),
+        ("yesterday", TimePrecision.DAY, "2026-10-15"),
+        ("since 2019", TimePrecision.YEAR, "2019"),
+        ("2 years ago", TimePrecision.YEAR, "2024"),
+        ("l'estate scorsa", TimePrecision.SEASON, "2026-summer"),
+    ],
+)
+def test_time_expression_resolves_only_what_it_says(
+    quote: str, precision: TimePrecision, value: str | None
+) -> None:
+    expression = TimeExpression(quote=quote, precision=precision, value=value)
+    assert time_expression_problem(expression, f"It started {quote}.", MESSAGE_TIME) is None
+
+
+def test_record_user_reports_retries_an_unusable_time_instead_of_losing_the_turn(
+    tmp_path,
+) -> None:
+    text = "Lately I wake at four"
+    attempts: list[dict[str, Any]] = []
+
+    async def stream(messages: list[Any], _info: Any):
+        if _has_return(messages, "record_user_reports"):
+            yield "Noted."
+            return
+        report: dict[str, Any] = {
+            "kind": "pattern",
+            "content": "I wake at four",
+            "evidence_quote": "Lately I wake at four",
+        }
+        if not attempts:
+            report["valid_from"] = {"quote": "Lately", "precision": "month"}
+        attempts.append(report)
+        yield _tool("record_user_reports", {"reports": [report]})
+
+    store = _store(tmp_path)
+    ChatSession(FunctionModel(stream_function=stream), _pack(), store, "en-US").respond(text)
+    assert len(attempts) == 2
+    [claim] = store.list_claims()
+    assert claim.content == "I wake at four" and claim.valid_from is None
+
+
+def test_a_rolled_back_round_is_never_served_from_the_cache(tmp_path) -> None:
+    store = _store(tmp_path)
+    session = store.start_session()
+    with pytest.raises(RuntimeError), store.transaction():
+        store.save_turn(session, "I sleep in the boat at night", "Rolled back.", [])
+        store.retrieve_case_context("boat at night")
+        raise RuntimeError("abort")
+    store.save_turn(session, "I sleep badly at night", "Since when?", [])
+    excerpt = store.retrieve_case_context("sleep at night").relevant_excerpts[0]
+    assert excerpt.quote == "I sleep badly at night"
+
+
+def test_process_memory_stays_bounded_and_vectors_update_in_place(tmp_path) -> None:
+    store = _store(tmp_path)
+    session = store.start_session()
+    with store.transaction():
+        ids = [
+            store.save_turn(session, f"night {index} sleep note", "ok", [])
+            for index in range(ROUND_TEXT_CACHE_SIZE + 200)
+        ]
+    for _ in range(len(ids) // MAX_ROUND_EMBEDDINGS_PER_RETRIEVAL + 1):
+        store.retrieve_case_context("sleep at night")
+    table = store._vector_tables["round"]
+    assert len(table.ids) == len(ids)
+    matrix = table.matrix
+    assert len(store._round_cache) <= ROUND_TEXT_CACHE_SIZE
+    store._suppress_rounds({ids[0]})
+    store.retrieve_case_context("sleep at night")
+    assert str(ids[0]) not in table.rows and len(table.ids) == len(ids) - 1
+    # The suppressed row was swapped out of the same matrix, not rebuilt from scratch.
+    assert table.matrix is matrix

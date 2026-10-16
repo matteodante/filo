@@ -61,6 +61,7 @@ from filo.memory import (
     UserReport,
     is_grounded_paraphrase,
     quote_keeps_clause_polarity,
+    time_expression_problem,
     valid_intervention_transition,
 )
 from filo.protocol import ProtocolPack
@@ -221,6 +222,7 @@ class TurnContext:
     user_text: str
     available_claims: dict[str, ContextClaim]
     active_interventions: dict[str, InterventionRecord]
+    message_time: datetime = field(default_factory=lambda: datetime.now(UTC))
     actions: TurnActions = field(default_factory=TurnActions)
 
 
@@ -445,6 +447,7 @@ class ChatSession:
             user_text=text,
             available_claims=available_claims,
             active_interventions=active_interventions,
+            message_time=now or datetime.now(UTC),
         )
 
         def build_output(ctx: RunContext[TurnContext], reply: str) -> FiloTurnOutput:
@@ -662,9 +665,14 @@ class ChatSession:
         corrected = self.memory.corrected_wording(message_id)
         extracted = ExtractedReports()
         if not session.user_reports_withheld:
-            extracted = self._run_extractor(user_text, previous_reply, corrected)
+            extracted = self._run_extractor(
+                user_text, previous_reply, corrected, datetime.fromisoformat(created_at)
+            )
         with self.memory.transaction():
             if not self.memory.claim_pending_extraction(message_id):
+                return
+            # Forgotten while the extraction ran: record nothing from it.
+            if self.memory.round_suppressed(message_id):
                 return
             if extracted.under_18:
                 self.memory.withhold_user_reports(session.id)
@@ -683,7 +691,11 @@ class ChatSession:
             )
 
     def _run_extractor(
-        self, user_text: str, previous_reply: str | None, corrected: list[str]
+        self,
+        user_text: str,
+        previous_reply: str | None,
+        corrected: list[str],
+        message_time: datetime,
     ) -> ExtractedReports:
         agent = Agent[None, ExtractedReports](
             self.model,
@@ -695,7 +707,7 @@ class ChatSession:
         @agent.output_validator
         def validate(output: ExtractedReports) -> ExtractedReports:
             if not (output.under_18 or output.risk):
-                _validate_user_reports(output.reports, user_text, {})
+                _validate_user_reports(output.reports, user_text, {}, message_time)
             return output
 
         context = {"previous_assistant_reply": previous_reply, "corrected_this_turn": corrected}
@@ -744,7 +756,9 @@ class ChatSession:
             Each report needs an exact quote from the current user message; the argument fields
             say how content may relate to that quote. A rejected call says what to change.
             """
-            _validate_user_reports(reports, ctx.deps.user_text, ctx.deps.available_claims)
+            _validate_user_reports(
+                reports, ctx.deps.user_text, ctx.deps.available_claims, ctx.deps.message_time
+            )
             staged = list(ctx.deps.actions.user_reports)
             staged.extend(report for report in reports if report not in staged)
             if len(staged) > 2:
@@ -1264,7 +1278,9 @@ class ChatSession:
                 return self.memory.close_session(session, end_reason=end_reason, now=now)
         formulation.proposed_focus = None
         chunks = _transcript_chunks(self.memory.consolidation_rounds(session.id))
-        if not chunks:
+        # A session in which something was forgotten gets no reflection, as a closed one would
+        # lose it: a summary can paraphrase the story from rounds that never repeat its words.
+        if not chunks or self.memory.reflection_withheld(session.id):
             with self.memory.transaction():
                 self.memory.save_formulation(formulation, now)
                 return self.memory.close_session(session, end_reason=end_reason, now=now)
@@ -1289,6 +1305,10 @@ class ChatSession:
             retries={"output": 2},
         )
         reflection: SessionReflection | None = None
+        # Each part returns the reflection updated, but its links are merged rather than
+        # replaced, so a part cannot drop what an earlier part linked by omission.
+        links: dict[str, list[str]] = {}
+        unlinks: dict[str, list[str]] = {}
         try:
             for index, chunk in enumerate(chunks):
                 case_data: dict[str, object] = {
@@ -1313,6 +1333,16 @@ class ChatSession:
                     usage_limits=CONSOLIDATION_LIMITS,
                     event_stream_handler=_consume_model_events,
                 ).output
+                for field_name, ids in reflection.formulation_unlinks.items():
+                    unlinks[field_name] = list(dict.fromkeys([*unlinks.get(field_name, []), *ids]))
+                    links[field_name] = [
+                        item for item in links.get(field_name, []) if item not in ids
+                    ]
+                for field_name, ids in reflection.formulation_links.items():
+                    links[field_name] = list(dict.fromkeys([*links.get(field_name, []), *ids]))
+                    unlinks[field_name] = [
+                        item for item in unlinks.get(field_name, []) if item not in ids
+                    ]
         except AgentRunError as error:
             with self.memory.transaction():
                 self.memory.save_formulation(formulation, now)
@@ -1325,10 +1355,10 @@ class ChatSession:
         assert reflection is not None
         with self.memory.transaction():
             self.memory.save_formulation_links(
-                reflection.formulation_links,
+                links,
                 proposed_focus=None,
                 merge_existing=True,
-                remove_links=reflection.formulation_unlinks,
+                remove_links=unlinks,
                 now=now,
             )
             return self.memory.close_session(
@@ -1526,7 +1556,10 @@ def _quote_in_text(quote: str | None, text: str) -> bool:
 
 
 def _validate_user_reports(
-    reports: list[UserReport], user_text: str, available_claims: dict[str, ContextClaim]
+    reports: list[UserReport],
+    user_text: str,
+    available_claims: dict[str, ContextClaim],
+    message_time: datetime,
 ) -> None:
     """Apply the store's report gates where a rejection can still be retried."""
     if len(reports) > 2:
@@ -1545,6 +1578,10 @@ def _validate_user_reports(
             subject="A user report",
         )
         _check_aliases(report.aliases, user_text, "a user report")
+        if report.valid_from is not None and (
+            problem := time_expression_problem(report.valid_from, user_text, message_time)
+        ):
+            raise ModelRetry(problem)
         if report.merge_into_id:
             target = available_claims.get(report.merge_into_id)
             if (
