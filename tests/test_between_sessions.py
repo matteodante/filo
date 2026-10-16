@@ -13,6 +13,10 @@ from test_telegram_delivery import FakeBotApi, _channel, _update
 from filo.chat import CASE_CONTEXT_PREAMBLE, ChatSession
 from filo.cli import _chat_command, main
 from filo.memory import (
+    ClaimCorrection,
+    ClaimFit,
+    ClaimLifecycle,
+    HypothesisReview,
     InterventionState,
     MemoryKind,
     MemoryMode,
@@ -133,7 +137,7 @@ def test_reported_or_new_experiments_are_not_followed_up(tmp_path: Path) -> None
     assert store.retrieve_case_context("hello").follow_up_due == []
 
 
-def test_forgetting_an_experiment_clears_when_it_was_planned(tmp_path: Path) -> None:
+def test_deleting_an_experiments_session_clears_when_it_was_planned(tmp_path: Path) -> None:
     store = MemoryStore(tmp_path)
     _experiment(store)
 
@@ -157,6 +161,7 @@ def _closed_session(store: MemoryStore, when: datetime, text: str, themes: list[
 def _recap_store(tmp_path: Path) -> tuple[MemoryStore, dict[str, str]]:
     store = MemoryStore(tmp_path)
     _closed_session(store, T0 - timedelta(days=40), "Old worries", ["work calls"])
+    old_session = store.list_sessions()[-1].id
     _closed_session(store, T0, "Calls scare me", ["work calls", "sleep"])
     experiment = _experiment(store, when=T0 + timedelta(days=2))
     store.update_intervention(
@@ -185,7 +190,7 @@ def _recap_store(tmp_path: Path) -> tuple[MemoryStore, dict[str, str]]:
         now=T0 + timedelta(days=10),
     )
     store.record_wellbeing_check([3, 3, 2, 2, 4], now=T0 + timedelta(days=15))
-    return store, {"experiment": experiment.id, "report": report.id}
+    return store, {"experiment": experiment.id, "report": report.id, "old_session": old_session}
 
 
 def test_recap_draws_only_on_records_in_the_period(tmp_path: Path) -> None:
@@ -202,7 +207,8 @@ def test_recap_draws_only_on_records_in_the_period(tmp_path: Path) -> None:
     assert [item.percentage for item in recap.wellbeing] == [56]
     rendered = render_recap(recap)
     assert ids["experiment"] in rendered and ids["report"] in rendered
-    assert "Old worries" not in rendered
+    assert ids["old_session"] not in rendered
+    assert ids["old_session"] not in recap.model_dump_json()
 
 
 def test_an_empty_recap_says_so(tmp_path: Path) -> None:
@@ -247,12 +253,16 @@ def test_the_model_can_ask_for_a_recap(tmp_path: Path) -> None:
             )
         }
 
-    ChatSession(FunctionModel(stream_function=stream), PACK, store, "en-US").respond(
+    turn = ChatSession(FunctionModel(stream_function=stream), PACK, store, "en-US").respond(
         "What changed over the last weeks?"
     )
 
     (payload,) = returned
     assert ids["experiment"] in payload and '"recap"' in payload
+    assert '"wellbeing": []' in payload  # scores stay on the device
+    assert turn.metadata is not None
+    assert turn.metadata.referenced_intervention_ids == [ids["experiment"]]
+    assert ids["report"] in turn.metadata.referenced_claim_ids
 
 
 @pytest.mark.parametrize(
@@ -375,3 +385,136 @@ def test_transcript_only_mode_records_no_wellbeing_check(tmp_path: Path) -> None
     assert _chat_command("/wellbeing 3 3 3 3 3", session, store)
 
     assert store.list_wellbeing_checks() == []
+
+
+def _hypothesis(store: MemoryStore, report_id: str, when: datetime) -> str:
+    message_id = store.save_turn(
+        store.active_session() or store.start_session(when),
+        "yes, that fits me",
+        "Noted.",
+        [],
+        when,
+    )
+    (report,) = [item for item in store.list_claims() if item.id == report_id]
+    hypothesis = store.add_hypothesis(
+        "Short sleep may make the calls feel harder",
+        linked_claim_ids=[report_id],
+        evidence_message_ids=[reference.message_id for reference in report.evidence],
+        now=when,
+    )
+    store.review_hypotheses(
+        [
+            HypothesisReview(
+                memory_id=hypothesis.id, fit=ClaimFit.FITS, evidence_quote="that fits me"
+            )
+        ],
+        message_id,
+        "yes, that fits me",
+        now=when,
+    )
+    return hypothesis.id
+
+
+def test_recap_never_brings_back_corrected_forgotten_or_archived_wording(tmp_path: Path) -> None:
+    store, ids = _recap_store(tmp_path)
+    when = T0 + timedelta(days=12)
+    hypothesis_id = _hypothesis(store, ids["report"], when)
+    message_id = store.save_turn(
+        store.active_session(),  # type: ignore[arg-type]
+        "that is wrong, I sleep fine",
+        "Thanks for correcting me.",
+        [],
+        when,
+    )
+    store.correct_claim(
+        ClaimCorrection(memory_id=ids["report"], correction_quote="that is wrong"),
+        message_id,
+        "that is wrong, I sleep fine",
+        now=when,
+    )
+    store.forget_claim(hypothesis_id, now=when)
+
+    recap = build_recap(store, 4, now=T0 + timedelta(days=20))
+    payload = recap.model_dump_json() + render_recap(recap)
+
+    assert "I sleep six hours on weekdays" not in payload
+    assert "Short sleep may make the calls feel harder" not in payload
+    assert hypothesis_id not in [item.id for item in recap.reviewed_hypotheses]
+    (corrected,) = [item for item in recap.corrected if item.id == ids["report"]]
+    assert corrected.content is None and corrected.evidence_message_ids == []
+    assert f"{ids['report']}: no longer held" in render_recap(recap)
+    assert [item.id for item in recap.new_reports] == []
+
+
+def test_recap_drops_a_hypothesis_archived_by_retention(tmp_path: Path) -> None:
+    store, ids = _recap_store(tmp_path)
+    hypothesis_id = _hypothesis(store, ids["report"], T0 + timedelta(days=12))
+    (hypothesis,) = [item for item in store.list_claims() if item.id == hypothesis_id]
+    hypothesis.lifecycle = ClaimLifecycle.ARCHIVED  # what retention does to a stale hypothesis
+    store._save_claim(hypothesis)
+
+    recap = build_recap(store, 4, now=T0 + timedelta(days=20))
+
+    assert recap.reviewed_hypotheses == []
+    assert "Short sleep" not in render_recap(recap)
+
+
+def test_the_model_recap_carries_no_wellbeing_scores(tmp_path: Path) -> None:
+    store, _ids = _recap_store(tmp_path)
+
+    recap = build_recap(store, 52, include_wellbeing=False)
+
+    assert recap.wellbeing == []
+
+
+def test_a_redelivered_telegram_wellbeing_update_records_one_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("filo.telegram.urlopen", FakeBotApi(_update()))
+    channel, store = _channel(tmp_path, [])
+    update = _update()
+    update["message"]["text"] = "/wellbeing 3 3 3 3 3"
+    queue = store.queue_telegram_output
+    crashed = False
+
+    def crash_once(*args: Any, **kwargs: Any) -> bool:
+        nonlocal crashed
+        if not crashed:
+            crashed = True
+            raise OSError("disk full")
+        return queue(*args, **kwargs)
+
+    monkeypatch.setattr(store, "queue_telegram_output", crash_once)
+
+    with pytest.raises(OSError):
+        channel.accept_update(update)  # the reply and offset failed, so the check rolled back
+    assert store.list_wellbeing_checks() == []
+
+    channel.process_update(update)  # Telegram hands the same update over again
+
+    assert len(store.list_wellbeing_checks()) == 1
+    assert store.load_app_state().telegram_update_offset == update["update_id"] + 1
+
+
+@pytest.mark.parametrize("mode", [MemoryMode.EPHEMERAL, MemoryMode.TRANSCRIPT_ONLY])
+def test_modes_that_keep_no_checks_never_offer_one(tmp_path: Path, mode: MemoryMode) -> None:
+    disk = MemoryStore(tmp_path)
+    memory = MemoryStore(ephemeral=True) if mode is MemoryMode.EPHEMERAL else disk
+    session = ChatSession("test", PACK, memory, "en-US", memory_mode=mode)
+    outputs: list[str] = []
+
+    assert _chat_command("/end", session, disk, output=outputs.append)
+
+    assert not any("WHO-5" in text for text in outputs)
+    state = disk.load_app_state()
+    assert not state.wellbeing_invited and state.wellbeing_offered_at is None
+
+
+def test_delete_before_removes_older_wellbeing_checks(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path)
+    store.record_wellbeing_check([1, 1, 1, 1, 1], now=T0 - timedelta(days=10))
+    recent = store.record_wellbeing_check([4, 4, 4, 4, 4], now=T0 + timedelta(days=10))
+
+    assert store.delete_before(T0)["wellbeing_checks"] == 1
+
+    assert [item.id for item in store.list_wellbeing_checks()] == [recent.id]

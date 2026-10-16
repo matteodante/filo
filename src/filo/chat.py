@@ -11,7 +11,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_ai import (
@@ -557,10 +557,30 @@ class ChatSession:
         ) -> dict[str, object]:
             """Retrieve bounded claims, provenance, conflicts, sessions, and active records.
 
-            When the user asks for a recap of a recent period, set recap_weeks: the result then
-            also holds `recap`, the recurring themes, what was tried and how it went, and what
+            When the user asks for a recap of a recent period, set recap_weeks: the result is
+            then only `recap`, the recurring themes, what was tried and how it went, and what
             changed in those weeks, taken only from stored records with their IDs.
             """
+            _record_tool_call(ctx.deps.actions, "retrieve_case_context")
+            if recap_weeks:
+                # Wellbeing scores stay on the device; a forgotten check cannot then survive in
+                # model history.
+                result = _bounded_recap(
+                    build_recap(
+                        ctx.deps.memory, recap_weeks, now, include_wellbeing=False
+                    ).model_dump(mode="json")
+                )
+                recap = cast(dict[str, list[dict[str, object]]], result["recap"])
+                ctx.deps.actions.referenced_claim_ids.update(
+                    str(item["id"])
+                    for section in ("new_reports", "reviewed_hypotheses", "corrected")
+                    for item in recap[section]
+                    if item["content"] is not None
+                )
+                ctx.deps.actions.referenced_intervention_ids.update(
+                    str(item["id"]) for item in recap["experiments"]
+                )
+                return result
             found = ctx.deps.memory.retrieve_case_context(
                 query,
                 allow_index_write=ctx.deps.memory_mode is MemoryMode.STANDARD,
@@ -572,11 +592,6 @@ class ChatSession:
             ctx.deps.actions.referenced_intervention_ids.update(
                 item.id for item in found.active_interventions
             )
-            _record_tool_call(ctx.deps.actions, "retrieve_case_context")
-            if recap_weeks:
-                return _bounded_recap(
-                    build_recap(ctx.deps.memory, recap_weeks, now).model_dump(mode="json")
-                )
             return _bounded_lookup(found.model_dump(mode="json"))
 
         @agent.tool(sequential=True)

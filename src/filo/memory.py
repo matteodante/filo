@@ -2540,7 +2540,13 @@ class MemoryStore:
             if datetime.fromisoformat(item.ended_at or item.last_activity_at) < before
         ]
         deleted = sum(self.delete_session(item.id) for item in sessions)
-        return {"sessions": deleted}
+        with self.transaction(), self._connect() as database:
+            checks = database.execute(
+                "DELETE FROM wellbeing_checks WHERE created_at < ?", (_iso(before),)
+            ).rowcount
+            if checks:
+                self._discard_telegram_output()
+        return {"sessions": deleted, "wellbeing_checks": checks}
 
     def export(self) -> dict[str, Any]:
         with self._connect() as database:

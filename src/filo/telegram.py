@@ -505,25 +505,32 @@ class TelegramChannel:
 
         if command == "/end":
             send(self._command_response(command, None) or self._unknown_command())
-            # Closing a session is a calm moment for the optional wellbeing check.
-            offer = wellbeing_offer(
-                checks=self.store, settings=self.config_store, locale=self.session.locale
-            )
-            if offer:
-                send(offer)
+            # Closing a session is a calm moment for the optional wellbeing check. A mode that
+            # keeps no checks neither offers one nor records that it did.
+            if self.session.memory_mode is MemoryMode.STANDARD:
+                offer = wellbeing_offer(
+                    checks=self.store, settings=self.config_store, locale=self.session.locale
+                )
+                if offer:
+                    send(offer)
             return True, False
         if command == "/wellbeing" and _command_argument(text):
-            # Records a check or changes the opt-in, so it runs once, outside the view loop below.
-            send(
-                wellbeing_command(
-                    _command_argument(text),
-                    checks=self.store,
-                    settings=self.config_store,
-                    locale=self.session.locale,
-                    can_record=self.session.memory_mode is not MemoryMode.TRANSCRIPT_ONLY,
+            # The check, its reply, and the offset that consumes the update commit together, so
+            # a redelivered update cannot record it twice, and no deletion can land between
+            # rendering the trend and queueing it.
+            with self.config_store.transaction():
+                epoch = self.config_store.telegram_output_epoch()
+                send(
+                    wellbeing_command(
+                        _command_argument(text),
+                        checks=self.store,
+                        settings=self.config_store,
+                        locale=self.session.locale,
+                        can_record=self.session.memory_mode is not MemoryMode.TRANSCRIPT_ONLY,
+                    )
                 )
-            )
-            return True, False
+                enqueue(rendered_at_epoch=epoch)
+            return True, True
         if command == "/retry":
             if self.session.failed_text is None:
                 send("Nothing to retry.")

@@ -345,7 +345,10 @@ def _main(argv: Sequence[str] | None = None) -> int:
         return 0
     if args.command == "delete-before":
         result = store.delete_before(args.date)
-        print(f"Deleted {result['sessions']} session(s) before {args.date.isoformat()}.")
+        print(
+            f"Deleted {result['sessions']} session(s) and {result['wellbeing_checks']} wellbeing "
+            f"check(s) before {args.date.isoformat()}."
+        )
         return 0
     if args.command == "telegram":
         token_payload = store.load_secret(TELEGRAM_SECRET)
@@ -1456,10 +1459,14 @@ def _chat_command(
                 "No active session." if closed is None else "Session closed; transcript preserved."
             )
             output(message)
-            # Closing a session is a calm moment for the optional wellbeing check.
-            offer = wellbeing_offer(checks=session.memory, settings=store, locale=session.locale)
-            if offer:
-                output(offer)
+            # Closing a session is a calm moment for the optional wellbeing check. A mode that
+            # keeps no checks neither offers one nor records that it did.
+            if session.memory_mode is MemoryMode.STANDARD:
+                offer = wellbeing_offer(
+                    checks=session.memory, settings=store, locale=session.locale
+                )
+                if offer:
+                    output(offer)
         else:
             return False
     except (KeyError, ValueError) as error:

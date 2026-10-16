@@ -258,8 +258,9 @@ and write invariants are validated across the complete staged turn. The model ma
 may load no skill. It may load at most one verified skill, with no keyword router or preliminary
 classifier. Write tools are absent outside standard memory mode. `retrieve_case_context` also
 takes an optional `recap_weeks`; it then returns only the recap that `/recap` renders (see the CLI
-contract), within the same size limit, so a natural-language "what changed lately" is answered
-from stored records.
+contract) without wellbeing scores, within the same size limit, so a natural-language "what changed
+lately" is answered from stored records. Scores never reach the model provider, so forgetting a
+check leaves nothing of it in model history.
 
 Who records direct user reports is a setting, `MemoryWriting`, so both designs can be measured.
 `inline`, the default, is the design above. `split` removes `record_user_reports` from the
@@ -772,9 +773,12 @@ kind, the exception classes, and the HTTP status.
 
 `/recap [weeks]` (default 4, at most 52) and `filo memory recap` list, from stored records only and
 with each record's ID: recurring session themes (a theme in at least two sessions), session
-summaries, interventions updated in the period with what was planned, expected, and observed, user
-reports first seen in the period, hypotheses reviewed in it, claims corrected in it, and wellbeing
-checks. Nothing is generated, so a recap cannot say more than memory holds. It is read-only and,
+summaries, interventions updated in the period with what was planned, expected, and observed, active
+user reports first seen in the period, active hypotheses reviewed in it, claims corrected in it, and
+wellbeing checks. A corrected claim appears with its current wording only while it is still held;
+one no longer held appears by ID and date alone, so a correction, a forgotten claim, or an archived
+hypothesis never brings old wording back. Nothing is generated, so a recap cannot say more than
+memory holds. It is read-only and,
 like every command, outside the conversation history.
 
 `/wellbeing` shows the five WHO-5 statements in the official English wording or, for an Italian
@@ -782,7 +786,10 @@ locale, the published Italian translation, the 5-to-0 answer scale, the person's
 the attribution. `/wellbeing` followed by five answers records a check; `/wellbeing on` and `off`
 set reminders. The check is offered unprompted once, after `/end` closes a session, and after that
 only when reminders are on, at most every two weeks counting from both the last offer and the last
-check. It is never offered mid-conversation. `filo memory wellbeing` prints the trend, and
+check. It is never offered mid-conversation, nor in `ephemeral` or `transcript_only` mode, which
+keep no checks and so record no offer either. In Telegram, a recorded check, its reply, and the
+update offset commit in one transaction, so a redelivered update cannot record it twice.
+`delete-before` also deletes the checks older than its date. `filo memory wellbeing` prints the trend, and
 `filo memory forget <id>` or `/forget <id>` deletes one check. It is a personal record, not
 screening, diagnosis, or monitoring, and no clinical cutoff from the WHO-5 documentation is shown.
 

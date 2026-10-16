@@ -16,6 +16,7 @@ from filo.memory import (
     ClaimLifecycle,
     ClaimOrigin,
     InterventionState,
+    MemoryItem,
     MemoryStore,
 )
 
@@ -50,7 +51,8 @@ class RecapExperiment(BaseModel):
 
 class RecapClaim(BaseModel):
     id: str
-    content: str
+    # None for a claim no longer held: its old wording is never repeated.
+    content: str | None
     fit: ClaimFit
     at: str
     evidence_message_ids: list[int]
@@ -75,7 +77,19 @@ class Recap(BaseModel):
     wellbeing: list[RecapWellbeing]
 
 
-def build_recap(store: MemoryStore, weeks: int, now: datetime | None = None) -> Recap:
+def build_recap(
+    store: MemoryStore,
+    weeks: int,
+    now: datetime | None = None,
+    *,
+    include_wellbeing: bool = True,
+) -> Recap:
+    """The recap of the last ``weeks`` weeks.
+
+    Only active claims appear with their wording; a corrected claim no longer held appears by ID
+    and date alone. ``include_wellbeing`` is off for the model, so scores never leave the device
+    and a forgotten check cannot survive in model history.
+    """
     weeks = max(1, min(weeks, MAX_RECAP_WEEKS))
     since = ((now or datetime.now(UTC)) - timedelta(weeks=weeks)).isoformat()
     sessions = [
@@ -91,13 +105,16 @@ def build_recap(store: MemoryStore, weeks: int, now: datetime | None = None) -> 
     recurring = Counter({theme: len(ids) for theme, ids in theme_sessions.items()})
     claims = store.list_claims(include_inactive=True)
 
-    def recap_claim(item, at: str) -> RecapClaim:
+    def recap_claim(item: MemoryItem, at: str) -> RecapClaim:
+        active = item.lifecycle is ClaimLifecycle.ACTIVE
         return RecapClaim(
             id=item.id,
-            content=item.content,
+            content=item.content if active else None,
             fit=item.fit,
             at=at,
-            evidence_message_ids=[reference.message_id for reference in item.evidence],
+            evidence_message_ids=(
+                [reference.message_id for reference in item.evidence] if active else []
+            ),
         )
 
     return Recap(
@@ -130,6 +147,7 @@ def build_recap(store: MemoryStore, weeks: int, now: datetime | None = None) -> 
             recap_claim(item, item.last_reviewed_at)
             for item in claims
             if item.origin is ClaimOrigin.AGENT_HYPOTHESIS
+            and item.lifecycle is ClaimLifecycle.ACTIVE
             and item.last_reviewed_at
             and item.last_reviewed_at >= since
         ][-MAX_ITEMS:],
@@ -146,7 +164,7 @@ def build_recap(store: MemoryStore, weeks: int, now: datetime | None = None) -> 
                 percentage=item.percentage,
             )
             for item in store.list_wellbeing_checks()
-            if item.created_at >= since
+            if include_wellbeing and item.created_at >= since
         ][-MAX_ITEMS:],
     )
 
@@ -199,7 +217,8 @@ def render_recap(recap: Recap) -> str:
         if items:
             lines.append(f"\n{title}")
             lines += [
-                f"• {item.at[:10]} · {item.id}: {item.content}"
+                f"• {item.at[:10]} · {item.id}: "
+                + (item.content if item.content is not None else "no longer held")
                 + (f" ({item.fit.value})" if title == "Readings you reviewed" else "")
                 for item in items
             ]

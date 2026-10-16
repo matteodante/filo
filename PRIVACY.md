@@ -20,7 +20,8 @@ successful model history, sessions, claims and evidence, case formulation, proce
 interventions and unwanted effects, support choices, optional WHO-5 wellbeing checks, and the
 derived semantic index. Wellbeing checks are recorded only when you send them, are exported and
 deleted with the rest of your data, follow the raw-message retention limit, and are not kept in
-transcript-only mode. A check recorded through Telegram passes through Telegram like any message.
+transcript-only mode. Scores are never sent to the model provider: the recap the model can request
+leaves them out. A check recorded through Telegram passes through Telegram like any message.
 `~/.filo/memory.key` holds the Fernet key. Directory and key permissions are restricted where
 the operating system supports them.
 
