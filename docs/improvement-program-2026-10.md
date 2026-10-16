@@ -24,6 +24,11 @@ Rules for every work item:
    results. Every later change to a floor or rubric is logged with its reason.
 5. Existing safeguards (encryption, exact-evidence provenance, correction and forgetting,
    transparent AI identity, no clinical claims) are preserved or strengthened, never traded away.
+6. **Judgment in the conversation, fixed rules only where they protect.** The conversation agent
+   decides what to say, which tool to call and which skill to load. A deterministic rule (a gate, a
+   fixed prompt instruction, a keyword list, a scripted sentence) is added only to protect stored
+   data or safety, and only for a failure that was measured. A rule that blocks correct behavior
+   more often than it prevents a measured failure is loosened or removed.
 
 ## 2. Verified findings
 
@@ -296,6 +301,10 @@ manual smoke on macOS.
   the supported configuration is judged cross-family by Claude.
 - Optionally run the same on the maintainer's `local:` server; that closes an open-work item.
 
+- Report how often fixed rules hold the agent back: tool calls rejected by validation and retried,
+  facts the person stated that never became memory, and how repetitive replies are by the style
+  metrics. These come from the same runs and cost nothing extra.
+
 *Output:* a ranked failure taxonomy with counts. Waves 2 and 3 pick their items from it.
 
 ### Wave 2 — memory v2 (sequential PRs; each measured against W1.4)
@@ -373,6 +382,8 @@ recall does not fall.
 - safety suite v2 pass^3 on the held-out split;
 - role-play quality not lower by more than the preregistered margin;
 - over-referral rate measured and not worse.
+- no new fixed instruction, keyword list or scripted sentence without a measured failure that
+  requires it (rule 6).
 
 ### Wave 4 — positioning and release
 
