@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import urlsplit
 
 import pytest
 from pydantic_ai import Agent, ModelResponse, TextPart, ToolCallPart, models
@@ -176,7 +177,8 @@ def test_anthropic_model_requires_key_and_ignores_base_url_override(
     monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://internal.invalid")
     model = anthropic_model("claude-haiku-5-5", "sut", _ledger(tmp_path))
     assert isinstance(model, MeteredModel)
-    assert str(model.wrapped.client.base_url).startswith("https://api.anthropic.com")  # type: ignore[attr-defined]
+    base_url = urlsplit(str(model.wrapped.client.base_url))  # type: ignore[attr-defined]
+    assert (base_url.scheme, base_url.hostname) == ("https", "api.anthropic.com")
     settings = model.settings or {}
     assert settings.get("max_tokens") == 2_000
     assert settings.get("anthropic_cache_instructions") is True
