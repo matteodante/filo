@@ -68,7 +68,9 @@ from filo.memory import (
 )
 from filo.process_lock import LockHeld, exclusive_lock
 from filo.protocol import ProtocolError, ProtocolPack
+from filo.recap import DEFAULT_RECAP_WEEKS, build_recap, render_recap
 from filo.telegram import TELEGRAM_SECRET, TelegramBot, TelegramChannel, TelegramError
+from filo.wellbeing import trend_lines, wellbeing_command, wellbeing_offer
 
 PACKAGE_PROTOCOL = Path(__file__).resolve().parent / "protocols" / "transdiagnostic"
 REPOSITORY_PROTOCOL = Path(__file__).resolve().parents[2] / "protocols" / "transdiagnostic"
@@ -165,6 +167,9 @@ def build_parser() -> argparse.ArgumentParser:
     memory_commands.add_parser("case")
     memory_commands.add_parser("sessions")
     memory_commands.add_parser("interventions")
+    recap = memory_commands.add_parser("recap", help="Recurring themes and changes, from records")
+    recap.add_argument("--weeks", type=int, default=DEFAULT_RECAP_WEEKS)
+    memory_commands.add_parser("wellbeing", help="Your optional WHO-5 checks and their trend")
     review = memory_commands.add_parser("review")
     review.add_argument("id")
     review.add_argument(
@@ -1218,6 +1223,16 @@ def _memory(args: argparse.Namespace, store: MemoryStore) -> int:
                     args.text,
                 ).model_dump_json(indent=2)
             )
+        elif args.memory_command == "recap":
+            print(render_recap(build_recap(store, args.weeks)))
+        elif args.memory_command == "wellbeing":
+            locale = store.load_app_state().default_locale or "en-US"
+            print("\n".join(trend_lines(store.list_wellbeing_checks(), locale)))
+        elif args.memory_command == "forget" and args.id.startswith("wb_"):
+            if not store.forget_wellbeing_check(args.id):
+                print("Wellbeing check not found.")
+                return 1
+            print(f"Wellbeing check {args.id} deleted.")
         elif args.memory_command == "forget":
             print(store.forget_claim(args.id).model_dump_json(indent=2))
     except (KeyError, ValueError) as error:
@@ -1233,7 +1248,8 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
 
     print("Commands: /case, /memory, /sessions [id], /interventions,")
     print("          /correct <id> <text>,")
-    print("          /forget <id>, /retry, /crisis, /end, /help, /quit")
+    print("          /forget <id>, /recap [weeks], /wellbeing, /retry, /crisis, /end, /help,")
+    print("          /quit")
     while True:
         try:
             user_text = input("you> ").strip()
@@ -1379,7 +1395,9 @@ def _chat_command(
     try:
         if name == "/help":
             output("/case /memory /sessions [id] /correct <id> <text>")
-            output("/interventions /forget <id> /retry /crisis /end /quit")
+            output(
+                "/interventions /forget <id> /recap [weeks] /wellbeing /retry /crisis /end /quit"
+            )
         elif name == "/crisis":
             output(crisis_resources(session.locale))
         elif name == "/case":
@@ -1414,6 +1432,21 @@ def _chat_command(
                     parts[2],
                 ).model_dump_json(indent=2)
             )
+        elif name == "/recap":
+            weeks = int(parts[1]) if len(parts) > 1 else DEFAULT_RECAP_WEEKS
+            output(render_recap(build_recap(session.memory, weeks)))
+        elif name == "/wellbeing":
+            output(
+                wellbeing_command(
+                    command.partition(" ")[2],
+                    checks=session.memory,
+                    settings=store,
+                    locale=session.locale,
+                )
+            )
+        elif name == "/forget" and len(parts) >= 2 and parts[1].startswith("wb_"):
+            found = session.memory.forget_wellbeing_check(parts[1])
+            output("Wellbeing check deleted." if found else "Wellbeing check not found.")
         elif name == "/forget" and len(parts) >= 2:
             output(store.forget_claim(parts[1]).model_dump_json(indent=2))
         elif name == "/end":
@@ -1422,6 +1455,10 @@ def _chat_command(
                 "No active session." if closed is None else "Session closed; transcript preserved."
             )
             output(message)
+            # Closing a session is a calm moment for the optional wellbeing check.
+            offer = wellbeing_offer(checks=session.memory, settings=store, locale=session.locale)
+            if offer:
+                output(offer)
         else:
             return False
     except (KeyError, ValueError) as error:
@@ -1490,6 +1527,7 @@ def _retention(args: argparse.Namespace, store: MemoryStore) -> int:
     label = "Would remove" if args.retention_command == "dry-run" else "Removed"
     print(
         f"{label}: {result['messages']} messages, "
+        f"{result['wellbeing_checks']} wellbeing checks, "
         f"{result['session_summaries']} session summaries, "
         f"{result['stale_hypotheses']} stale hypotheses."
     )

@@ -67,6 +67,7 @@ from filo.memory import (
     valid_intervention_transition,
 )
 from filo.protocol import ProtocolPack
+from filo.recap import MAX_RECAP_WEEKS, build_recap
 
 MAX_CONTEXT_CHARS = 16_000
 # The envelope's retrieval query: the current message plus this many earlier user messages of the
@@ -550,9 +551,16 @@ class ChatSession:
 
         @agent.tool(sequential=True)
         def retrieve_case_context(
-            ctx: RunContext[TurnContext], query: ShortText
+            ctx: RunContext[TurnContext],
+            query: ShortText,
+            recap_weeks: Annotated[int, Field(ge=1, le=MAX_RECAP_WEEKS)] | None = None,
         ) -> dict[str, object]:
-            """Retrieve bounded claims, provenance, conflicts, sessions, and active records."""
+            """Retrieve bounded claims, provenance, conflicts, sessions, and active records.
+
+            When the user asks for a recap of a recent period, set recap_weeks: the result then
+            also holds `recap`, the recurring themes, what was tried and how it went, and what
+            changed in those weeks, taken only from stored records with their IDs.
+            """
             found = ctx.deps.memory.retrieve_case_context(
                 query,
                 allow_index_write=ctx.deps.memory_mode is MemoryMode.STANDARD,
@@ -565,6 +573,10 @@ class ChatSession:
                 item.id for item in found.active_interventions
             )
             _record_tool_call(ctx.deps.actions, "retrieve_case_context")
+            if recap_weeks:
+                return _bounded_recap(
+                    build_recap(ctx.deps.memory, recap_weeks, now).model_dump(mode="json")
+                )
             return _bounded_lookup(found.model_dump(mode="json"))
 
         @agent.tool(sequential=True)
@@ -1718,6 +1730,29 @@ def _bounded_lookup(payload: dict[str, object]) -> dict[str, object]:
         else:
             break
     return result
+
+
+def _bounded_recap(recap: dict[str, object]) -> dict[str, object]:
+    """A recap within the lookup limit, dropping the oldest entries of each section first."""
+    sections = [
+        values
+        for name in (
+            "sessions",
+            "new_reports",
+            "experiments",
+            "reviewed_hypotheses",
+            "corrected",
+            "wellbeing",
+            "recurring_themes",
+        )
+        if isinstance(values := recap.get(name), list)
+    ]
+    while len(json.dumps(recap, ensure_ascii=False)) > MAX_LOOKUP_CHARS:
+        longest = max(sections, key=len, default=[])
+        if not longest:
+            break
+        longest.pop(0)
+    return {"recap": recap}
 
 
 def _bounded_context_json(context: CaseContextResult) -> str:

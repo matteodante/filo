@@ -18,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from uuid import uuid4
 
 import numpy as np
@@ -73,6 +73,9 @@ CREATE TABLE IF NOT EXISTS pending_extractions (
 );
 CREATE TABLE IF NOT EXISTS telegram_outbox (
     id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, payload BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS wellbeing_checks (
+    id TEXT PRIMARY KEY, created_at TEXT NOT NULL, payload BLOB NOT NULL
 );
 """
 DEFAULT_STALE_HYPOTHESIS_DAYS = 180
@@ -285,6 +288,22 @@ class RetentionPolicy(StrictModel):
     stale_hypothesis_days: int | None = Field(default=None, ge=1)
 
 
+class WellbeingCheck(StrictModel):
+    """One WHO-5 self-report: five answers from 0 (at no time) to 5 (all of the time)."""
+
+    id: str
+    created_at: str
+    answers: list[Annotated[int, Field(ge=0, le=5)]] = Field(min_length=5, max_length=5)
+
+    @property
+    def raw_score(self) -> int:
+        return sum(self.answers)
+
+    @property
+    def percentage(self) -> int:
+        return self.raw_score * 4
+
+
 class TelegramDelivery(StrictModel):
     chat_id: int
     text: str = Field(min_length=1)
@@ -304,6 +323,10 @@ class AppState(StrictModel):
     telegram_allowed_user_id: int | None = Field(default=None, gt=0)
     pending_hypothesis_id: str | None = None
     pending_intervention_id: str | None = None
+    # The optional WHO-5 check: offered unprompted once, then every two weeks only if enabled.
+    wellbeing_enabled: bool = False
+    wellbeing_invited: bool = False
+    wellbeing_offered_at: str | None = None
 
 
 class EvidenceRef(StrictModel):
@@ -2416,6 +2439,7 @@ class MemoryStore:
         message_ids: list[int] = []
         summaries: list[SessionRecord] = []
         hypotheses: list[MemoryItem] = []
+        wellbeing_ids: list[str] = []
         with self._connect() as database:
             if policy.raw_message_days:
                 cutoff = _iso(current - timedelta(days=policy.raw_message_days))
@@ -2423,6 +2447,13 @@ class MemoryStore:
                     row[0]
                     for row in database.execute(
                         "SELECT id FROM messages WHERE created_at < ?", (cutoff,)
+                    ).fetchall()
+                ]
+                # Wellbeing checks are raw self-reports, so they share the raw-message limit.
+                wellbeing_ids = [
+                    row[0]
+                    for row in database.execute(
+                        "SELECT id FROM wellbeing_checks WHERE created_at < ?", (cutoff,)
                     ).fetchall()
                 ]
         if policy.session_summary_days:
@@ -2443,6 +2474,7 @@ class MemoryStore:
             ]
         result = {
             "messages": len(message_ids),
+            "wellbeing_checks": len(wellbeing_ids),
             "session_summaries": len(summaries),
             "stale_hypotheses": len(hypotheses),
         }
@@ -2453,7 +2485,7 @@ class MemoryStore:
         removal_cutoffs = [
             current - timedelta(days=days)
             for days, removed in (
-                (policy.raw_message_days, message_ids),
+                (policy.raw_message_days, [*message_ids, *wellbeing_ids]),
                 (policy.session_summary_days, summaries),
                 (policy.stale_hypothesis_days, hypotheses),
             )
@@ -2463,6 +2495,10 @@ class MemoryStore:
             if removal_cutoffs:
                 self._discard_telegram_output(before=max(removal_cutoffs))
             self._delete_message_ids(message_ids)
+            with self._connect() as database:
+                database.executemany(
+                    "DELETE FROM wellbeing_checks WHERE id = ?", [(item,) for item in wellbeing_ids]
+                )
             for session in summaries:
                 _clear_session_reflection(session)
                 self.save_session(session)
@@ -2566,7 +2602,39 @@ class MemoryStore:
             "telegram_outbox": [
                 item.model_dump(mode="json") for _id, item in self.list_telegram_output()
             ],
+            "wellbeing_checks": [
+                {**item.model_dump(mode="json"), "raw_score": item.raw_score}
+                for item in self.list_wellbeing_checks()
+            ],
         }
+
+    def record_wellbeing_check(
+        self, answers: list[int], now: datetime | None = None
+    ) -> WellbeingCheck:
+        check = WellbeingCheck(id=f"wb_{uuid4().hex[:10]}", created_at=_iso(now), answers=answers)
+        with self._connect() as database:
+            database.execute(
+                "INSERT INTO wellbeing_checks(id, created_at, payload) VALUES (?, ?, ?)",
+                (check.id, check.created_at, self._encrypt_model(check)),
+            )
+        return check
+
+    def list_wellbeing_checks(self) -> list[WellbeingCheck]:
+        with self._connect() as database:
+            rows = database.execute(
+                "SELECT payload FROM wellbeing_checks ORDER BY created_at, id"
+            ).fetchall()
+        return [WellbeingCheck.model_validate(self._decrypt_json(row[0])) for row in rows]
+
+    def forget_wellbeing_check(self, check_id: str) -> bool:
+        with self.transaction(), self._connect() as database:
+            deleted = database.execute(
+                "DELETE FROM wellbeing_checks WHERE id = ?", (check_id,)
+            ).rowcount
+            if deleted:
+                # A queued Telegram view may show this score.
+                self._discard_telegram_output()
+        return bool(deleted)
 
     def load_secret(self, name: str) -> bytes | None:
         return self._read_state(f"secret:{name}")
@@ -2594,6 +2662,7 @@ class MemoryStore:
                 "process_preferences",
                 "support_choices",
                 "telegram_outbox",
+                "wellbeing_checks",
                 "state",
             ):
                 database.execute(f"DELETE FROM {table}")

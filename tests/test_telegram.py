@@ -581,6 +581,8 @@ def test_bot_configures_commands_only_for_allowlisted_chat(
         "sessions",
         "interventions",
         "privacy",
+        "recap",
+        "wellbeing",
         "retry",
         "end",
     }

@@ -22,6 +22,8 @@ from urllib.request import Request, urlopen
 from filo.chat import ChatSession, ChatTurn, TurnStreamEvent, TurnStreamKind, crisis_resources
 from filo.failures import classify
 from filo.memory import MemoryMode, MemoryStore, TelegramDelivery
+from filo.recap import DEFAULT_RECAP_WEEKS, build_recap, render_recap
+from filo.wellbeing import wellbeing_command, wellbeing_offer
 
 API_ROOT = "https://api.telegram.org"
 TELEGRAM_SECRET = "telegram_bot_token"
@@ -89,6 +91,8 @@ class TelegramBot:
             ("sessions", "Sessions and summaries"),
             ("interventions", "Recorded interventions"),
             ("privacy", "Data, providers and limits"),
+            ("recap", "Your recent weeks, from your records"),
+            ("wellbeing", "Optional WHO-5 wellbeing check"),
             ("retry", "Send the last failed message again"),
             ("end", "Close the session"),
         ]
@@ -501,6 +505,23 @@ class TelegramChannel:
 
         if command == "/end":
             send(self._command_response(command, None) or self._unknown_command())
+            # Closing a session is a calm moment for the optional wellbeing check.
+            offer = wellbeing_offer(
+                checks=self.store, settings=self.config_store, locale=self.session.locale
+            )
+            if offer:
+                send(offer)
+            return True, False
+        if command == "/wellbeing" and _command_argument(text):
+            # Records a check or changes the opt-in, so it runs once, outside the view loop below.
+            send(
+                wellbeing_command(
+                    _command_argument(text),
+                    checks=self.store,
+                    settings=self.config_store,
+                    locale=self.session.locale,
+                )
+            )
             return True, False
         if command == "/retry":
             if self.session.failed_text is None:
@@ -646,6 +667,8 @@ class TelegramChannel:
                 "/start — identity, notice, and consent\n"
                 "/status — agent, session, and archive status\n"
                 "/crisis — emergency resources, without a model reply\n"
+                "/recap [weeks] — recurring themes, what you tried, and what changed\n"
+                "/wellbeing — optional WHO-5 check and its trend\n"
                 "/retry — send the last failed message again\n"
                 "/end — close and summarize the session\n\n"
                 "TRANSPARENCY\n"
@@ -669,6 +692,13 @@ class TelegramChannel:
             return self._interventions(argument)
         if command == "/privacy":
             return self._privacy()
+        if command == "/recap":
+            weeks = int(argument) if argument and argument.isdigit() else DEFAULT_RECAP_WEEKS
+            return render_recap(build_recap(self.store, weeks))
+        if command == "/wellbeing":
+            return wellbeing_command(
+                None, checks=self.store, settings=self.config_store, locale=self.session.locale
+            )
         if command == "/end":
             closed = self.session.end()
             return (
