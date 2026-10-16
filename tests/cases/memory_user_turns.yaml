@@ -4752,3 +4752,103 @@ personas:
 
 
       Comunque sono ancora qui. Mancano ancora qualche minuto, immagino.'
+- persona_id: MP12
+  generator_model: claude-sonnet-4-6
+  sessions:
+  - day: 0
+    turns:
+    - Hey.
+    - Nothing much.
+    - Started a new job like five weeks ago. Junior analyst at this freight company, Brightwell.
+    - The 9:15 standup every morning is just... yeah. Worst part of the day.
+  - day: 2
+    turns:
+    - Hey.
+    - Not much.
+    - lunch in the car, it's quieter
+    - just don't tell me it's normal or whatever. that doesn't help.
+  - day: 5
+    turns:
+    - hey
+    - still not sure this is doing anything
+    - fine, whatever. i'll try saying one thing after my update tomorrow. just one.
+    - actually i cried in the bathroom after my first presentation here so. yeah.
+    - yeah.
+  - day: 8
+    turns:
+    - hey
+    - what's up
+    - did it twice actually. the extra sentence thing after my update.
+    - oh and i think i said 9:15 before. it's 9:45.
+  - day: 11
+    turns:
+    - hey
+    - what's up
+    - yeah lol been playing this stupid city builder game till like 2am. also it's raining again here
+      which, whatever.
+    - yeah.
+  - day: 15
+    turns:
+    - hey
+    - what's up
+    - camera's always off. every call.
+    - stopped doing it anyway. they switched standup to async slack updates so.
+    - yeah.
+  - day: 19
+    turns:
+    - hey
+    - what's up
+    - turned my camera on for the team call today. so. yeah.
+    - yeah.
+- persona_id: MP13
+  generator_model: claude-sonnet-4-6
+  sessions:
+  - day: 0
+    turns:
+    - Ciao.
+    - Ciao.
+    - Boh, non è che ci sia molto da dire... una mia amica non mi risponde da due mesi, ecco.
+    - Sì, cioè... non so. Magari sono anche stanca, faccio turni lunghi in farmacia e alla fine della
+      giornata non ho molta voglia di pensarci su, però ci penso lo stesso.
+  - day: 12
+    turns:
+    - Ciao.
+    - Ciao.
+    - Ci siamo conosciute a un campo estivo, tipo avevamo sedici anni... siamo ancora nello stesso gruppo
+      WhatsApp, "Le Ragazze del Bosco" si chiama. Lei però non scrive mai.
+    - A volte di notte mi rileggo i messaggi vecchi... tipo quelli di anni fa. Non so perché lo faccio,
+      mi fa solo stare peggio.
+    - Per favore non dirmi di lasciar perdere, okay? Lo odio quando la gente dice quella cosa.
+  - day: 40
+    turns:
+    - Ciao.
+    - Ciao. Sono io, Irene.
+    - Sì, okay... tipo, se mi aiutassi a scrivere una cosa per lei — una lettera, non so — che tanto non
+      mando. Solo per... boh. Per tirarla fuori.
+    - Tipo... stavo pensando a una cosa. Ci siamo dette tutto, io e Vale. Una volta mi aveva confidato
+      una cosa sulla sorella — che era incinta prima ancora che lo sapesse il compagno — e io non l'ho
+      mai detto a nessuno, nemmeno adesso. Non so, mi sembra importante metterlo nella lettera, che ci
+      fidavamo così tanto.
+    - Mmh.
+  - day: 75
+    turns:
+    - Ciao.
+    - Ciao.
+    - Ho scritto tipo due pagine. Non l'ho ancora riletta.
+    - Ah aspetta, mi sono ricordata una cosa — non ci siamo conosciute al campo estivo. Cioè, ci siamo
+      viste lì, ma ci eravamo già conosciute al liceo, primo anno. Non so perché l'avevo detto così.
+  - day: 90
+    turns:
+    - Ciao.
+    - Ciao, sono io.
+    - Comunque ti dicevo — sabato sono andata a un concerto, finalmente. E mi sono comprata anche la bici
+      nuova, quella rossa che volevo da un sacco.
+    - Già.
+  - day: 125
+    turns:
+    - Ciao.
+    - Ciao.
+    - Ho lasciato il gruppo, alla fine. "Le Ragazze del Bosco". L'ho fatto ieri sera.
+    - Sì... ho anche smesso di aggiungere cose alla lettera. Ci pensavo troppo, ogni volta che scrivevo
+      una riga finivo per stare male tutta la sera.
+    - Comunque... non so. Mi sembra strano parlarne ancora, quasi.
