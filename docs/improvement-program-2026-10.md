@@ -1,7 +1,9 @@
-# Improvement program — October 2026 (draft for maintainer approval)
+# Improvement program — October 2026
 
-Status: **proposal**. Nothing in this document is implemented. It is written so that each work item
-can be handed to a separate session and reviewed as its own pull request.
+Status: **approved by the maintainer on 2026-10-16** and in progress; this is a living plan, updated
+when a work item lands or a measurement changes its priority. Each work item is handed to a separate
+session and reviewed as its own pull request. Landed so far: the rename to Filo (W4.1, #51) and the
+per-request ChatGPT token refresh (part of W0.5, #49).
 
 ## 1. Purpose and ground rules
 
