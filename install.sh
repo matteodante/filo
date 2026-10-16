@@ -48,9 +48,18 @@ sha256_file() {
     printf '%s\n' "${SHA256_RESULT%% *}"
 }
 
+# The install needs uv features newer than some packaged uv releases, so only the pinned version is
+# used. A uv on PATH at another version is left untouched, and the verified download runs from the
+# temporary directory for this installation only.
+UV=""
+UV_INSTALL_DIRECTORY="$HOME/.local/bin"
 if command -v uv >/dev/null 2>&1; then
-    UV="$(command -v uv)"
-else
+    UV_INSTALL_DIRECTORY="$TEMP_DIRECTORY/uv-bin"
+    case "$(uv --version 2>/dev/null || true)" in
+        "uv $UV_VERSION" | "uv $UV_VERSION "*) UV="$(command -v uv)" ;;
+    esac
+fi
+if [ -z "$UV" ]; then
     echo "Installing uv ${UV_VERSION}..."
 
     UV_TARGET=""
@@ -112,19 +121,19 @@ else
     fi
 
     UV_EXTRACT_DIRECTORY="$TEMP_DIRECTORY/uv"
-    mkdir -p "$UV_EXTRACT_DIRECTORY" "$HOME/.local/bin"
+    mkdir -p "$UV_EXTRACT_DIRECTORY" "$UV_INSTALL_DIRECTORY"
     tar -xzf "$UV_ARCHIVE" -C "$UV_EXTRACT_DIRECTORY" --strip-components=1
     for UV_BINARY in uv uvx; do
         if [ ! -f "$UV_EXTRACT_DIRECTORY/$UV_BINARY" ]; then
             echo "The verified uv archive is incomplete." >&2
             exit 1
         fi
-        cp "$UV_EXTRACT_DIRECTORY/$UV_BINARY" "$HOME/.local/bin/$UV_BINARY"
-        chmod 0755 "$HOME/.local/bin/$UV_BINARY"
+        cp "$UV_EXTRACT_DIRECTORY/$UV_BINARY" "$UV_INSTALL_DIRECTORY/$UV_BINARY"
+        chmod 0755 "$UV_INSTALL_DIRECTORY/$UV_BINARY"
     done
-    cp "$UV_LICENSE" "$HOME/.local/bin/uv-LICENSE-MIT"
+    cp "$UV_LICENSE" "$UV_INSTALL_DIRECTORY/uv-LICENSE-MIT"
 
-    UV="$HOME/.local/bin/uv"
+    UV="$UV_INSTALL_DIRECTORY/uv"
     if [ ! -x "$UV" ]; then
         echo "uv was installed but could not be found at $UV." >&2
         exit 1
@@ -139,13 +148,14 @@ if [ ! -f "$TEMP_DIRECTORY/pyproject.toml" ]; then
 fi
 
 echo "Installing Filo..."
-# uv tool install does not read uv.lock, so the tested versions are passed as constraints. The
-# embedding model runs on CPU, so the CPU build of torch avoids gigabytes of unused CUDA libraries.
+# uv tool install does not read uv.lock, so the tested versions are passed as constraints. torch
+# stays unpinned outside Linux, where the locked release has no wheel for older Macs; on Linux the
+# project's sources select the CPU build.
 CONSTRAINTS="$TEMP_DIRECTORY/filo-constraints.txt"
 "$UV" export --project "$TEMP_DIRECTORY" --frozen --no-dev --no-emit-project --no-hashes \
-    --quiet --output-file "$CONSTRAINTS"
-"$UV" tool install --force --python 3.12 --torch-backend cpu --constraints "$CONSTRAINTS" \
-    "$TEMP_DIRECTORY"
+    --quiet --output-file "$TEMP_DIRECTORY/locked-versions.txt"
+grep -v "^torch==.*sys_platform != 'linux'" "$TEMP_DIRECTORY/locked-versions.txt" >"$CONSTRAINTS"
+"$UV" tool install --force --python 3.12 --constraints "$CONSTRAINTS" "$TEMP_DIRECTORY"
 "$UV" tool update-shell
 
 TOOL_BIN="$("$UV" tool dir --bin)"

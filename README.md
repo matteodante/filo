@@ -16,21 +16,23 @@ Formerly published as Therapist (v0.1–v0.3).
 ## Install
 
 Until the first release published under the Filo name, install from a checkout. This needs Git and
-[uv](https://docs.astral.sh/uv/):
+[uv](https://docs.astral.sh/uv/) 0.11.31 or later:
 
 ```bash
 git clone https://github.com/matteodante/filo.git
 cd filo
-uv export --frozen --no-dev --no-emit-project --no-hashes --output-file filo-constraints.txt
-uv tool install --python 3.12 --torch-backend cpu --constraints filo-constraints.txt .
+uv export --frozen --no-dev --no-emit-project --no-hashes |
+  grep -v "^torch==.*sys_platform != 'linux'" >filo-constraints.txt
+uv tool install --python 3.12 --constraints filo-constraints.txt .
 filo setup
 filo doctor
 ```
 
 The constraints file pins the versions in `uv.lock`, which `uv tool install` does not read, so the
-installation matches the tested set. `--torch-backend cpu` selects the CPU build of PyTorch: the
+installation uses the tested versions. On Linux the project selects the CPU build of PyTorch: the
 embedding model runs on the CPU, and the default Linux build adds several gigabytes of CUDA
-libraries.
+libraries. Outside Linux PyTorch is left unpinned, because the locked release has no wheel for
+Intel Macs or macOS 13.
 
 The one-line bootstrap installers (`install.sh`, `install.ps1`) still pin `v0.3.1`, which predates
 the rename, so they are not usable until that release. They need no administrator privileges,

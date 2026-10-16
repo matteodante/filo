@@ -512,7 +512,6 @@ dependencies = [
     { name = "questionary" },
     { name = "rich" },
     { name = "textual" },
-    { name = "torch", version = "2.14.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
     { name = "torch", version = "2.14.1+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'linux'" },
 ]
 
@@ -542,8 +541,7 @@ requires-dist = [
     { name = "rich", specifier = ">=15,<16" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.16.1,<1" },
     { name = "textual", specifier = ">=8.2,<9" },
-    { name = "torch", marker = "sys_platform != 'linux'", specifier = ">=2.14,<3" },
-    { name = "torch", marker = "sys_platform == 'linux'", specifier = ">=2.14,<3", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torch", marker = "sys_platform == 'linux'", specifier = "<3", index = "https://download.pytorch.org/whl/cpu" },
     { name = "ty", marker = "extra == 'dev'", specifier = ">=0.0.89,<0.1" },
 ]
 provides-extras = ["dev"]
@@ -2006,7 +2004,6 @@ name = "torch"
 version = "2.14.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform != 'linux'",
     "python_full_version < '3.14' and sys_platform != 'linux'",
 ]
 dependencies = [

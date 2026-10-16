@@ -53,6 +53,7 @@ jobs:
           wheel="$(find dist -name '*.whl' -print -quit)"
           constraints="$RUNNER_TEMP/filo-constraints.txt"
           uv export --frozen --no-dev --no-emit-project --no-hashes --output-file "$constraints"
+          # A wheel carries no [tool.uv.sources], so Linux selects the CPU build of torch here.
           uv tool install --python 3.12 --torch-backend cpu --constraints "$constraints" "$wheel"
           "$(uv tool dir --bin)/filo" protocol validate
           "$(uv tool dir --bin)/filo" doctor
@@ -88,8 +89,9 @@ jobs:
         run: |
           wheel="$(find dist -name '*.whl' -print -quit)"
           constraints="$RUNNER_TEMP/filo-constraints.txt"
-          uv export --frozen --no-dev --no-emit-project --no-hashes --output-file "$constraints"
-          uv tool install --python 3.12 --torch-backend cpu --constraints "$constraints" "$wheel"
+          uv export --frozen --no-dev --no-emit-project --no-hashes |
+            grep -v "^torch==.*sys_platform != 'linux'" >"$constraints"
+          uv tool install --python 3.12 --constraints "$constraints" "$wheel"
           filo="$(uv tool dir --bin)/filo"
           if [ -f "$filo.exe" ]; then filo="$filo.exe"; fi
           "$filo" protocol validate
