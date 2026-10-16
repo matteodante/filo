@@ -174,3 +174,12 @@ These are deterministic and computed over every assistant reply:
 - 2026-10-16, before any live run: the ledger's cache-read price for `claude-sonnet-5-5` is raised
   from $0.10 to $0.20 per million tokens to match the current list price. This can only overstate
   spend. No design change.
+- 2026-10-16, after the pilot on tuning persona MP01 and before any test-split run: the
+  `no_false_memory` judge now receives, as cached shared context, the persona's ground-truth facts,
+  the dated timeline and every message the person sent. Without it the judge marked true memories
+  that `reference.expected` happened to omit as invented (6 of 20 non-ephemeral pilot answers
+  flipped on re-judging). A no-reply placeholder is never a false memory. The `correct` criterion
+  is unchanged. Tuned on the tuning split only, as this registration allows.
+- 2026-10-16, same point: user turns are generated for tuning personas MP01–MP06 and all test
+  personas only. MP07 and MP08 are not generated, because generation cost about twice the estimate
+  and only one tuning persona is needed for the pilot.

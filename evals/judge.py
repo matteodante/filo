@@ -50,9 +50,18 @@ def blind(text: str) -> str:
     return _IDENTIFIERS.sub("[redacted]", text)
 
 
-def judge_criterion(model: Model, criterion: str, material: dict[str, object]) -> Judgment:
-    """One judge call for one binary criterion."""
-    agent = Agent(model, output_type=Judgment, instructions=BINARY_INSTRUCTIONS, retries=2)
+def judge_criterion(
+    model: Model, criterion: str, material: dict[str, object], context: str | None = None
+) -> Judgment:
+    """One judge call for one binary criterion.
+
+    A shared context goes into the cached instructions, so repeated calls about one conversation
+    history pay for it once.
+    """
+    instructions = BINARY_INSTRUCTIONS
+    if context is not None:
+        instructions += "\n\nShared context for every item you judge:\n" + blind(context)
+    agent = Agent(model, output_type=Judgment, instructions=instructions, retries=2)
     prompt = blind(
         json.dumps({"criterion": criterion, "material": material}, ensure_ascii=False, indent=1)
     )

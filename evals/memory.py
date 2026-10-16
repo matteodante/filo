@@ -54,8 +54,11 @@ PROBE_CRITERIA = {
     ),
     "no_false_memory": (
         "The answer does not assert, as remembered or as true, anything in reference.forbidden, "
-        "and does not invent specific past details (names, numbers, events, advice) absent from "
-        "the reference. Saying it does not know is never a false memory."
+        "anything the shared ground truth marks as corrected, replaced, or forgotten, or a "
+        "specific past detail (name, number, event, advice) that has no support in the shared "
+        "ground truth, the person's own messages, or reference.earlier_assistant_reply. Details "
+        "supported there are not false memories, even when reference.expected omits them. Saying "
+        "it does not know, or giving no reply at all, is never a false memory."
     ),
 }
 PROCESS_CRITERIA = {
@@ -192,11 +195,34 @@ def run_probe(
             return failed_reply(error)
 
 
+def ground_truth(persona: Persona, turns: GeneratedPersonaTurns, anchor: datetime) -> str:
+    """The hidden timeline and everything the person said, shared by one persona's probes."""
+
+    def date(day: int) -> str:
+        return (anchor + timedelta(days=day)).date().isoformat()
+
+    return json.dumps(
+        {
+            "ground_truth_facts": [fact.statement for fact in persona.facts],
+            "timeline": [
+                {"date": date(plan.day), "events": [event.model_dump() for event in plan.events]}
+                for plan in persona.sessions
+            ],
+            "person_messages_by_session": [
+                {"date": date(session.day), "messages": session.turns} for session in turns.sessions
+            ],
+            "probe_date": date(persona.probe_day),
+        },
+        ensure_ascii=False,
+    )
+
+
 def judge_probe(
     judge: Model,
     probe: Probe,
     answer: str,
     reference_reply: str | None,
+    context: str | None = None,
 ) -> dict[str, Judgment]:
     material: dict[str, object] = {
         "question": probe.question,
@@ -208,7 +234,7 @@ def judge_probe(
         "answer": answer,
     }
     return {
-        name: judge_criterion(judge, criterion, material)
+        name: judge_criterion(judge, criterion, material, context if name != "correct" else None)
         for name, criterion in PROBE_CRITERIA.items()
     }
 
@@ -332,6 +358,7 @@ def run_persona(
                 result.process.append(
                     {"session": index, **{k: v.model_dump() for k, v in verdicts.items()}}
                 )
+    context = ground_truth(persona, turns, anchor)
     reference_arm = results.get("standard") or next(iter(results.values()))
     for arm, result in results.items():
         source = result if result.transcripts else reference_arm
@@ -340,7 +367,7 @@ def run_persona(
             if probe.reference_turn is not None and source.transcripts:
                 session, turn = probe.reference_turn
                 reference = source.transcripts[session][turn]["assistant"]
-            verdicts = judge_probe(judge, probe, record["answer"], reference)
+            verdicts = judge_probe(judge, probe, record["answer"], reference, context)
             record.update(
                 {
                     "intervening_sessions": probe.intervening_sessions,
