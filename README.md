@@ -171,6 +171,12 @@ server is not on `http://localhost:8080/v1`. That path carries no support claim,
 PydanticAI providers stay technical escape hatches. Telegram checks private-chat type and numeric
 allowlist and keeps configuration secrets out of process arguments.
 
+Between sessions, Filo remembers an experiment you agreed to try (what, when, and what you
+expected) and asks how it went at the start of the next session. `/recap [weeks]` lists recurring
+themes, what you tried, and what changed, from your records only. `/wellbeing` is an optional
+WHO-5 self-check: it is offered once, and reminders every two weeks come only if you turn them on.
+It shows your scores and their trend and is never a diagnosis.
+
 When a reply fails, Filo says why and what to do: a usage limit with its reset time, a ChatGPT login
 to renew (`filo auth login`), a conversation too long for the model (`/end`), or a temporary
 problem. `/retry` sends the failed message again. `filo doctor` shows the login, the Telegram
@@ -181,12 +187,14 @@ in your locale. It is static text with no model call, so it works when the provi
 is not archived. The same text appears at the consent prompt, and in Telegram `/crisis` works
 before consent.
 
-## Clean-break storage
+## Storage upgrades
 
-This revision intentionally has no data migration or runtime compatibility layer. An existing store
-from an older schema is rejected without modification. Start with a new data directory, or export
-and separately retain the old installation before deleting its local store. The application never
-creates a plaintext migration backup.
+Filo started its own store as a clean break from Therapist, whose data directory it never reads.
+From there on, a newer Filo upgrades an older Filo store in place when it opens it, in one
+transaction: an upgrade that fails its checks or is interrupted is rolled back and leaves the store
+unchanged. A Filo process started before the upgrade, such as the Telegram listener, stops and asks
+to be restarted. A store written by a newer Filo is
+rejected without modification.
 
 ## Development
 

@@ -225,6 +225,20 @@ Parallel PRs then touch different documents instead of one file.
 *Check:* migration tests on generated v3 stores, including interrupted-migration recovery;
 encryption audit, no plaintext.
 
+*Outcome:* the framework is in place with no steps yet, since `filo-1` is unreleased. Tests migrate
+a `filo-1` store to a test-only `filo-2`, covering a failing step, a migrated store that fails
+verification, a process killed mid-migration, a concurrent writer, a second opener, a process on
+the older release opening mid-migration, and one started before the upgrade.
+
+*Deviation:* no recovery copy. Two review rounds found that a first design, which restored a copy
+over a store failing verification after commit, could copy an empty database over a live store when
+two processes raced. With verification moved before commit, the whole migration is one
+transaction, and SQLite's rollback journal already restores the store when a step fails or the
+process dies, so the copy was never used and only doubled the disk an upgrade needs. Plain
+connections now enforce foreign keys, which the old autocommit setting had silently disabled, and
+every connection checks `user_version` so a process started before an upgrade stops writing. Plain connections now enforce foreign keys, which the old autocommit setting
+had silently disabled.
+
 **W0.4 Telegram turn idempotency and delivery.**
 - Commit the turn together with an outbox (reply, notices, tool trace, change summary taken from the
   staged actions) in one transaction keyed by `update_id`. Advance the offset after commit, and let
@@ -476,6 +490,31 @@ recall does not fall.
   starts from the Filo store.
 - **W4.2 Release v0.4.0.** Update `RELEASING.md` so the go/no-go uses the v2 suites and their
   intervals, and record the evidence. The release runbook keeps its manual gates.
+
+### Wave 5 — help between sessions (added 2026-10-16 by the maintainer)
+
+What helps the person using Filo between conversations, by trusting the model with data rather than
+adding rules. Every item uses records Filo already keeps and is read-only for the conversation
+history.
+
+- **W5.1 Experiments with follow-up.** An agreed experiment keeps, on its existing
+  `InterventionRecord`, what it is, when the person means to try it (`planned_for`), and what they
+  expect (`prediction`), in their own words. On the first turn of the next session the case-data
+  envelope lists agreed experiments with no reported outcome in `follow_up_due`, and one sentence of
+  the envelope preamble asks the model to ask how each went and adapt. The root protocol text stays
+  with W3.3.
+- **W5.2 Recap on request.** `/recap [weeks]` in the CLI, TUI, and Telegram, `filo memory recap`,
+  and `retrieve_case_context(recap_weeks=...)` for a natural-language ask. It lists recurring themes,
+  what was tried and how it went, new reports, reviewed hypotheses, corrections, and wellbeing
+  checks, each with its record ID, from stored records only.
+- **W5.3 Optional wellbeing check (WHO-5).** `/wellbeing` shows the five WHO-5 statements in the
+  official English or Italian wording and records five answers. It is offered unprompted once, at
+  `/end`, and then at most every two weeks only if the person turned reminders on. The score is shown
+  as a number and a trend, without clinical cutoffs or labels. Checks are encrypted, exported, removed
+  by `delete-data`, `filo memory forget <id>`, and the raw-message retention limit, and are not kept
+  in transcript-only mode.
+
+*Check:* offline tests for each item; the live Codex smoke stays with the maintainer.
 
 ### Currency audit (2026-10-16)
 
