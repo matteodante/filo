@@ -189,10 +189,16 @@ Parallel PRs then touch different documents instead of one file.
 
 **W0.2b Embeddings without torch (added 2026-10-16 by the maintainer).**
 - torch is installed only to run the local embedding model (`Qwen/Qwen3-Embedding-0.6B` through
-  sentence-transformers). Run the same model through a lighter runtime instead: ONNX Runtime with an
-  exported or published ONNX graph, or a GGUF build through llama.cpp bindings, pinned by revision and
-  verified like today's model. Keep the PydanticAI `Embedder` interface, the on-device guarantee,
-  the setup download-and-verify flow and fail-closed behavior.
+  sentence-transformers). Run the same model on ONNX Runtime with the Hugging Face `tokenizers`
+  library instead: a published ONNX export of the model (for example Qdrant's), pinned by revision and
+  verified like today's model, with last-non-padding-token pooling, L2 normalization and the query
+  instruction prefix reproduced exactly (these live outside the ONNX graph). Wrap it as a PydanticAI
+  `EmbeddingModel` so the `Embedder` interface, the on-device guarantee, the setup download-and-verify
+  flow and fail-closed behavior stay unchanged.
+- Rejected alternatives, checked 2026-10-16: the sentence-transformers ONNX/OpenVINO backends are
+  faster but still import torch; GGUF through llama.cpp needs native builds and was reported slower
+  than ONNX on CPU for embedding models; an `ollama:` embedder (already supported) needs a separate
+  application. An int8 quantized graph (onnxruntime ≥ 1.23) is a measured option, not the default.
 - Adopt it only if retrieval is equivalent: on the multilingual retrieval eval and the W0.6 retrieval
   benchmark, recall@k is not lower, and cosine similarity to the current embeddings is high enough
   that the stored semantic index can be rebuilt without changing results; otherwise keep torch (CPU).
