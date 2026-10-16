@@ -11,7 +11,7 @@ import sqlite3
 import threading
 import unicodedata
 from collections import OrderedDict
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Generator, Iterable, Iterator
 from contextlib import contextmanager, nullcontext, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -3089,7 +3089,7 @@ class MemoryStore:
         self._local.transaction = database
 
     @contextmanager
-    def transaction(self) -> Iterator[None]:
+    def transaction(self) -> Generator[None]:
         with self._ephemeral_lock if self._ephemeral else nullcontext():
             yield from self._transaction_scope()
 
@@ -3135,7 +3135,7 @@ class MemoryStore:
             database.close()
 
     @contextmanager
-    def _connect(self) -> Iterator[sqlite3.Connection]:
+    def _connect(self) -> Generator[sqlite3.Connection]:
         with self._ephemeral_lock if self._ephemeral else nullcontext():
             yield from self._connection_scope()
 

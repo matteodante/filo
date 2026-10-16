@@ -22,8 +22,23 @@ $TemporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) (
 New-Item -ItemType Directory -Path $TemporaryDirectory | Out-Null
 
 try {
-    $UvCommand = Get-Command uv -CommandType Application -ErrorAction SilentlyContinue
-    if ($null -eq $UvCommand) {
+    # The install needs uv features newer than some packaged uv releases, so only the pinned
+    # version is used. A uv on PATH at another version is left untouched, and the verified
+    # download runs from the temporary directory for this installation only.
+    $Uv = $null
+    $UvCommand = Get-Command uv -CommandType Application -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($null -ne $UvCommand) {
+        try {
+            $UvFoundVersion = (& $UvCommand.Source --version | Out-String).Trim()
+        } catch {
+            $UvFoundVersion = ""
+        }
+        if ($UvFoundVersion -match "^uv $([Regex]::Escape($UvVersion))(\s|$)") {
+            $Uv = $UvCommand.Source
+        }
+    }
+    if ($null -eq $Uv) {
         Write-Host "Installing uv $UvVersion..."
 
         $Architecture = if ($env:PROCESSOR_ARCHITEW6432) {
@@ -69,7 +84,11 @@ try {
 
         $UvExtractDirectory = Join-Path $TemporaryDirectory "uv"
         Expand-Archive -LiteralPath $UvArchive -DestinationPath $UvExtractDirectory
-        $UvInstallDirectory = Join-Path $HOME ".local\bin"
+        $UvInstallDirectory = if ($null -eq $UvCommand) {
+            Join-Path $HOME ".local\bin"
+        } else {
+            Join-Path $TemporaryDirectory "uv-bin"
+        }
         New-Item -ItemType Directory -Path $UvInstallDirectory -Force | Out-Null
         foreach ($UvBinary in @("uv.exe", "uvx.exe", "uvw.exe")) {
             $UvSource = Join-Path $UvExtractDirectory $UvBinary
@@ -80,12 +99,10 @@ try {
         }
         Copy-Item -LiteralPath $UvLicense -Destination $UvInstallDirectory -Force
 
-        $Uv = Join-Path $HOME ".local\bin\uv.exe"
+        $Uv = Join-Path $UvInstallDirectory "uv.exe"
         if (-not (Test-Path -LiteralPath $Uv -PathType Leaf)) {
             throw "uv was installed but could not be found at $Uv."
         }
-    } else {
-        $Uv = $UvCommand.Source
     }
 
     $Archive = Join-Path $TemporaryDirectory "filo.zip"
@@ -102,7 +119,18 @@ try {
     }
 
     Write-Host "Installing Filo..."
-    & $Uv tool install --force --python 3.12 $ProjectDirectory.FullName
+    # uv tool install does not read uv.lock, so the tested versions are passed as constraints.
+    # torch stays unpinned outside Linux, where the locked release has no wheel for older Macs.
+    $Constraints = Join-Path $TemporaryDirectory "filo-constraints.txt"
+    $LockedVersions = & $Uv export --project $ProjectDirectory.FullName --frozen --no-dev `
+        --no-emit-project --no-hashes --quiet
+    if ($LASTEXITCODE -ne 0) {
+        throw "uv could not read the Filo lockfile."
+    }
+    $LockedVersions |
+        Where-Object { $_ -notmatch "^torch==.*sys_platform != 'linux'" } |
+        Set-Content -LiteralPath $Constraints -Encoding ascii
+    & $Uv tool install --force --python 3.12 --constraints $Constraints $ProjectDirectory.FullName
     if ($LASTEXITCODE -ne 0) {
         throw "uv could not install Filo."
     }

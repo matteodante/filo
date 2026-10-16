@@ -187,6 +187,26 @@ Parallel PRs then touch different documents instead of one file.
 - the full offline suite on the new lock;
 - live Codex smoke on the maintainer's Mac.
 
+**W0.2b Embeddings without torch (added 2026-10-16 by the maintainer).**
+- torch is installed only to run the local embedding model (`Qwen/Qwen3-Embedding-0.6B` through
+  sentence-transformers). Run the same model on ONNX Runtime with the Hugging Face `tokenizers`
+  library instead: a published ONNX export of the model (for example Qdrant's), pinned by revision and
+  verified like today's model, with last-non-padding-token pooling, L2 normalization and the query
+  instruction prefix reproduced exactly (these live outside the ONNX graph). Wrap it as a PydanticAI
+  `EmbeddingModel` so the `Embedder` interface, the on-device guarantee, the setup download-and-verify
+  flow and fail-closed behavior stay unchanged.
+- Rejected alternatives, checked 2026-10-16: the sentence-transformers ONNX/OpenVINO backends are
+  faster but still import torch; GGUF through llama.cpp needs native builds and was reported slower
+  than ONNX on CPU for embedding models; an `ollama:` embedder (already supported) needs a separate
+  application. An int8 quantized graph (onnxruntime ≥ 1.23) is a measured option, not the default.
+- Adopt it only if retrieval is equivalent: on the multilingual retrieval eval and the W0.6 retrieval
+  benchmark, recall@k is not lower, and cosine similarity to the current embeddings is high enough
+  that the stored semantic index can be rebuilt without changing results; otherwise keep torch (CPU).
+- Removing torch also speeds up the evaluation harness, which today spends most of its CPU on
+  embeddings.
+
+*Check:* install size and time, embedding latency per message, recall@k against the torch baseline.
+
 **W0.3 Forward schema migrations.**
 - The rename to Filo is the last clean break. From the Filo store onward, use ordered, tested
   migrations, so the maintainer's memory survives every later change.
@@ -454,6 +474,31 @@ recall does not fall.
   starts from the Filo store.
 - **W4.2 Release v0.4.0.** Update `RELEASING.md` so the go/no-go uses the v2 suites and their
   intervals, and record the evidence. The release runbook keeps its manual gates.
+
+### Currency audit (2026-10-16)
+
+The maintainer asked that every approach be checked against current practice. An audit of primary
+sources on 2026-10-16 adds or confirms the following; each stays measurement-gated where noted.
+
+- **W0.2:** lock-constrained installs with CPU torch and PydanticAI 2.57 (adopt; PR #55).
+- **W0.5:** replace the custom Codex model with PydanticAI's `openai-codex` provider and model, backed
+  by a credential source on the encrypted store plus Filo's own inter-process lock; keep Filo's
+  device-code login, which the built-in PKCE flow does not provide.
+- **W2.1:** fuse lexical (in-process BM25) and dense rankings with reciprocal-rank fusion instead of a
+  fixed similarity floor. Keep FTS5 and sqlite-vec out while encryption is per payload, because their
+  indexes store tokens and vectors in plaintext. A Qwen3 reranker only if W0.6 shows a gain within the
+  latency budget.
+- **W2.2/W2.3:** two time axes on claims (`observed_at`/`valid_from` plus a superseded-at timestamp, as
+  Zep/Graphiti do) and, in the extractor, a comparison against the most similar active claims that
+  chooses add, update or no-op (as Mem0 does), always through the existing evidence gates.
+- **W1.3:** an external check against a clinician-validated safety benchmark (VERA-MH style dynamic
+  personas and rubric). Report Rogan–Gladen-corrected rates only when judge TPR+TNR−1 is clearly above
+  zero; otherwise report raw rates.
+- **W3.4:** a periodic in-chat reminder that Filo is an AI during long sessions, in line with 2026
+  companion-chatbot laws (New York, California SB 243) and the EU AI Act Article 50 duty.
+- **No change:** PydanticAI stays; Fernet per payload with a 0600 key file stays (SQLCipher would need
+  a full migration and the keychain is unreliable for headless Linux and ad-hoc signed interpreters);
+  no graph database. Sources are listed in the audit report linked from PR #57.
 
 ## 5. Preregistered hypotheses for the memory study
 
