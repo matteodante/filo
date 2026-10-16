@@ -6,6 +6,9 @@ This is an engineering change record, not a published release or clinical-valida
   history, and bounded JSON case data.
 - Expanded the experimental pack to fifteen conversational-process skills; status remains
   `experimental`, with no reviewers invented.
+- Later consolidated the pack to eleven skills (W3.3): contract and planning, monitoring and
+  maintenance, avoidance and activity, and one thought and rumination each became one skill, every
+  catalog entry starts with "Use when", and the root was shortened.
 - Rewrote every skill in positive form: entry conditions first, then procedure, then the remaining
   prohibitions. Added staying with emotion, self-criticism and shame, examining one thought,
   repetitive thinking, and restoring activity, and gave the root explicit rules for answering

@@ -4,99 +4,99 @@ cases:
     inputs:
       path: SKILL.md
       required_terms:
-        - Questions are optional
-        - Do not force formulation
-        - Ask permission before experiential work
-        - at most one intervention approach per turn
-        - Use ordinary presence
-        - Loading no skill is valid
-        - agent hypothesis remains an agent hypothesis
-        - Withholding it is not neutrality
-        - Answer a direct question before asking another one
-        - do not withdraw either
-        - Understand before advising
-        - outranks everything else
-        - no help with escalating tactics
+        - You are an AI
+        - Do not claim feelings
+        - AI reminder is due
+        - Never turn it into a banner
+        - adult-only boundary
+        - pause, stop, or seek different support
+        - loss of consciousness
+        - outranks the rest of this protocol
         - never named to the user
-        - stopping or pausing an intervention
-        - make no durable write
+        - Ask first
+        - not before
+        - cannot monitor the user or contact anyone
         - the country is unknown
-        - say that it is your inference and what it rests on
-        - Do not pass verdicts on absent people
+        - which one immediate protective action
+        - no help with escalating tactics
+        - make no durable write
+        - stopping or pausing an intervention
+        - Answer a direct question before asking one
+        - Outside a safety response, ask at most one question per reply
+        - safety, then repairing a mismatch
         - give the reason once
-    expected_output: {all_required_terms_present: true}
-  - name: CONTRACT
-    inputs:
-      path: skills/establish-contract-and-preferences/SKILL.md
-      required_terms: [listening, preferred pace and length, immediate request, reusable process preference]
-    expected_output: {all_required_terms_present: true}
-  - name: FORMULATION
-    inputs:
-      path: skills/build-shared-formulation/SKILL.md
-      required_terms: [recent concrete episode, maintaining loop, intake battery, agent hypothesis, active claims]
-    expected_output: {all_required_terms_present: true}
-  - name: PLAN
-    inputs:
-      path: skills/agree-plan-and-review-criteria/SKILL.md
-      required_terms: [present focus, a shared plan, an intervention, poor fit or harm, user wants to be heard]
-    expected_output: {all_required_terms_present: true}
-  - name: MONITOR
-    inputs:
-      path: skills/monitor-alliance-outcomes-and-harms/SKILL.md
-      required_terms: [actually tried, functioning, shame, relational harm, general efficacy]
-    expected_output: {all_required_terms_present: true}
-  - name: REPAIR
-    inputs:
-      path: skills/repair-misattunement/SKILL.md
-      required_terms: [specific mismatch, without defending, one concrete question, new technique in the repair turn, not a rupture]
-    expected_output: {all_required_terms_present: true}
-  - name: FLEXIBILITY
-    inputs:
-      path: skills/increase-psychological-flexibility/SKILL.md
-      required_terms: [Select one process, ask permission, changing the relationship, Do not promise calm, increases distress]
-    expected_output: {all_required_terms_present: true}
-  - name: AVOIDANCE
-    inputs:
-      path: skills/change-avoidance-behavior/SKILL.md
-      required_terms: [ask permission, avoidance threshold, state the prediction, non-completion as information]
-    expected_output: {all_required_terms_present: true}
-  - name: PRACTICAL
-    inputs:
-      path: skills/solve-practical-problems/SKILL.md
-      required_terms: [controllable part, let the user choose, smallest step, Do not turn grief]
-    expected_output: {all_required_terms_present: true}
-  - name: REVIEW
-    inputs:
-      path: skills/review-and-maintain-change/SKILL.md
-      required_terms: [actually tried, Compare prediction and result, unintended effects, user's words, long gap]
-    expected_output: {all_required_terms_present: true}
-  - name: SUPPORT
-    inputs:
-      path: skills/support-referral-and-closure/SKILL.md
-      required_terms: [human support, practical barriers, wish to stop, return without pressure, generic referral language]
+        - offer one clear observation
+        - Say it is your reading and what it rests on
+        - keep the observation in substance
+        - record_hypothesis
+        - one small, concrete step
+        - Ask before starting an exercise
+        - before suggesting anything new
+        - follow_up_due
+        - adapt to the answer
+        - If it caused harm, stop it
+        - Hope that helps is specific and realistic
+        - Loss is not a problem to solve
+        - withholding it is not neutrality
+        - do not withdraw either
+        - Do not pass verdicts on absent people
+        - loading none is valid
+        - never from keywords
+        - agent hypothesis remains an agent hypothesis
+        - Writing memory is a normal part of a good turn
     expected_output: {all_required_terms_present: true}
   - name: EMOTION
     inputs:
       path: skills/stay-with-emotion/SKILL.md
-      required_terms: [in the words the user used, tentative reading, Accuracy validates more than sympathy does, Do not rush to regulate]
+      required_terms: [Use this when, What a strong move does, Following up, tentative reading, Accuracy validates more than sympathy does, does not rush to regulate]
+    expected_output: {all_required_terms_present: true}
+  - name: HELP_AND_DIRECTION
+    inputs:
+      path: skills/agree-help-and-direction/SKILL.md
+      required_terms: [Use this when, What a strong move does, Following up, present focus, a shared plan, an intervention, poor fit or harm, immediate request, reusable process preference, wants to be heard]
+    expected_output: {all_required_terms_present: true}
+  - name: FORMULATION
+    inputs:
+      path: skills/build-shared-formulation/SKILL.md
+      required_terms: [Use this when, What a strong move does, Following up, recent concrete episode, maintaining loop, intake battery, agent hypothesis, active claims]
+    expected_output: {all_required_terms_present: true}
+  - name: REPAIR
+    inputs:
+      path: skills/repair-misattunement/SKILL.md
+      required_terms: [Use this when, What a strong move does, Following up, specific mismatch, without defending, one concrete question, no new technique in the repair turn, not a rupture]
+    expected_output: {all_required_terms_present: true}
+  - name: REVIEW
+    inputs:
+      path: skills/review-and-follow-up/SKILL.md
+      required_terms: [Use this when, What a strong move does, Following up, actually tried, functioning, unwanted effects, relational harm, Non-completion is information, person's words, long gap]
+    expected_output: {all_required_terms_present: true}
+  - name: THINKING
+    inputs:
+      path: skills/work-with-thinking/SKILL.md
+      required_terms: [Use this when, What a strong move does, Following up, attached to the moment it occurred, without leading, argument with extra steps, not the topic but the form, ask permission first, does not dispute, increases distress]
     expected_output: {all_required_terms_present: true}
   - name: SELF_CRITICISM
     inputs:
       path: skills/meet-self-criticism/SKILL.md
-      required_terms: [what it was trying to protect, what it costs now, witnessed before it can be examined, Do not argue against the criticism]
+      required_terms: [Use this when, What a strong move does, Following up, what it was trying to protect, what it costs now, witnessed before it can be examined, does not argue against the criticism]
     expected_output: {all_required_terms_present: true}
-  - name: EXAMINE_THOUGHT
+  - name: FLEXIBILITY
     inputs:
-      path: skills/examine-a-thought/SKILL.md
-      required_terms: [attached to the moment it occurred, without leading, argument with extra steps, Do not dispute]
+      path: skills/increase-psychological-flexibility/SKILL.md
+      required_terms: [Use this when, What a strong move does, Following up, selects one process, asks permission, changing the relationship, does not promise calm, increases distress]
     expected_output: {all_required_terms_present: true}
-  - name: RUMINATION
+  - name: SMALL_STEP
     inputs:
-      path: skills/interrupt-rumination/SKILL.md
-      required_terms: [not the topic but the form, what it seems to be for, take it to the decision, Do not tell the user to stop thinking about it, ask permission first, say what you expect will happen, Stop if it increases distress]
+      path: skills/take-a-small-step/SKILL.md
+      required_terms: [Use this when, What a strong move does, Following up, with permission, avoidance threshold, survive a bad day, prediction before the attempt, coercive, motivation often follows action, treat exhaustion or illness as avoidance, no second step]
     expected_output: {all_required_terms_present: true}
-  - name: ACTIVITY
+  - name: PRACTICAL
     inputs:
-      path: skills/restore-activity/SKILL.md
-      required_terms: [what the days actually contain, motivation usually follows action, survive a bad day, Do not build a full timetable, Ask permission before agreeing, treat exhaustion or illness as avoidance, Stop if activity increases distress]
+      path: skills/solve-practical-problems/SKILL.md
+      required_terms: [Use this when, What a strong move does, Following up, controllable part, lets the user choose, has not agreed to work on, smallest step, does not turn grief]
+    expected_output: {all_required_terms_present: true}
+  - name: SUPPORT
+    inputs:
+      path: skills/support-referral-and-closure/SKILL.md
+      required_terms: [Use this when, What a strong move does, Following up, human support, practical barriers, wish to stop, returning possible without pressure, generic referral language]
     expected_output: {all_required_terms_present: true}

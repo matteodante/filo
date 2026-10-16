@@ -1,4 +1,4 @@
-# Basis and limits
+# Source basis
 
 - NICE NG222 relapse-prevention recommendations, published 2022 and reviewed 30 January 2026:
   https://www.nice.org.uk/guidance/ng222/chapter/Recommendations
@@ -10,3 +10,12 @@
 This skill is an original synthesis of outcome review, learned lessons, warning signs, continuation,
 and contingency planning. NICE guidance is depression-specific and WHO materials assume defined
 delivery contexts. It is not a relapse-prevention treatment claim. Source reuse restrictions apply.
+
+## Further basis
+
+This original abstraction uses NICE attention to functioning, response, benefit, and unwanted
+effects, plus WHO/UNICEF competency observation. It does not implement a symptom scale or establish
+clinical effectiveness.
+
+- https://www.nice.org.uk/guidance/ng222/chapter/Recommendations
+- https://www.who.int/publications/i/item/9789240121041

@@ -1,32 +1,31 @@
 ---
 name: meet-self-criticism
-description: Work with the critical voice and with shame without arguing against them.
+description: Use when an event becomes a verdict about who the person is, they are far harsher on themselves than on anyone else, shame is present, or reassurance has already bounced off.
 ---
 
 # Meet self-criticism
 
-Use this when the user turns an event into a verdict about who they are, when the account is far
-harsher about themselves than about anyone else in it, when shame is present — hiding, wanting to
-disappear, apologising for taking up space — or when reassurance has already bounced off.
+Use this when the person turns an event into a verdict about who they are, when the account is far
+harsher about themselves than about anyone else in it, when shame is present (hiding, wanting to
+vanish from view, apologising for taking up space), or when reassurance has already bounced off.
 
-Separate what happened from what it is taken to mean about them. Both stay on the table; only the
-second is the target.
+## What a strong move does
 
-Ask what the critical voice actually says, in its own words. Ask when it started and what it was
-trying to protect, without assuming either answer. Ask what it costs now. Where the user can
-tolerate the question, ask what they would say to someone they cared about in the same position,
-and what makes that harder to say to themselves.
+It separates what happened from what it is taken to mean about them; only the second is the target.
+Shame needs to be witnessed before it can be examined, so early disagreement with it can make the
+disclosure feel unheard. Then it asks what the critical voice actually says, what it was trying to
+protect, and what it costs now, without assuming the answers; where the person can tolerate it, what
+they would say to someone they cared about in the same position.
 
-Shame needs to be witnessed before it can be examined. Disagreeing with it early may make the
-disclosure feel unsafe or unheard.
+Warmth specific to what they described does more than praise, and being taken seriously does more
+than being contradicted. It does not argue against the criticism, list counter-evidence, insist on
+self-compassion they find intolerable, or treat the voice as an enemy to remove.
 
-Asking when the criticism started can open abuse, neglect, or loss. If it does, stay with what the
-user chose to say, do not ask for more of the history, and do not build an account of causes. Stop
-here and consider whether human support is what this needs.
+Asking where the criticism started can open abuse, neglect, or loss. If it does, stay with what the
+person chose to say, do not ask for more history or build an account of causes, and consider whether
+human support is what this needs.
 
-Warmth specific to what the user described does more than praise. Being taken seriously does more
-than being contradicted.
+## Following up
 
-Do not argue against the criticism, list evidence to the contrary, reassure, or insist on
-self-compassion the user finds intolerable. Do not treat the critical voice as an enemy to be
-removed, and do not require forgiveness of anyone, including themselves.
+Notice whether the verdict returns in new situations and whether it has softened; a recurring
+verdict is often worth one owned observation.
