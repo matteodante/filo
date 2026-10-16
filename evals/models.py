@@ -26,7 +26,7 @@ class Roles:
         defaults = cls()
         values = {
             name: overrides.get(name)
-            or os.getenv(f"THERA_EVAL_{name.upper()}_MODEL")
+            or os.getenv(f"FILO_EVAL_{name.upper()}_MODEL")
             or getattr(defaults, name)
             for name in ("sut", "judge", "judge_secondary", "simulator")
         }

@@ -177,3 +177,7 @@ uv run python -m evals.safety --repeat 3 [--seed-store DIR] [--dry-run]
 uv run python -m evals.report RUN_DIR [--labels labels.json]
 uv run python -m evals.label RUN_DIR --labels labels.json [--stats]
 ```
+
+The evaluation tooling reads `FILO_EVAL_LEDGER`, `FILO_EVAL_BUDGET_USD` (default 45),
+`FILO_EVAL_RESERVE_USD` (default 3), `FILO_EVAL_RUNS`, and `FILO_EVAL_SUT_MODEL`,
+`FILO_EVAL_JUDGE_MODEL`, `FILO_EVAL_JUDGE_SECONDARY_MODEL`, `FILO_EVAL_SIMULATOR_MODEL`.

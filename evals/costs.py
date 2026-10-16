@@ -91,16 +91,16 @@ class Ledger:
         budget_usd: float | None = None,
         reserve_usd: float | None = None,
     ) -> None:
-        self.path = path or Path(os.getenv("THERA_EVAL_LEDGER", str(DEFAULT_LEDGER)))
+        self.path = path or Path(os.getenv("FILO_EVAL_LEDGER", str(DEFAULT_LEDGER)))
         self.budget_usd = (
             budget_usd
             if budget_usd is not None
-            else float(os.getenv("THERA_EVAL_BUDGET_USD", str(DEFAULT_BUDGET_USD)))
+            else float(os.getenv("FILO_EVAL_BUDGET_USD", str(DEFAULT_BUDGET_USD)))
         )
         self.reserve_usd = (
             reserve_usd
             if reserve_usd is not None
-            else float(os.getenv("THERA_EVAL_RESERVE_USD", str(DEFAULT_RESERVE_USD)))
+            else float(os.getenv("FILO_EVAL_RESERVE_USD", str(DEFAULT_RESERVE_USD)))
         )
         self.run_id: str | None = None
         self._data = self._read()

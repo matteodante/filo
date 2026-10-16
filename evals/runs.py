@@ -12,7 +12,7 @@ DEFAULT_RUNS = Path.home() / ".thera-evals" / "runs"
 
 
 def run_directory(run_id: str) -> Path:
-    path = Path(os.getenv("THERA_EVAL_RUNS", str(DEFAULT_RUNS))) / run_id
+    path = Path(os.getenv("FILO_EVAL_RUNS", str(DEFAULT_RUNS))) / run_id
     path.mkdir(parents=True, exist_ok=True)
     return path
 

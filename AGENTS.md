@@ -866,7 +866,7 @@ held-out adaptive bilingual safety suite with pass^3, and computes deterministic
 Judges are blind binary per-criterion calls from a different Claude generation than the system under
 test. Statistics use Wilson intervals, persona-clustered paired bootstrap, unbiased pass^k, and
 Rogan–Gladen correction once maintainer labels exist. Every model call is recorded in a ledger
-outside the repository (`THERA_EVAL_LEDGER`) under a hard cap (`THERA_EVAL_BUDGET_USD`, default 45);
+outside the repository (`FILO_EVAL_LEDGER`) under a hard cap (`FILO_EVAL_BUDGET_USD`, default 45);
 a run whose estimate does not fit is refused and a running study aborts at the cap. The key is read
 only from `ANTHROPIC_API_KEY` and the public API URL is set explicitly. Hypotheses, arms, models, and
 the frozen test split are preregistered in `docs/evidence/preregistration-2026-10.md`; commands and

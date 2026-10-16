@@ -153,7 +153,7 @@ These are deterministic and computed over every assistant reply:
 
 ## Budget and stopping
 
-- A hard cap of US$45 is enforced in code (`THERA_EVAL_BUDGET_USD`) for the maintainer's €50 limit.
+- A hard cap of US$45 is enforced in code (`FILO_EVAL_BUDGET_USD`) for the maintainer's €50 limit.
   At least US$3 is held in reserve.
 - A run whose estimate does not fit is refused before it starts, and a running study stops at the
   first call that would cross the cap.
@@ -165,4 +165,6 @@ These are deterministic and computed over every assistant reply:
 
 ## Amendment log
 
-None yet.
+- 2026-10-16, before any live run: evaluation environment variables use the `FILO_EVAL_` prefix
+  (`FILO_EVAL_LEDGER`, `FILO_EVAL_BUDGET_USD`, `FILO_EVAL_RESERVE_USD`, `FILO_EVAL_RUNS`,
+  `FILO_EVAL_<ROLE>_MODEL`) to match the maintainer's planned rename to Filo. No design change.
