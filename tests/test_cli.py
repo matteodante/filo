@@ -42,7 +42,7 @@ from filo.cli import (
     main,
 )
 from filo.failures import SetupProblem
-from filo.memory import MemoryKind, MemoryStore, UserReport
+from filo.memory import MemoryKind, MemoryMode, MemoryStore, UserReport
 from filo.process_lock import exclusive_lock
 
 
@@ -495,7 +495,7 @@ def test_crisis_command_shows_static_resources_after_a_model_failure(
         calls.append(text)
         raise RuntimeError("provider unavailable")
 
-    session = SimpleNamespace(respond=respond, locale="it-IT")
+    session = SimpleNamespace(respond=respond, locale="it-IT", memory_mode=MemoryMode.STANDARD)
 
     assert _chat(session, store) == 0  # type: ignore[arg-type]
 
@@ -612,7 +612,11 @@ def test_plain_chat_retries_the_failed_message(
         return SimpleNamespace(text=f"Reply to {text}", notice=None)
 
     session = SimpleNamespace(
-        respond=respond, locale="en-US", extract_pending=lambda: 0, failed_text=None
+        respond=respond,
+        locale="en-US",
+        extract_pending=lambda: 0,
+        failed_text=None,
+        memory_mode=MemoryMode.STANDARD,
     )
     assert _chat(session, store) == 0  # type: ignore[arg-type]
 
@@ -1049,6 +1053,33 @@ def test_setup_stops_when_semantic_memory_cannot_be_prepared(
     assert main(["--data-dir", str(tmp_path), "setup"]) == 2
     assert not (tmp_path / "filo.db").exists()
     assert not (tmp_path / "memory.key").exists()
+
+
+def test_setup_does_not_pair_while_a_listener_polls_the_bot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
+    selections = iter(["test", "en-US", True])
+    monkeypatch.setattr("filo.cli._prepare_semantic_memory", lambda: True)
+    monkeypatch.setattr(
+        "filo.cli.questionary.select",
+        lambda *args, **kwargs: SimpleNamespace(ask=lambda: next(selections)),
+    )
+    monkeypatch.setattr(
+        "filo.cli.questionary.text",
+        lambda *args, **kwargs: SimpleNamespace(ask=lambda: kwargs["default"]),
+    )
+    monkeypatch.setattr(
+        "filo.cli.questionary.password",
+        lambda *args, **kwargs: SimpleNamespace(ask=lambda: "secret-bot-token"),
+    )
+    monkeypatch.setattr("filo.cli._pair_telegram_user", lambda _token: pytest.fail("must not poll"))
+    tmp_path.mkdir(exist_ok=True)
+
+    with exclusive_lock(tmp_path / "telegram-poller.lock"):
+        assert main(["--data-dir", str(tmp_path), "setup"]) == 2
+
+    assert "listener is running" in capsys.readouterr().out  # type: ignore[attr-defined]
+    assert MemoryStore(tmp_path).load_secret("telegram_bot_token") is None
 
 
 def test_setup_saves_encrypted_defaults_used_by_telegram(

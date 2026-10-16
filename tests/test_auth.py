@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import inspect
 import json
 import subprocess
 import sys
@@ -22,6 +23,15 @@ from filo.memory import MemoryStore
 from filo.process_lock import exclusive_lock
 
 CODEX_URL = "https://chatgpt.com/backend-api/codex/responses"
+LOGIN = "login required"
+
+
+async def _post(client: httpx2.AsyncClient, **kwargs: object) -> int | str:
+    """The response status, or LOGIN when the auth flow gave up without another request."""
+    try:
+        return (await client.post(CODEX_URL, **kwargs)).status_code  # type: ignore[arg-type]
+    except auth.LoginRequired:
+        return LOGIN
 
 
 def _codex_client(
@@ -240,21 +250,25 @@ def test_unauthorized_response_triggers_exactly_one_refresh_and_retry(tmp_path: 
             return httpx2.Response(401)
         return httpx2.Response(200, json={"ok": True})
 
-    async def call(rejecting: bool) -> int:
-        transport = httpx2.MockTransport(
-            (lambda _request: httpx2.Response(401)) if rejecting else handler
-        )
+    rejected: list[httpx2.Request] = []
+
+    def reject(request: httpx2.Request) -> httpx2.Response:
+        rejected.append(request)
+        return httpx2.Response(401)
+
+    async def call(rejecting: bool) -> int | str:
+        transport = httpx2.MockTransport(reject if rejecting else handler)
         tokens = auth.CodexTokenSource(store, refresh=refresh)
         async with _codex_client(tokens, transport) as client:
-            response = await client.post(CODEX_URL, json={"input": "x"})
-        return response.status_code
+            return await _post(client, json={"input": "x"})
 
     assert asyncio.run(call(rejecting=False)) == 200
     assert spent == ["refresh"]
     assert seen == [(f"Bearer {_token('stale')}", "stale"), (f"Bearer {_token('fresh')}", "fresh")]
 
-    assert asyncio.run(call(rejecting=True)) == 401
+    assert asyncio.run(call(rejecting=True)) == LOGIN
     assert spent == ["refresh"]  # the stored token came from a 401, so no further rotation
+    assert len(rejected) == 1  # and the rejected token is not sent a second time
 
 
 def test_codex_model_uses_the_pydantic_ai_codex_provider(tmp_path: Path) -> None:
@@ -378,13 +392,19 @@ def test_repeated_unauthorized_responses_refresh_only_once(tmp_path: Path) -> No
 
     tokens = auth.CodexTokenSource(store, refresh=refresh)
 
-    async def calls() -> list[int]:
-        transport = httpx2.MockTransport(lambda _request: httpx2.Response(401))
-        async with _codex_client(tokens, transport) as client:
-            return [(await client.post(CODEX_URL)).status_code for _ in range(3)]
+    sent: list[httpx2.Request] = []
 
-    assert asyncio.run(calls()) == [401, 401, 401]
+    def reject(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request)
+        return httpx2.Response(401)
+
+    async def calls() -> list[int | str]:
+        async with _codex_client(tokens, httpx2.MockTransport(reject)) as client:
+            return [await _post(client) for _ in range(3)]
+
+    assert asyncio.run(calls()) == [401, LOGIN, LOGIN]
     assert spent == ["refresh"]  # a refreshed token that is still rejected is not rotated again
+    assert len(sent) == 4  # one replay after the single refresh, then one request per call
 
 
 def test_logout_takes_effect_in_a_running_token_source(tmp_path: Path) -> None:
@@ -445,17 +465,17 @@ def test_a_second_process_does_not_refresh_a_token_issued_after_rejection(
         spent.append(token)
         return _credential("fresh", expires_at=10**10, refresh=f"refresh-{len(spent)}")
 
-    async def rejected_request(tokens: auth.CodexTokenSource) -> int:
+    async def rejected_request(tokens: auth.CodexTokenSource) -> int | str:
         transport = httpx2.MockTransport(lambda _request: httpx2.Response(401))
         async with _codex_client(tokens, transport) as client:
-            return (await client.post(CODEX_URL)).status_code
+            return await _post(client)
 
     listener = auth.CodexTokenSource(store, refresh=refresh)
     chat = auth.CodexTokenSource(store, refresh=refresh)  # separate state, as in another process
 
     assert asyncio.run(rejected_request(listener)) == 401
-    assert asyncio.run(rejected_request(chat)) == 401
-    assert asyncio.run(rejected_request(listener)) == 401
+    assert asyncio.run(rejected_request(chat)) == LOGIN
+    assert asyncio.run(rejected_request(listener)) == LOGIN
 
     assert spent == ["refresh"]
     assert auth.load_credential(store).issued_after_rejection  # type: ignore[union-attr]
@@ -532,6 +552,24 @@ def test_token_source_is_a_pydantic_ai_credential_source(tmp_path: Path) -> None
     assert loaded.account_id == "account"
     assert loaded.access_token == _token("account")
     assert _token("account") not in repr(loaded)
-    # Refreshes go through the token source, so the provider never saves on its own.
-    with pytest.raises(NotImplementedError):
-        asyncio.run(tokens.save(loaded))
+
+    # Only a provider whose hook was bypassed would save on its own; the login must survive it.
+    rotated = auth.OpenAICodexCredentials(
+        access_token=_token("account"), refresh_token="rotated", account_id="account"
+    )
+    asyncio.run(tokens.save(rotated))
+
+    stored = auth.load_credential(store)
+    assert stored is not None
+    assert stored.refresh_token == "rotated"
+    assert stored.expires_at > time.time()
+
+
+def test_the_codex_auth_flow_still_calls_the_overridden_hook() -> None:
+    # FiloCodexProvider keeps #49's guarantees by overriding this private hook. If a PydanticAI
+    # upgrade stops calling it, the built-in in-memory refresh would run instead: fail here.
+    from pydantic_ai.providers.openai_codex import OpenAICodexProvider, _OpenAICodexAuth
+
+    assert "_prepare_request_credentials" in inspect.getsource(_OpenAICodexAuth.async_auth_flow)
+    assert "_prepare_request_credentials" in vars(OpenAICodexProvider)
+    assert "_prepare_request_credentials" in vars(auth.FiloCodexProvider)

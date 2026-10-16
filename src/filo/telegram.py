@@ -260,6 +260,8 @@ class TelegramChannel:
             try:
                 self._listen()
             except _ConfigurationChanged:
+                # A failed message belongs to the configuration that received it.
+                self.session.discard_failed()
                 state = self.config_store.load_app_state()
                 token = self.config_store.load_secret(TELEGRAM_SECRET)
                 if not token or not state.telegram_allowed_user_id:
@@ -590,19 +592,18 @@ class TelegramChannel:
             # one, and keep the body out: it can echo conversation content.
             status = getattr(error, "status_code", None)
             status_note = f" (HTTP {status})" if status else ""
-            # The type alone cannot separate a refused request from a dropped
-            # connection. Bound the message: a provider can echo prompt content
-            # back in an error, and conversations must not reach the log.
-            summary = " ".join(str(error).split())[:200]
             cause = error.__cause__
             cause_note = f" <- {type(cause).__name__}" if cause is not None else ""
             failure = classify(error)
+            # Kind and classes only, never the message: a provider can echo conversation
+            # content in an error, and this log is plain text.
             print(
                 f"Model error ({failure.kind.value}) while handling Telegram message: "
-                f"{type(error).__name__}{status_note}{cause_note}: {summary}"
+                f"{type(error).__name__}{status_note}{cause_note}"
             )
-            with suppress(Exception):  # A busy store must not hide the notice.
-                self.config_store.record_failure(failure.kind.value, failure.error_class)
+            if not self._ephemeral:  # Ephemeral mode writes nothing about the conversation.
+                with suppress(Exception):  # A busy store must not hide the notice.
+                    self.config_store.record_failure(failure.kind.value, failure.error_class)
             # Any failure inside the turn transaction rolled the queued replies
             # back with it, so the caller queues this notice instead.
             outbox.clear()

@@ -454,6 +454,7 @@ def _conversation(args: argparse.Namespace, store: MemoryStore, pack: ProtocolPa
             context_window_tokens=context_window_tokens,
             memory_mode=memory_mode,
             memory_writing=args.memory_writing,
+            deletion_epoch=store.telegram_output_epoch,
         )
     except ValueError as error:
         print(f"Context configuration error: {error}")
@@ -617,7 +618,16 @@ def _setup(store: MemoryStore, args: argparse.Namespace) -> int:
             current_id = state.telegram_allowed_user_id
             if token or not current_id:
                 try:
-                    user_id, update_offset = _pair_telegram_user(token_payload.decode())
+                    # Pairing polls the bot too; a running listener would take its updates.
+                    with exclusive_lock(store.directory / TELEGRAM_POLLER_LOCK, wait=False):
+                        user_id, update_offset = _pair_telegram_user(token_payload.decode())
+                except LockHeld:
+                    print(
+                        "A Filo Telegram listener is running. Stop it first "
+                        "(`filo telegram-service uninstall`, or Ctrl-C in `filo telegram`), "
+                        "then run `filo setup` again."
+                    )
+                    return 2
                 except TelegramError as error:
                     print(f"Telegram setup error: {error}")
                     return 2
@@ -1280,7 +1290,7 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
             if live:
                 live.stop()
         if failure is not None:
-            print(_report_failure(failure, store))
+            print(_report_failure(failure, session, store))
             continue
         print(f"filo> {turn.text}")
         if turn.notice:
@@ -1288,11 +1298,13 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
         _extract_reports(session)
 
 
-def _report_failure(error: Exception, store: MemoryStore) -> str:
+def _report_failure(error: Exception, session: ChatSession, store: MemoryStore) -> str:
     """Record a failed turn's kind for `filo doctor` and return the notice to show."""
     failure = classify(error)
-    with suppress(Exception):  # A busy store must not hide the notice.
-        store.record_failure(failure.kind.value, failure.error_class)
+    # Ephemeral mode writes nothing about the conversation to disk.
+    if session.memory_mode is not MemoryMode.EPHEMERAL:
+        with suppress(Exception):  # A busy store must not hide the notice.
+            store.record_failure(failure.kind.value, failure.error_class)
     return failure.notice()
 
 
@@ -1319,7 +1331,7 @@ def _chat_tui(session: ChatSession, store: MemoryStore) -> int:
             store,
             output=output,
         ),
-        lambda error: _report_failure(error, store),
+        lambda error: _report_failure(error, session, store),
     )
     app.run()
     return 0

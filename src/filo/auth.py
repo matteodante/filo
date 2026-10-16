@@ -11,6 +11,7 @@ import threading
 import time
 import webbrowser
 from collections.abc import Awaitable, Callable
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -217,8 +218,21 @@ class CodexTokenSource(OpenAICodexCredentialSource):
         return _provider_credentials(await asyncio.to_thread(self.current))
 
     async def save(self, credentials: OpenAICodexCredentials) -> None:
-        # The provider refreshes only through `FiloCodexProvider`, which never calls this.
-        raise NotImplementedError("Refreshed tokens are saved by CodexTokenSource itself.")
+        # `FiloCodexProvider` refreshes through `current()` and never calls this. If an upgrade
+        # bypassed that hook, the provider's own refresh still persists the rotated tokens
+        # under the same lock instead of losing the login.
+        credential = CodexCredential(
+            access_token=credentials.access_token,
+            refresh_token=credentials.refresh_token,
+            expires_at=_expires_at(credentials.access_token),
+            account_id=credentials.account_id,
+        )
+
+        def persist() -> None:
+            with credential_lock(self._store):
+                save_credential(self._store, credential)
+
+        await asyncio.to_thread(persist)
 
 
 class FiloCodexProvider(OpenAICodexProvider):
@@ -243,9 +257,12 @@ class FiloCodexProvider(OpenAICodexProvider):
 
         async def replay() -> OpenAICodexCredentials:
             replacement = await asyncio.to_thread(self._tokens.after_rejection, credential)
-            # Without a replacement the request is replayed unchanged, so the 401 reaches the
-            # caller as an authentication error.
-            return _provider_credentials(replacement or credential)
+            if replacement is None:
+                # Replaying with the token that was just rejected would only cost another call.
+                raise LoginRequired(
+                    "ChatGPT rejected a refreshed token. Run `filo auth login` if this persists."
+                )
+            return _provider_credentials(replacement)
 
         return _provider_credentials(credential), replay
 
@@ -327,12 +344,30 @@ def _credential_from_token(token: dict[str, object]) -> CodexCredential:
     )
 
 
+def _jwt_claims(token: str) -> Any:
+    encoded = token.split(".")[1]
+    encoded += "=" * (-len(encoded) % 4)
+    return json.loads(base64.urlsafe_b64decode(encoded))
+
+
+def _expires_at(token: str) -> int:
+    """The token's unverified `exp` claim, or an hour from now when it has none."""
+    try:
+        expires = _jwt_claims(token)["exp"]
+    except (IndexError, KeyError, TypeError, ValueError):
+        expires = None
+    if (
+        isinstance(expires, int | float)
+        and not isinstance(expires, bool)
+        and math.isfinite(expires)
+    ):
+        return int(expires)
+    return int(time.time()) + 3600
+
+
 def _account_id(token: str) -> str:
     try:
-        encoded = token.split(".")[1]
-        encoded += "=" * (-len(encoded) % 4)
-        payload = json.loads(base64.urlsafe_b64decode(encoded))
-        account_id = payload[JWT_CLAIM]["chatgpt_account_id"]
+        account_id = _jwt_claims(token)[JWT_CLAIM]["chatgpt_account_id"]
     except (IndexError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         raise AuthError("The ChatGPT token does not contain an account ID.") from error
     if not isinstance(account_id, str) or not account_id:

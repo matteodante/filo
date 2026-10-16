@@ -587,13 +587,16 @@ model, `OpenAICodexModel`, which carries the Codex wire dialect (streaming, `sto
 fields the backend rejects). Its provider is `FiloCodexProvider`, a subclass of
 `OpenAICodexProvider` whose credential source is Filo's `CodexTokenSource` over the encrypted store:
 the subclass routes every request's credentials through that source instead of the built-in
-in-memory cache and lock-free refresh, which would lose the guarantees below. Filo keeps its own
+in-memory cache and lock-free refresh, which would lose the guarantees below. It overrides the
+private hook `_prepare_request_credentials`, so `pydantic-ai-slim` is capped below the next minor
+release and a test fails if the provider's auth flow stops calling the hook. Should the hook ever be
+bypassed, the source's `save()` still persists rotated tokens under `codex-auth.lock`. Filo keeps its own
 device-code login, which the built-in PKCE flow does not offer. The provider's auth flow attaches
 the current token to every request rather than a fixed API key, so the Telegram listener and the
 TUI keep working across token expiry: the encrypted store is read on every request, so a logout or a new
 login applies to running processes; the token is refreshed within 60 seconds of expiry and, after a
-401, refreshed once and the request replayed once; without a replacement the replay carries the
-same token, so the 401 reaches the caller as an authentication error. A token obtained because of a 401 is marked as
+401, refreshed once and the request replayed once; when no refresh is allowed, the request is not
+sent again and the turn fails with a login-required error. A token obtained because of a 401 is marked as
 such in the encrypted credential, so no process refreshes it again after another 401 and a 401
 unrelated to expiry cannot keep rotating the refresh token. Because the refresh token rotates on
 every use, refreshes, login, logout, and `delete-data` run under an
@@ -657,15 +660,22 @@ status, and the provider's error code, never from provider text, which can echo 
 content. The four kinds each get a notice that says what to do:
 - usage limit reached, with the reset time when the Codex backend reports `resets_at` or
   `resets_in_seconds`;
-- login needed (`filo auth login`), for a missing login, a rejected refresh grant, or a 401 or 403;
+- login needed (`filo auth login`), for a missing login, a rejected refresh grant, a 401, or a 403
+  whose body carries an authentication error code; any other 403 (a proxy challenge, a regional
+  block) is reported as the provider refusing the request;
 - context full (`/end`, then send again);
 - transient, for everything else, including a plain rate limit.
 
 A fifth kind, setup, carries a local fix such as `filo memory model install`. Every notice offers
-`/retry` and points to `/crisis`. A failed turn archives nothing; `ChatSession.failed_text` keeps
-its message in process memory only, never on disk, and `/retry` in the CLI, TUI, or Telegram sends
-it again as a fresh turn. The kind, the exception class, and the time of the last failure, never its
-content, are stored encrypted under their own state key for `filo doctor`.
+`/retry` and points to `/crisis`. `classify()` never raises, so a malformed error body cannot stop
+the listener or leave the TUI disabled. A failed turn archives nothing; `ChatSession.failed_text`
+keeps its message in process memory only, never on disk, and `/retry` in the CLI, TUI, or Telegram
+sends it again as a fresh turn. The message is dropped on `/end`, on a Telegram configuration
+reload, and after any local deletion: it is kept only while the persistent store's deletion counter
+(the Telegram output epoch) still matches, so a retry cannot re-archive deleted content. Outside
+`ephemeral` mode the kind, the exception class, and the time of the last failure, never its content,
+are stored encrypted under their own state key for `filo doctor`; the Telegram log records only the
+kind, the exception classes, and the HTTP status.
 
 `/quit` only leaves the process. It does not close the conversation session. A later message closes
 and consolidates the previous session if at least eight hours elapsed. `/end` closes it immediately.
@@ -818,6 +828,7 @@ Minimal setup:
    Only one poller may use a bot token at a time. `filo telegram` holds an exclusive
    `telegram-poller.lock` in the data directory for its lifetime, taken without waiting, so a
    second listener for the same data directory exits with a message naming the running one.
+   Setup's pairing step takes the same lock, so it refuses to pair while a listener runs.
 5. Run `filo doctor`, then enter the exact consent command shown in the private bot chat.
 
 `export` returns decrypted user-owned application state, formulation, memory items, sessions, and

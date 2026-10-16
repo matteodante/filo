@@ -47,11 +47,27 @@ class Failure:
 
 _USAGE_LIMIT_TYPES = {"usage_limit_reached", "usage_not_included"}
 _CONTEXT_CODES = {"context_length_exceeded", "context_window_exceeded"}
+_AUTH_CODES = {
+    "invalid_api_key",
+    "invalid_token",
+    "token_expired",
+    "token_revoked",
+    "unauthorized",
+    "authentication_error",
+}
+_TRANSIENT_MESSAGE = "I couldn't respond. Please try again shortly."
 
 
 def classify(error: BaseException, now: datetime | None = None) -> Failure:
-    now = now or datetime.now(UTC)
+    """Never raises: it runs inside the handlers that keep a listener or the TUI alive."""
     error_class = type(error).__name__
+    try:
+        return _classify(error, now or datetime.now(UTC), error_class)
+    except Exception:
+        return Failure(FailureKind.TRANSIENT, _TRANSIENT_MESSAGE, error_class)
+
+
+def _classify(error: BaseException, now: datetime, error_class: str) -> Failure:
     chain = _chain(error)
     if any(isinstance(item, SetupProblem) for item in chain):
         message = next(str(item) for item in chain if isinstance(item, SetupProblem))
@@ -70,7 +86,10 @@ def classify(error: BaseException, now: datetime | None = None) -> Failure:
         any(isinstance(item, LoginRequired) for item in chain)
         or any(type(item).__name__ == "CredentialsRefreshError" for item in chain)
         or any(isinstance(item, AuthError) and _status(item) in {400, 401} for item in chain)
-        or statuses & {401, 403}
+        or 401 in statuses
+        # A 403 is a login problem only when the provider says so; a proxy challenge or a
+        # regional block also answers 403, and logging in again would not help.
+        or (403 in statuses and codes & _AUTH_CODES)
     ):
         return Failure(
             FailureKind.LOGIN,
@@ -80,8 +99,13 @@ def classify(error: BaseException, now: datetime | None = None) -> Failure:
         )
     if 429 in statuses:
         message = "The model provider is rate limiting requests. Please try again in a minute."
+    elif 403 in statuses:
+        message = (
+            "The model provider refused the request. Please try again later; "
+            "if it keeps happening, check the provider's status."
+        )
     else:
-        message = "I couldn't respond. Please try again shortly."
+        message = _TRANSIENT_MESSAGE
     return Failure(FailureKind.TRANSIENT, message, error_class)
 
 
@@ -124,7 +148,10 @@ def _reset_at(detail: dict[str, Any], now: datetime) -> datetime | None:
             return None
     resets_in = detail.get("resets_in_seconds")
     if isinstance(resets_in, int | float) and not isinstance(resets_in, bool) and resets_in >= 0:
-        return now + timedelta(seconds=resets_in)
+        try:
+            return now + timedelta(seconds=resets_in)
+        except (OverflowError, ValueError):
+            return None
     return None
 
 
