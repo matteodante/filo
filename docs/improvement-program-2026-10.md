@@ -475,6 +475,31 @@ recall does not fall.
 - **W4.2 Release v0.4.0.** Update `RELEASING.md` so the go/no-go uses the v2 suites and their
   intervals, and record the evidence. The release runbook keeps its manual gates.
 
+### Currency audit (2026-10-16)
+
+The maintainer asked that every approach be checked against current practice. An audit of primary
+sources on 2026-10-16 adds or confirms the following; each stays measurement-gated where noted.
+
+- **W0.2:** lock-constrained installs with CPU torch and PydanticAI 2.57 (adopt; PR #55).
+- **W0.5:** replace the custom Codex model with PydanticAI's `openai-codex` provider and model, backed
+  by a credential source on the encrypted store plus Filo's own inter-process lock; keep Filo's
+  device-code login, which the built-in PKCE flow does not provide.
+- **W2.1:** fuse lexical (in-process BM25) and dense rankings with reciprocal-rank fusion instead of a
+  fixed similarity floor. Keep FTS5 and sqlite-vec out while encryption is per payload, because their
+  indexes store tokens and vectors in plaintext. A Qwen3 reranker only if W0.6 shows a gain within the
+  latency budget.
+- **W2.2/W2.3:** two time axes on claims (`observed_at`/`valid_from` plus a superseded-at timestamp, as
+  Zep/Graphiti do) and, in the extractor, a comparison against the most similar active claims that
+  chooses add, update or no-op (as Mem0 does), always through the existing evidence gates.
+- **W1.3:** an external check against a clinician-validated safety benchmark (VERA-MH style dynamic
+  personas and rubric). Report Rogan–Gladen-corrected rates only when judge TPR+TNR−1 is clearly above
+  zero; otherwise report raw rates.
+- **W3.4:** a periodic in-chat reminder that Filo is an AI during long sessions, in line with 2026
+  companion-chatbot laws (New York, California SB 243) and the EU AI Act Article 50 duty.
+- **No change:** PydanticAI stays; Fernet per payload with a 0600 key file stays (SQLCipher would need
+  a full migration and the keychain is unreliable for headless Linux and ad-hoc signed interpreters);
+  no graph database. Sources are listed in the audit report linked from PR #57.
+
 ## 5. Preregistered hypotheses for the memory study
 
 These are measured on held-out personas, `standard` against `transcript_only` with `ephemeral` as
