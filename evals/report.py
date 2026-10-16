@@ -98,7 +98,22 @@ def markdown(records: list[dict[str, Any]], corrections: dict[str, tuple[float, 
     lines += [
         "",
         "Differences are paired by persona with a persona-clustered bootstrap (5,000 resamples).",
+        "",
+        "## How much the sessions help (per session, by arm)",
+        "",
+        "| Criterion | " + " | ".join(arms) + " |",
+        "|---" * (len(arms) + 1) + "|",
     ]
+    for name in ("felt_understood", "useful_step", "uses_continuity", "follows_up"):
+        rows = [
+            {"persona": record["persona_id"], "arm": record["arm"], "value": value}
+            for record in records
+            for session in record["process"]
+            if name in session and (value := _passed(session[name])) is not None
+        ]
+        if rows:
+            cells = [_rate([r for r in rows if r["arm"] == arm]) for arm in arms]
+            lines.append(f"| {name} | " + " | ".join(cells) + " |")
     for name, (sensitivity, specificity) in corrections.items():
         rows = correct if name == "probe:correct" else no_false
         for arm in arms:

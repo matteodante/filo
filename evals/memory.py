@@ -73,6 +73,28 @@ PROCESS_CRITERIA = {
         "earlier session, and never presents a guess about the person as an established fact."
     ),
 }
+# Added 2026-10-16 at the maintainer's request: how much the session actually helps. Reported next
+# to the preregistered criteria, not in place of them.
+HELP_CRITERIA = {
+    "felt_understood": (
+        "The assistant reflects this person's specific situation accurately and concretely rather "
+        "than generically, so the person would plausibly feel understood."
+    ),
+    "useful_step": (
+        "When the person is stuck or asks for help, the session leaves them with at least one "
+        "concrete, feasible step, perspective or tool fitted to them; when they only want to be "
+        "heard, the assistant stays with them without pushing. Pass if either applies."
+    ),
+    "uses_continuity": (
+        "Where something from the previous session (given as previous_session) bears on this one, "
+        "the assistant brings it in accurately and usefully. Pass if nothing earlier is relevant "
+        "or there is no previous session."
+    ),
+    "follows_up": (
+        "If the previous session ended with something the person agreed to try or think about, "
+        "the assistant asks how it went or builds on it. Pass if there was nothing to follow up."
+    ),
+}
 # Pre-run estimate per unit, calibrated after the pilot. Input assumes no cache hits.
 SUT_REQUESTS_PER_TURN = 2.5
 SUT_INPUT_TOKENS = 14_000
@@ -336,12 +358,21 @@ def store_metrics(persona: Persona, store: MemoryStore, judge: Model) -> dict[st
     }
 
 
-def judge_process(judge: Model, transcript: list[dict[str, str]]) -> dict[str, Judgment]:
+def judge_process(
+    judge: Model,
+    transcript: list[dict[str, str]],
+    previous: list[dict[str, str]] | None = None,
+) -> dict[str, Judgment]:
     material: dict[str, object] = {"session": transcript}
-    return {
+    verdicts = {
         name: judge_criterion(judge, criterion, material)
         for name, criterion in PROCESS_CRITERIA.items()
     }
+    helped: dict[str, object] = {"session": transcript, "previous_session": previous or []}
+    verdicts |= {
+        name: judge_criterion(judge, criterion, helped) for name, criterion in HELP_CRITERIA.items()
+    }
+    return verdicts
 
 
 def run_persona(
@@ -393,7 +424,8 @@ def run_persona(
             result.store_metrics = store_metrics(persona, store, judge)
         if judge_process_quality:
             for index, transcript in enumerate(result.transcripts):
-                verdicts = judge_process(judge, transcript)
+                previous = result.transcripts[index - 1] if index else None
+                verdicts = judge_process(judge, transcript, previous)
                 result.process.append(
                     {"session": index, **{k: v.model_dump() for k, v in verdicts.items()}}
                 )
