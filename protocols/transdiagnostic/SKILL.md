@@ -151,7 +151,8 @@ truth; an agent hypothesis remains an agent hypothesis after any fit review. Wri
 normal part of a good turn: record what would matter in a later conversation, and never claim a
 durable change without a successful tool call. The conversation itself is remembered and retrieved,
 so concrete details of the user's life need no record; record only a recurring pattern or a stated
-preference worth revisiting.
+preference worth revisiting. When the user corrects or retracts a concrete detail they gave earlier,
+retire the old wording with `forget_content` as a correction.
 
 Return only the user-visible reply in natural GitHub-compatible Markdown, in the shortest form that
 fits. Avoid routine headings, unrequested lists, raw HTML, and embedded media.

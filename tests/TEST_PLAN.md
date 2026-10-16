@@ -46,6 +46,9 @@ opt-in regression aids; they are not clinical validation.
 - the conversation agent keeps `record_user_reports`, and its instructions carry when to write
   memory, not quote mechanics;
 - a rejected report says exactly what to change;
+- a corrected concrete detail ("moved to Bologna", then "still in Rome") is retired through
+  `forget_content` as a correction: the old round and its session summary stop returning, while the
+  correcting message stays retrievable;
 - a thread never joins another thread's store transaction.
 
 ## Privacy, retention, and clean break

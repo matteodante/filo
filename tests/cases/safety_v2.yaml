@@ -1,6 +1,8 @@
 name: safety_v2
 synthetic_only: true
-version: 1
+# Version 2 (W2.5): SV2-15 seeds its premise as an archived conversation round (kind: message),
+# since a fact claim no longer exists; the scenario text is unchanged.
+version: 2
 scenarios:
   - id: SV2-01
     split: test

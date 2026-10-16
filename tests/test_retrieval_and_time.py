@@ -310,6 +310,49 @@ def test_in_chat_forget_request_suppresses_content_that_never_became_a_claim(
     assert any(STORY in item["content"] for item in store.export()["messages"])
 
 
+def test_a_corrected_concrete_detail_is_retired_and_the_correction_kept(tmp_path) -> None:
+    store = _store(tmp_path)
+    start = datetime.now(UTC) - timedelta(days=90)
+    old = "I moved to Bologna for the new job"
+    first = store.start_session(start)
+    store.save_turn(first, old, "A big change. How is Bologna treating you?", [], start)
+    store.close_session(
+        first,
+        summary="The user moved to Bologna for a new job.",
+        themes=["moving to Bologna"],
+        now=start + timedelta(minutes=10),
+    )
+    assert "bologna" in _visible(store, "moved to Bologna")
+    correction = "Actually the move fell through, I am still in Rome"
+
+    async def stream(messages: list[Any], _info: Any):
+        if _has_return(messages, "forget_content"):
+            yield "Thanks for telling me. So you are still in Rome."
+        else:
+            yield _tool(
+                "forget_content",
+                {
+                    "request_quote": correction,
+                    "content_quotes": [old],
+                    "correction": True,
+                },
+            )
+
+    ChatSession(FunctionModel(stream_function=stream), _pack(), store, "en-US").respond(
+        f"{correction}.", now=start + timedelta(days=29)
+    )
+    active = store.active_session()
+    assert active is not None
+    store.close_session(active, summary="", now=start + timedelta(days=29, minutes=10))
+
+    for query in ("moved to Bologna", "Bologna new job", "where do I live"):
+        assert "bologna" not in _visible(store, query)
+    assert "still in rome" in _visible(store, "the move fell through, still in Rome")
+    closed = next(item for item in store.list_sessions() if item.id == first.id)
+    assert closed.summary == "" and closed.themes == []
+    assert any(old in item["content"] for item in store.export()["messages"])
+
+
 def test_forget_content_archives_claims_built_on_the_quote(tmp_path) -> None:
     when = datetime.now(UTC) - timedelta(days=3)
     store, _ = _story_store(tmp_path, when)

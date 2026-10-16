@@ -247,3 +247,13 @@ def test_plain_connections_enforce_foreign_keys(tmp_path) -> None:
     store = MemoryStore(tmp_path)
     with store._connect() as database:
         assert database.execute("PRAGMA foreign_keys").fetchone() == (1,)
+
+
+def test_reopening_a_development_store_drops_the_split_arm_table(tmp_path) -> None:
+    path = MemoryStore(tmp_path).database_path
+    with sqlite3.connect(path) as database:
+        database.execute("CREATE TABLE pending_extractions (message_id INTEGER PRIMARY KEY)")
+    store = MemoryStore(tmp_path)
+    with store._connect() as database:
+        tables = {row[0] for row in database.execute("SELECT name FROM sqlite_master")}
+    assert "pending_extractions" not in tables

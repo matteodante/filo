@@ -106,6 +106,8 @@ choices, and a derived semantic index.
 - Asking in the conversation to forget something you said, in any memory mode, stops it coming back
   through claims, past conversations, and session summaries, even if it never became a claim. The
   archive keeps it until you delete it locally.
+- Correcting a detail you gave earlier ("actually I'm still in Rome") retires the old wording the
+  same way, while your correction stays in memory.
 
 Retrieval combines lexical overlap, local multilingual embeddings, recency, focus, pending
 interventions, process preferences ranked by relevance, conflicts, relevant sessions, the parts of

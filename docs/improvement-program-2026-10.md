@@ -457,8 +457,11 @@ recall does not fall.
   interventions, support choices, forgetting, consolidation, `/recap` and wellbeing are unchanged.
 - The W2.3 `split` arm is removed: inline writing won its measurement, so `MemoryWriting`,
   `--memory-writing`, the post-turn extractor and the `pending_extractions` table go.
-- `filo-1` is unreleased, so the schema is amended directly. Extraction recall in the memory study
-  now counts only patterns and preferences (see `tests/TEST_PLAN.md`).
+- A concrete detail the user corrects or retracts is retired with `forget_content` as a correction:
+  the rounds and summaries carrying the old wording are suppressed, the correcting message stays.
+- `filo-1` is unreleased, so the schema is amended directly; a `filo-1` development store created
+  before W2.5 needs a fresh data directory. Extraction recall in the memory study now counts only
+  patterns and preferences (see `tests/TEST_PLAN.md`).
 
 ### Wave 3 — behavior pack v2 (sequential; protocol hashes change)
 

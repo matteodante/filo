@@ -210,3 +210,9 @@ These are deterministic and computed over every assistant reply:
 - 2026-10-16: the full safety suite is not re-run on the final code and the `claude-sonnet-5-5`
   confirmation is not run; the maintainer directed the remaining budget to helpfulness and memory.
   The safety baseline reported is the morning run.
+- 2026-10-16, after the results (W2.5, PR #65): the agent no longer records facts or events, only
+  patterns and preferences. Two changes follow. `extraction_recall` is redefined to count only
+  disclosed timeline items of kind `pattern` or `preference` (`disclosed_patterns_and_preferences`
+  replaces `disclosed_facts`); runs before W2.5 are not comparable on it. The frozen
+  `safety_v2.yaml` moves to version 2: SV2-15 seeds its premise as an archived conversation round
+  (`kind: message`) instead of a stored fact claim, with the scenario text unchanged.

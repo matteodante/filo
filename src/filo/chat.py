@@ -182,6 +182,8 @@ class TurnActions:
     support_choices: list[SupportChoiceAction] = field(default_factory=list)
     forget_quotes: list[str] = field(default_factory=list)
     forget_request_quote: str | None = None
+    # A correction keeps its own round retrievable; one plain forget request in the turn does not.
+    forget_keeps_request: bool = True
     called_tools: set[str] = field(default_factory=set)
     tool_call_counts: dict[str, int] = field(default_factory=dict)
     referenced_claim_ids: set[str] = field(default_factory=set)
@@ -575,15 +577,19 @@ class ChatSession:
             ctx: RunContext[TurnContext],
             request_quote: ShortText,
             content_quotes: Annotated[list[ShortText], Field(min_length=1, max_length=3)],
+            correction: bool = False,
         ) -> dict[str, int]:
-            """Forget earlier conversation content the user explicitly asks you to forget.
+            """Forget earlier conversation content the user asks you to forget, or has corrected.
 
-            Use only when the current message asks to forget, drop, or stop bringing up something
-            said before. request_quote is the exact current-message wording of that request.
-            Each content quote is exact wording, at least three words, from an earlier user
-            message (retrieve case context to find it). Every round repeating it is suppressed
-            from retrieval, claims built on it are archived, and summaries of sessions carrying
-            it are cleared. The archive is kept until the user deletes it locally.
+            Use when the current message asks to forget, drop, or stop bringing up something said
+            before, or corrects or retracts a concrete detail the user gave earlier (set
+            correction to true). request_quote is the exact current-message wording of the
+            request or correction. Each content quote is the earlier wording, exact and at least
+            three words, from an earlier user message (retrieve case context to find it). Every
+            round repeating it is suppressed from retrieval, claims built on it are archived, and
+            summaries of sessions carrying it are cleared. A forget request's own message is
+            suppressed too; a correction's stays retrievable. The archive is kept until the user
+            deletes it locally. Correct a recorded claim with correct_claim instead.
             """
             if not _quote_in_text(request_quote, ctx.deps.user_text):
                 raise ModelRetry("The forget request must be an exact current-message quote.")
@@ -607,6 +613,7 @@ class ChatSession:
                 raise ModelRetry("Forget at most three quotes in one turn.")
             ctx.deps.actions.forget_quotes = staged
             ctx.deps.actions.forget_request_quote = request_quote
+            ctx.deps.actions.forget_keeps_request &= correction
             _record_tool_call(ctx.deps.actions, "forget_content")
             return {"staged": len(staged)}
 
@@ -667,7 +674,12 @@ class ChatSession:
                 self._commit_actions(actions, evidence_id, text, now)
             if actions.forget_quotes and actions.forget_request_quote:
                 self.memory.forget_content(
-                    actions.forget_quotes, actions.forget_request_quote, evidence_id, text, now
+                    actions.forget_quotes,
+                    actions.forget_request_quote,
+                    evidence_id,
+                    text,
+                    now,
+                    keep_request_round=actions.forget_keeps_request,
                 )
             turn = ChatTurn(output.reply, notice, tool_trace, output)
             if on_commit is not None:

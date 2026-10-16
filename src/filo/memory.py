@@ -886,6 +886,8 @@ class MemoryStore:
             # Earlier filo-1 development stores indexed user messages as "message"; rounds
             # replaced them, and nothing else would ever delete those vectors.
             database.execute("DELETE FROM semantic_index WHERE entity_type = 'message'")
+            # The W2.3 split arm's markers; filo-1 development stores may still hold the table.
+            database.execute("DROP TABLE IF EXISTS pending_extractions")
 
     def _migrate(self, database: sqlite3.Connection, generation: int) -> None:
         """Bring an older store forward inside the caller's write transaction.
@@ -1636,6 +1638,8 @@ class MemoryStore:
         evidence_message_id: int,
         evidence_text: str,
         now: datetime | None = None,
+        *,
+        keep_request_round: bool = False,
     ) -> dict[str, object]:
         """Forget archived content the user asked about, whether or not it ever became a claim.
 
@@ -1644,6 +1648,9 @@ class MemoryStore:
         suppresses every round that carried the wording, archives claims built on it, and clears
         the reflection of every closed session that contained such a round, because a summary can
         paraphrase a story without repeating any of its words. The archive itself is kept.
+
+        ``keep_request_round`` is for a correction of a concrete detail: the earlier wording is
+        retired the same way, but the correcting message stays retrievable.
         """
         if not _supported_quote(request_quote, evidence_text):
             raise ValueError("A forget request requires an exact current-message quote.")
@@ -1678,8 +1685,11 @@ class MemoryStore:
                 self._forget_claim(item, now)
             for wording in sorted(wordings, key=len, reverse=True):
                 self._invalidate_derived_text(wording, "")
-            # The request names what it asks to forget, so its own round goes too.
+            # A request names what it asks to forget, so its own round goes too; a correction's
+            # round holds the current truth and stays.
             rounds = self._rounds_carrying(wordings) | {evidence_message_id}
+            if keep_request_round:
+                rounds.discard(evidence_message_id)
             self._forget_rounds(rounds)
         return {"rounds": len(rounds), "claims": [item.id for item in forgotten]}
 
