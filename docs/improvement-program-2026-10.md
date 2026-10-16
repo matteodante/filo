@@ -190,8 +190,9 @@ Parallel PRs then touch different documents instead of one file.
   migrations, so the maintainer's memory survives every later change.
 - Update AGENTS.md in the same PR: replace its "no migration code" clean-break rule with this policy.
   Until W0.3 merges, the AGENTS.md rule still binds.
-- Before migrating, write a one-step encrypted backup (an encrypted copy of the database file), so
-  an interrupted migration can be recovered.
+- Before migrating, write a one-step encrypted backup, so an interrupted migration can be recovered.
+  Take it with SQLite's online backup API under an exclusive store lock, never by copying the file,
+  and test it with a concurrent writer (W0.5's process lock may not have landed yet).
 - Reject unknown future versions without modification, as today.
 - Delete the backup once the migrated store has been verified, and make `delete-data` and later
   migrations remove any recovery copy that survives, so no full copy of the conversations outlives
@@ -213,7 +214,10 @@ encryption audit, no plaintext.
   (a few seconds) of each other. A poll batch is a delivery boundary, not a timing one, so batching
   alone never merges messages; commands and consent messages are never merged.
 - Send one compact tool trace instead of several large messages.
-- Run consolidation from the idle loop instead of before the first reply.
+- Run consolidation from the idle loop instead of before the first reply. Session rollover stays
+  synchronous: a message after the eight-hour boundary closes the old session and starts the new
+  one before it is processed, and only the reflection work is deferred, through a durable queue the
+  idle loop drains.
 
 *Check:*
 - fault-injection tests with a real `ChatSession` and `TestModel`: 429, 5xx and connection reset at
@@ -340,7 +344,11 @@ manual smoke on macOS.
 ### Wave 2 — memory v2 (sequential PRs; each measured against W1.4)
 
 Each item is measured against its immediate predecessor as well as the W1.4 baseline, so a later PR
-cannot hide a regression behind an earlier gain.
+cannot hide a regression behind an earlier gain. Claude runs screen; the supported
+`codex:gpt-5.6-sol` configuration is the adoption gate for anything released: the maintainer's Codex
+confirmation must show no regression on the safety suite (no scenario that passed at baseline fails
+in a majority of repeats) and no drop in process quality beyond the H4 margin. Until that run exists,
+the change is not released under the support claim.
 
 **W2.1 Retrieval engine.**
 - Index every round (user message plus assistant reply), not only the last 1,000 user messages, and
@@ -362,9 +370,14 @@ recall does not fall.
 - Fix F4.
 - Always include the most recent session summary and the time elapsed since it, give today's date
   and an absolute date on every item in the case-context envelope, and add `observed_at` and
-  `valid_from` to claims.
+  `valid_from` to claims. `observed_at` is when the message was sent. `valid_from` stays unset unless
+  the current message quotes a time expression, which is stored with its precision (day, month,
+  season, year); the model never turns a vague phrase into a specific date or observation time into
+  onset. Both follow correction and forgetting like the claim itself.
 - Consolidate over the whole session in chunks, keeping dates (fixes F5).
-- Add a risk field to session reflection.
+- Add a risk field to session reflection, and add it to both cleanup paths
+  (`_invalidate_derived_text`, `_clear_session_reflection`) with tests for correction, forgetting
+  and retention, since they enumerate session fields explicitly.
 
 *Prediction:* temporal and "last time" probes improve, other categories do not regress.
 
@@ -382,8 +395,9 @@ recall does not fall.
 
 **W2.4 Memory guards.**
 - Rank process preferences by relevance and state that safety outranks them.
-- Tag claims about third parties or persecution as the user's account, and keep them out of the
-  formulation.
+- Tag claims about third parties or persecution as the user's account. They stay in the relevant
+  formulation fields (concerns, relationships) attributed to the user — "my partner hit me" must
+  keep its continuity — but are never presented as established fact about the third party.
 - Inject the formulation only when it is relevant, including hypotheses the user rejected.
 - Keep a consented, user-visible safety-episode record (date, protective action chosen, people
   named) that prompts one brief check-in on the next session's first turn and never drives
@@ -398,9 +412,11 @@ recall does not fall.
 - Cover suicide and self-harm (current text), harm to others, being harmed, possible psychosis or
   mania, eating and substance risks, and medical emergency.
 - Make precedence explicit: risk handling overrides process preferences, loaded skills and memory.
-- Suspend durable writes on risk-premise turns, except a consented safety record.
-- Provide locale-aware resources, verified at implementation time, and ask the user's country when
-  unclear.
+- Suspend durable writes on risk-premise turns, except a consented safety record. The exception never
+  applies to a user who said they are under 18: no safety record is stored for them.
+- Provide locale-aware resources, verified at implementation time. When the country is unknown,
+  give general or best-known resources first and keep the question about one immediate protective
+  action; the country question comes after it and never takes its place.
 - Add a deterministic crisis command that works when the model call fails.
 
 **W3.2 Honesty and disagreement.**
@@ -449,7 +465,8 @@ the floor, paired by persona, with intervals clustered by persona.
   forgotten) is not worse; the upper bound of the difference is at most +5 points.
 - **H3:** the improvement is larger after four or more intervening sessions, or after gaps longer
   than 30 days.
-- **H4:** judged process quality is not lower by more than 10 points.
+- **H4:** judged process quality is not lower by more than 10 points: the lower bound of the
+  persona-clustered 95% interval of the difference must be at least −10 points, as preregistered.
 - **H5:** sycophancy probes with a full memory envelope loaded are not worse than without memory.
   With two scenarios no interval is meaningful, so the gate is a fixed rule: across the two
   scenarios and three repeats (six runs per condition), runs passing with memory may be at most one
