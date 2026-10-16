@@ -158,3 +158,58 @@ reruns.
 
 Release evidence records provider/model, protocol commit, locale, repeat count, deterministic
 results, semantic results, and residual limitations.
+
+## Wave 1 measurement system
+
+Evaluation tooling lives in the top-level `evals/` package, which the wheel does not ship. It
+measures unchanged product code through the production `ChatSession`. The plan, hypotheses, split
+and stopping rules are preregistered in `docs/evidence/preregistration-2026-10.md`.
+
+Datasets:
+
+- `tests/cases/memory_personas.yaml`: 16 synthetic personas built from persona tuples. Each has a
+  hidden 6–8 session timeline covering indirect disclosure, change, correction, forgetting, an
+  intervention that is offered, tried and stopped, a stated preference, and filler sessions. Each
+  has ten probes, one per probe type. MP01–MP08 are the tuning split; MP09–MP16 are the frozen
+  test split.
+- `tests/cases/memory_user_turns.yaml`: user turns generated once by the simulator and replayed
+  identically in every arm.
+- `tests/cases/safety_v2.yaml`: 16 held-out bilingual adaptive scenarios. They cover persecutory
+  premises, mania cues, harm to others, domestic violence, eating-disorder behavior, abrupt alcohol
+  or benzodiazepine stops, sycophancy under three rounds of pushback, verdicts on an absent
+  partner, two over-referral controls, two memory-amplified cases, and grief.
+
+Offline coverage in `tests/test_evals_tooling.py` uses only `FunctionModel` and fake embedders:
+
+- cost arithmetic with cache tokens, the long-prompt tier, unpriced models, the pre-run budget
+  refusal, and the mid-run cap;
+- the Anthropic provider ignoring `ANTHROPIC_BASE_URL`, with explicit `max_tokens` and no sampling
+  parameters;
+- Wilson, pass^k, Rogan–Gladen, TPR/TNR, κ, and the paired cluster bootstrap;
+- judge blinding and one-line reasons, and order-inconsistent pairwise ties;
+- dataset validity and the split;
+- deterministic simulator plans and the persona restated in every prompt;
+- all three memory arms, with probes isolated on store copies, forgetting, and store metrics;
+- safety seeding and pass^3;
+- style metrics, blind resumable labeling, and the preregistered report.
+
+Live commands are opt-in. They read the Anthropic key from the first set of
+`FILO_EVAL_ANTHROPIC_API_KEY`, `CLAUDE_API_KEY`, and `ANTHROPIC_API_KEY`, and write a ledger and
+results under `~/.filo-evals`:
+
+```bash
+uv run python -m evals.smoke
+uv run python -m evals.generate [--personas MP09,...]
+uv run python -m evals.memory --split test [--limit N] [--dry-run]
+uv run python -m evals.safety --repeat 3 [--seed-store DIR] [--dry-run]
+uv run python -m evals.report RUN_DIR [--labels labels.json]
+uv run python -m evals.label RUN_DIR --labels labels.json [--stats]
+uv run python -m evals.archive [--into docs/evidence/runs-2026-10]
+```
+
+Archive and commit every live run, so each reported number can be traced to its transcripts and
+judgments in Git.
+
+The evaluation tooling reads `FILO_EVAL_LEDGER`, `FILO_EVAL_BUDGET_USD` (default 45),
+`FILO_EVAL_RESERVE_USD` (default 3), `FILO_EVAL_RUNS`, and `FILO_EVAL_SUT_MODEL`,
+`FILO_EVAL_JUDGE_MODEL`, `FILO_EVAL_JUDGE_SECONDARY_MODEL`, `FILO_EVAL_SIMULATOR_MODEL`.

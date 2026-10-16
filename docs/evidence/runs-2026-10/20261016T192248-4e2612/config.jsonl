@@ -1,0 +1,2 @@
+{"roles": {"sut": "claude-haiku-5-5", "judge": "claude-opus-4-8", "judge_secondary": "claude-sonnet-4-6", "simulator": "claude-sonnet-4-6"}, "arms": ["ephemeral", "transcript_only", "standard"], "personas": ["MP09", "MP10", "MP11", "MP12"], "memory_writing": "inline"}
+{"roles": {"sut": "claude-haiku-5-5", "judge": "claude-opus-4-8", "judge_secondary": "claude-sonnet-4-6", "simulator": "claude-sonnet-4-6"}, "arms": ["ephemeral", "transcript_only", "standard"], "personas": ["MP11", "MP12"], "memory_writing": "inline"}
