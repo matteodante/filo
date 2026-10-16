@@ -8,7 +8,7 @@ from typing import ClassVar
 
 from textual import on, work
 from textual.app import App, ComposeResult
-from textual.binding import Binding
+from textual.binding import Binding, BindingType
 from textual.containers import VerticalScroll
 from textual.message import Message
 from textual.widgets import Footer, Header, Input, Markdown, Static
@@ -83,7 +83,7 @@ class FiloApp(App[None]):
         margin: 0 1 1 1;
     }
     """
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         Binding("ctrl+q", "safe_quit", "Quit"),
         Binding("pageup", "page_up", "Scroll up", show=False),
         Binding("pagedown", "page_down", "Scroll down", show=False),
@@ -95,10 +95,16 @@ class FiloApp(App[None]):
             self.event = event
 
     class Finished(Message):
-        def __init__(self, turn: ChatTurn | None = None, error: Exception | None = None) -> None:
+        def __init__(
+            self,
+            turn: ChatTurn | None = None,
+            error: Exception | None = None,
+            notice: str = "",
+        ) -> None:
             super().__init__()
             self.turn = turn
             self.error = error
+            self.notice = notice
 
     class CommandOutput(Message):
         def __init__(self, text: str) -> None:
@@ -110,11 +116,13 @@ class FiloApp(App[None]):
         session: ChatSession,
         store: MemoryStore,
         command_handler: CommandHandler,
+        report_failure: Callable[[Exception], str],
     ) -> None:
         super().__init__()
         self.session = session
         self.store = store
         self.command_handler = command_handler
+        self.report_failure = report_failure
         self._reply: Markdown | None = None
         self._busy = False
 
@@ -141,6 +149,11 @@ class FiloApp(App[None]):
         if text == "/quit":
             self.action_safe_quit()
             return
+        if text == "/retry":
+            if self.session.failed_text is None:
+                await self._mount_static("Nothing to retry.", "message notice")
+                return
+            text = self.session.failed_text
         await self._mount_message("user", text)
         self._busy = True
         message.input.disabled = True
@@ -159,7 +172,7 @@ class FiloApp(App[None]):
                 return
             turn = self.session.respond(text, on_event=self._post_stream_event)
         except Exception as error:  # Provider SDKs expose different error types.
-            self.post_message(self.Finished(error=error))
+            self.post_message(self.Finished(error=error, notice=self.report_failure(error)))
             return
         # The reply is already on screen; input stays disabled until its reports are recorded,
         # so no command can run on the store while the extraction does. A failure keeps the
@@ -195,11 +208,7 @@ class FiloApp(App[None]):
             if self._reply is not None:
                 await self._reply.remove()
                 self._reply = None
-            await self._mount_static(
-                f"Model error: {type(message.error).__name__}: {message.error}\n"
-                "If you may be in danger, /crisis shows emergency resources.",
-                "message error",
-            )
+            await self._mount_static(message.notice, "message error")
         elif message.turn is not None:
             if message.turn.notice:
                 await self._mount_static(message.turn.notice, "message notice")

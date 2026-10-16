@@ -282,6 +282,20 @@ transaction, so one thread's statements never commit or roll back with another's
 class, and a marker stops being retried after three failed attempts. `transcript_only` and
 `ephemeral` create no markers.
 
+One further tool, `forget_content`, is a privacy control rather than a memory write and is available in
+every memory mode. When the user asks in the conversation to forget something said earlier, the
+model passes the exact current-message wording of the request and one to three exact quotes, of at
+least three words each, from earlier user messages. A request quote mined out of a refusal ("don't
+forget it") is rejected like any other quote across its negation. Committing it suppresses every
+round whose user message or assistant reply carries a quote, plus the request's own round, archives
+active claims built on a quote, invalidates overlapping derived text, deletes any pending split-mode
+extraction marker of a suppressed round, and clears the reflection of every closed session that
+contained a suppressed round, because a summary can paraphrase a story without repeating its words.
+A still-open session holding one is flagged and later closes with no reflection at all, since its
+remaining rounds can paraphrase the story too; the extractor also re-checks suppression before it
+records anything. The archive keeps the messages until local deletion, and the active session's
+own model history keeps them until that session ends.
+
 An agent-authored explanation or pattern that is important enough to revisit or ask the user to
 review later is recorded with `record_hypothesis` in the same turn before it is presented. A later
 user agreement reviews that agent-origin record rather than recasting the formulation as a direct
@@ -305,11 +319,18 @@ hypothesis reviews, corrections, accepted focus, reusable process feedback, supp
 intervention consent/outcomes where relevant. The last offered hypothesis and active intervention
 remain pending so later review updates the same records.
 
-When a session closes, use one additional model call with the structured `SessionReflection` output
-to summarize the episode and link existing claims into the case formulation. Consolidation allows
-two output retries and at most three model requests. It cannot create a confirmed claim. If it fails,
-preserve the transcript, record a content-free error class, and leave the previous formulation
-intact. Both agent runs use PydanticAI's complete synchronous API with an event stream handler so the
+When a session closes, consolidation runs over the whole session with the structured
+`SessionReflection` output to summarize the episode and link existing claims into the case
+formulation. The transcript is split into parts of complete rounds, each round dated in UTC, of at
+least 20,000 characters and at most eight parts; each part is one model run that receives the
+reflection so far and returns it updated, so a long session is not summarized from its tail. The
+formulation links and unlinks of every part are merged, so a later part cannot drop an earlier
+part's link by omission. Each run allows two output retries and at most three model requests. The claims it sees are the
+session's own first, then the most recently touched, fifty in all. Rounds suppressed by forgetting
+or correction are left out. The reflection carries `risk_notes`: any danger discussed and the
+protective step the user chose, so the next session can follow up. It cannot create a confirmed
+claim. If any part fails, preserve the transcript, record a content-free error class, and leave the
+previous formulation intact. Both agent runs use PydanticAI's complete synchronous API with an event stream handler so the
 experimental ChatGPT Codex backend can require `stream=true`; conversation transports stream
 cumulative Markdown snapshots while preserving the complete tool graph, then render the validated
 final reply. Consolidation consumes its stream without exposing a draft.
@@ -318,12 +339,33 @@ Consolidation preserves valid formulation links when the model omits them and re
 through an explicit `formulation_unlinks` entry. Existing evidence is retained before new links when
 a field reaches its five-claim bound, so omission or overflow cannot silently evict history.
 
-Memory retrieval uses local hybrid ranking over validated claims, active interventions, and up to
-1,000 recent user archive messages by default: lexical overlap plus semantic similarity through
-PydanticAI `Embedder`, with recency as a tie-breaker. The semantic index is an encrypted, derived
-SQLite cache keyed by entity type, entity ID, exact model revision, and keyed content hash; it is
-rebuilt after content or model changes and its affected rows are deleted on correction or
-forgetting. SQLite/Fernet remains the source of truth.
+Memory retrieval uses local hybrid ranking over validated claims, active interventions, session
+reflections, and every archived round (a user message with the assistant reply saved with it):
+lexical overlap plus semantic similarity through PydanticAI `Embedder`, with recency as a
+tie-breaker. Claims are index keys that point back to rounds: a matching claim lifts the rounds it
+cites. The query is embedded once per retrieval and scored against every entity type by one matrix
+product. The envelope's query is the current message plus the session's two previous user
+messages, so a follow-up still retrieves what it refers to; the `retrieve_case_context` tool uses
+the model's own query. Items are kept only above a semantic floor of 0.40 or, for rounds and
+sessions, with at least two shared lexical tokens, then cut to the top few per type. The floor was
+calibrated for Qwen3-Embedding-0.6B with `scripts/calibrate_semantic_floor.py` on synthetic
+Italian/English pairs, where the previous 0.20 let 90% of unrelated pairs through and 0.40 lets 4%
+through while keeping two thirds of related pairs. The semantic index is an encrypted, derived
+SQLite cache of packed float32 vectors keyed by entity type, entity ID, exact model revision, and
+keyed content hash; it is rebuilt after content or model changes and its affected rows are deleted
+on correction or forgetting. A round never changes once written, so its index entry is keyed by
+its ID and timestamp, both already plaintext columns, and is validated without decrypting it. Each process keeps
+one float32 matrix of unit vectors per entity type, built once from the index and updated in place
+as entities appear, change, or disappear (about 4 KB per round with the 1,024-dimension model), and
+a least-recently-used cache of at most 1,024 decrypted rounds. A retrieval reads the text of a
+bounded candidate set for lexical scoring: the 200 best semantic matches, the 200 most recent
+rounds, and the rounds that matching claims point to. Scans over the whole archive (forgetting,
+quote lookup) decrypt as they go and keep nothing. Both caches are cleared when a transaction rolls
+back, because SQLite can hand a rolled-back row ID out again. A retrieval embeds at most 64
+not-yet-indexed rounds, newest first, so an archive that predates round indexing is indexed over
+several turns rather than inside one; until then an old round is reachable only through the claims
+that cite it. Index rows of the earlier `message` entity type are deleted when a store opens.
+SQLite/Fernet remains the source of truth.
 Semantic retrieval is a required memory capability: setup downloads and verifies the local model,
 and conversation fails closed with setup guidance when embeddings are unavailable rather than
 silently switching to lexical-only ranking. Historical excerpts use the same hybrid ranking and a
@@ -343,19 +385,45 @@ model on every turn.
 
 - `Message`: complete encrypted user/assistant archive retained until deletion.
 - `Session`: time- or context-bounded episode with summary, themes, interventions, user response,
-  open questions, and an explicit end reason.
+  open questions, risk notes, and an explicit end reason. Correction, forgetting, retention, and
+  closing all walk one list of reflection fields, so a new field cannot miss a cleanup path.
 - `MemoryItem`: a durable fact reported by the user, preference, event, pattern, or hypothesis with
-  independent origin, fit, lifecycle, evidence, conflict links, and timestamps.
+  independent origin, fit, lifecycle, evidence, conflict links, and timestamps. `observed_at` is
+  when the evidence message was sent. `valid_from` stays unset unless the current message quotes a
+  time expression; it stores that exact quote, its precision (day, month, season, or year), and
+  optionally a value in that precision's format. The precision may not be finer than the quote
+  supports: a quote with no date, month, season, or year anchor ("lately") is rejected, "last
+  spring" allows season or year, "in March" month or coarser. The value keeps any year, month, or
+  season the user named, resolves a relative expression against the message date (this year or
+  the one before, "yesterday" to the day before, "2 years ago" exactly), and never lies after the
+  message, so a vague phrase never becomes a specific date and observation time never becomes
+  onset. The conversation tool and the split extractor apply the same check, so a bad expression
+  is retried instead of rolling back the turn; the store repeats it as the backstop. A correction
+  with a replacement resets `observed_at` to the correction and clears `valid_from`; forgetting
+  archives both with the claim. A second time axis, `superseded_at`, records when a correction
+  replaced the claim's wording or superseded it outright, so `claims_as_of(moment)` answers what
+  the store held as true at a given time without reconstructing superseded wording. `about_others`
+  is a tag the model sets on a report of what another person did, intends, or is, or of being
+  watched, followed, or targeted. Such a claim stays in the formulation fields it belongs to
+  (concerns, relationships), shown as "User's account: …", so continuity around danger is kept
+  without presenting it as established fact about that person. The tag adds no prompt rule.
 - `CaseFormulation`: an evidence map that derives concerns, triggers, thoughts, behavior, coping,
   relationships, course, functioning, explanatory model, preferences, maintaining factors,
   strengths, hypotheses, and focus from active memory claim IDs.
 - `InterventionRecord`: one offered or agreed technique with consent state, linked claims,
   prediction, outcome, user appraisal, and follow-up information. It is not a goal.
-- `CaseContextEnvelope`: bounded user reports, hypotheses, conflicts, relevant sessions, active
-  interventions, process preferences, support choices, excerpts, and accepted/proposed focus.
-- `SemanticIndex`: encrypted vectors for active memory items, active interventions, and bounded
-  candidate user messages. It is derived, excluded from export, safe to discard, and never
-  establishes truth or provenance.
+- `CaseContextEnvelope`: today's date, the most recent closed session with the time elapsed since
+  it (always present, whatever the message is about), bounded user reports, hypotheses, conflicts,
+  relevant earlier sessions, active interventions, process preferences, support choices, round
+  excerpts, and accepted/proposed focus. Every item carries an absolute date. Process preferences
+  are ranked by hybrid relevance to the turn, newest first among equals, rather than by recency;
+  the root protocol already puts risk handling above them. The formulation reaches the model only
+  through relevant claims: each carries the formulation fields it supports. Relevant hypotheses
+  the user said do not fit arrive as `rejected_hypotheses`, still reviewable, so they are not
+  proposed again.
+- `SemanticIndex`: encrypted packed float32 vectors for active memory items, active interventions,
+  session reflections, process preferences, support choices, and archived rounds. It is derived,
+  excluded from export, safe to discard, and never establishes truth or provenance.
 
 Claim dimensions:
 
@@ -400,7 +468,14 @@ Claim dimensions:
   Filo store started as a clean break without migration.
 
 The complete archive is retained until the user deletes it. Corrections and forgotten items must be
-removed from derived formulation and summaries and suppressed from future retrieval. Current-session
+removed from derived formulation and summaries and suppressed from future retrieval. Suppression
+reaches rounds by provenance and by content: forgetting a claim suppresses its evidence rounds and
+every round whose user message or assistant reply repeats its content or quotes (verbatim, or with
+at least three quarters of its content words), and clears the reflection of every closed session
+holding such a round. A correction does the same for the rounds repeating the superseded wording
+and for the claim's supporting rounds, so a paraphrased summary does not survive a correction. The
+suppressed round IDs live in encrypted state, are included in export, and are honored by
+retrieval and consolidation alike. Current-session
 model history retains every complete successful run, including tool exchanges, until the context
 boundary; long-term continuity across the resulting sessions comes from structured context and
 relevant excerpts.
@@ -449,13 +524,28 @@ chmodding, or reading anything in it.
 
 The normal end-user installation is a copy-paste bootstrap from GitHub: `install.sh` supports macOS
 and Linux, while `install.ps1` supports Windows PowerShell. The installer published for a release
-downloads that exact immutable tag's source archive, installs a pinned uv bootstrap only when uv is
-absent, uses uv-managed Python 3.12 to install `filo-cli` as an isolated user tool, exposes
+downloads that exact immutable tag's source archive, runs only the pinned, verified uv version,
+uses uv-managed Python 3.12 to install `filo-cli` as an isolated user tool, exposes
 `filo` on the user's PATH, runs interactive `filo setup`, and then runs `filo doctor`. It requires
 no administrator privileges, existing Python, or Git checkout. Running the installer from a newer
 release updates the alpha without deleting encrypted application state or the shared Hugging Face
 model cache. `uv tool uninstall filo-cli` removes the application command but intentionally
 leaves user data in place.
+
+Every installation path installs the tested versions. `uv tool install` does not read `uv.lock`, so
+the installers, the documented checkout installation, the release wheel check, and the CI wheel
+smoke tests first run `uv export --frozen --no-dev --no-emit-project --no-hashes` and pass the
+result as `--constraints`. Hashes are not enforced. The non-Linux `torch` pin is removed from those
+constraints, because the locked release has no wheel for Intel Macs or macOS 13, so torch outside
+Linux resolves from PyPI as it did before. On Linux, `torch` is a direct dependency whose
+`[tool.uv.sources]` entry resolves it from the PyTorch CPU index, so `uv.lock`, `uv sync`, and
+source installations carry the CPU build: the embedding model runs on the CPU, and the default
+Linux build adds several gigabytes of unused CUDA libraries. A wheel carries no sources, so the
+Linux wheel checks pass `--torch-backend cpu`. `filo.auth` imports `httpx2`, the client PydanticAI
+uses for OpenAI-compatible providers, so `httpx2` is declared directly; `httpx` arrives only
+transitively for google-genai and huggingface-hub, and Filo does not import it. Anthropic requests
+set `max_tokens` explicitly, since PydanticAI otherwise requests the model's whole maximum output,
+beyond the context output reserve.
 
 Once a Filo release exists, the public README uses `main` only as a small latest-alpha bootstrap
 channel; that script always
@@ -464,7 +554,10 @@ Questionary setup inside a fresh `script(1)` pseudoterminal because `prompt_tool
 a `/dev/tty` descriptor reopened after a pipe with `kqueue`. Linux launches setup directly, and
 Windows PowerShell retains its console input.
 
-Both installers download uv directly from its immutable GitHub release when it is absent. They first
+Both installers use a uv already on PATH only when it reports exactly the pinned version, because
+the installation relies on uv features that older packaged releases lack. Otherwise they download uv
+directly from its immutable GitHub release: into `~/.local/bin` when no uv is present, or into the
+installer's temporary directory, for that installation only, when another version is. They first
 require the release checksum manifest to match its repository-pinned SHA-256 digest and then require
 the selected platform archive to match the digest in that verified manifest. They install the
 verified binaries without delegating to another network bootstrap. They select uv's MIT license,
@@ -511,6 +604,14 @@ filo doctor
 filo protocol validate [path]
 ```
 
+`filo doctor` reports, without network access and without creating a store:
+- the protocol, memory, model, and semantic-memory state;
+- the ChatGPT login, as whether the access token is still valid and when it expires, or that it
+  refreshes on the next request (never a token value);
+- the Telegram configuration and, when configured, the background service state;
+- the `local:` endpoint when that provider is selected;
+- the kind, exception class, and time of the last failed turn.
+
 `filo chat` uses a full-screen Textual interface in an interactive terminal. It restores the latest
 50 user/assistant turns from the active session, renders assistant Rich Markdown, displays live tool
 events, and disables input while one sequential turn is running. `--plain` forces the line-oriented
@@ -556,11 +657,21 @@ Conversation-time embedding loads use only the verified local revision.
 
 After `filo auth login`, omitting `--model` selects `codex:gpt-5.6-sol`. An explicit model can be
 selected with `--model codex:<model-id>`. Access and refresh tokens are encrypted in the same local
-store and are never included in exports. The provider attaches the current token to every request
-through an `httpx` auth flow rather than a fixed API key, so the Telegram listener and the TUI keep
-working across token expiry: the encrypted store is read on every request, so a logout or a new
+store and are never included in exports. Conversation requests use PydanticAI's `openai-codex`
+model, `OpenAICodexModel`, which carries the Codex wire dialect (streaming, `store=false`, the
+fields the backend rejects). Its provider is `FiloCodexProvider`, a subclass of
+`OpenAICodexProvider` whose credential source is Filo's `CodexTokenSource` over the encrypted store:
+the subclass routes every request's credentials through that source instead of the built-in
+in-memory cache and lock-free refresh, which would lose the guarantees below. It overrides the
+private hook `_prepare_request_credentials`, so `pydantic-ai-slim` is capped below the next minor
+release and a test fails if the provider's auth flow stops calling the hook. Should the hook ever be
+bypassed, the source's `save()` still persists rotated tokens under `codex-auth.lock`. Filo keeps its own
+device-code login, which the built-in PKCE flow does not offer. The provider's auth flow attaches
+the current token to every request rather than a fixed API key, so the Telegram listener and the
+TUI keep working across token expiry: the encrypted store is read on every request, so a logout or a new
 login applies to running processes; the token is refreshed within 60 seconds of expiry and, after a
-401, refreshed once and the request retried once. A token obtained because of a 401 is marked as
+401, refreshed once and the request replayed once; when no refresh is allowed, the request is not
+sent again and the turn fails with a login-required error. A token obtained because of a 401 is marked as
 such in the encrypted credential, so no process refreshes it again after another 401 and a 401
 unrelated to expiry cannot keep rotating the refresh token. Because the refresh token rotates on
 every use, refreshes, login, logout, and `delete-data` run under an
@@ -570,7 +681,9 @@ first, so concurrent processes spend it only once and cannot overwrite a newer l
 deleted credential. Store reads
 and refreshes run in a worker thread rather than on the event loop. The shared HTTP client keeps no
 idle connections, because turns run on different event loops. Token values never enter exception
-messages or model representations.
+messages or model representations. Every login and token failure is an `AuthError`, which is also
+an `OpenAIError`, so the SDK raises it unchanged instead of retrying it as a connection failure.
+`filo chat` checks the login at startup; the Telegram listener defers it to the turn (see below).
 
 The `codex:` provider mirrors the device-code flow and Codex Responses backend used by pi and the
 open-source Codex client. It is experimental, self-hosted/personal only, and not part of the public
@@ -603,6 +716,7 @@ Interactive chat commands:
 /confirm <id>
 /correct <id> <text>
 /forget <id>
+/retry
 /crisis
 /end
 /help
@@ -615,6 +729,28 @@ other command. The CLI and TUI consent prompt shows the same text, so neither tr
 emergency resources behind consent. The numbers and their verification dates live in
 `protocols/transdiagnostic/references/risk-resources.md`; re-verify them before each release. A
 model failure in the CLI, TUI, or Telegram points to `/crisis`.
+
+A failed turn is classified by `classify()` in `src/filo/failures.py` from the exception type, HTTP
+status, and the provider's error code, never from provider text, which can echo conversation
+content. The four kinds each get a notice that says what to do:
+- usage limit reached, with the reset time when the Codex backend reports `resets_at` or
+  `resets_in_seconds`;
+- login needed (`filo auth login`), for a missing login, a rejected refresh grant, a 401, or a 403
+  whose body carries an authentication error code; any other 403 (a proxy challenge, a regional
+  block) is reported as the provider refusing the request;
+- context full (`/end`, then send again);
+- transient, for everything else, including a plain rate limit.
+
+A fifth kind, setup, carries a local fix such as `filo memory model install`. Every notice offers
+`/retry` and points to `/crisis`. `classify()` never raises, so a malformed error body cannot stop
+the listener or leave the TUI disabled. A failed turn archives nothing; `ChatSession.failed_text`
+keeps its message in process memory only, never on disk, and `/retry` in the CLI, TUI, or Telegram
+sends it again as a fresh turn. The message is dropped on `/end`, on a Telegram configuration
+reload, and after any local deletion: it is kept only while the persistent store's deletion counter
+(the Telegram output epoch) still matches, so a retry cannot re-archive deleted content. Outside
+`ephemeral` mode the kind, the exception class, and the time of the last failure, never its content,
+are stored encrypted under their own state key for `filo doctor`; the Telegram log records only the
+kind, the exception classes, and the HTTP status.
 
 `/quit` only leaves the process. It does not close the conversation session. A later message closes
 and consolidates the previous session if at least eight hours elapsed. `/end` closes it immediately.
@@ -629,6 +765,16 @@ The user never needs to know or type that ID: setup validates the bot token, cre
 single-use deep link, waits for the matching private `/start` update, displays the detected account,
 and asks for confirmation before storing its ID. A phone number cannot be used to look up a Bot API
 user and is neither requested nor stored.
+A listener stops on a configuration problem only when it cannot reach the chat: a missing bot
+token or pairing, or an invalid token. Anything else would make a background service restart into
+the same failure, so the listener starts anyway and each turn reports the fix through the failure
+notice:
+- a missing login is checked per turn, not at startup;
+- no saved model falls back to `codex:gpt-5.6-sol`;
+- the embedding model resolves on first use. Until setup records it and the files are present,
+  every use raises the setup notice, and the running listener recovers once
+  `filo memory model install` completes.
+`filo chat` keeps failing fast at startup.
 Startup validates the token, removes any webhook without discarding pending updates, installs the
 allowlisted chat's English command menu and transparent bot description, then long-polls text
 messages sequentially. The runtime ignores groups, bots, and every sender except the configured
@@ -645,12 +791,14 @@ increments its stored version and requires renewed consent.
 Telegram is a conversation and read-only transparency surface, not a remote administration surface.
 `/crisis` returns the same static localized resources as the CLI, without a model call or storage,
 and is answered before consent so it never sits behind the notice.
+`/retry` sends the last failed message again.
 `/status`, `/case`, `/memory [page]`, `/sessions [page|id]`, `/interventions [page]`, and `/privacy`
 show the agent identity, active session, bounded paginated structured state, evidence links, data
 flow, and limitations. `/start`, `/help`, and `/end` manage consent, guidance, and the conversational
 session. After each normal reply, the bot reports any durable memory, focus, or intervention changes
-committed for that turn. Correcting or forgetting memory, auth, export, and deletion remain local CLI
-operations. Command messages, rendered command output, context warnings, and rollover notices are
+committed for that turn; a claim that was forgotten or superseded is named by ID only. Correcting
+or forgetting memory by ID, auth, export, and deletion remain local CLI operations; asking in the
+conversation to forget something reaches `forget_content` like in any other transport. Command messages, rendered command output, context warnings, and rollover notices are
 transport-only and are not archived or sent back to the conversation model. Internal prompts,
 secrets, and private model reasoning are never exposed. Function-tool inputs and outputs are sent as
 separate messages before the final reply and remain in encrypted model history. Reply generation
@@ -753,7 +901,10 @@ Minimal setup:
 2. Run `filo setup`, choose the model and locale, then paste the bot token in the hidden prompt.
 3. Open the one-time `t.me` link printed by setup, press Start, and confirm the detected account.
 4. Choose whether setup should install the background service, or run `filo telegram` manually.
-   Only one poller may use a bot token at a time.
+   Only one poller may use a bot token at a time. `filo telegram` holds an exclusive
+   `telegram-poller.lock` in the data directory for its lifetime, taken without waiting, so a
+   second listener for the same data directory exits with a message naming the running one.
+   Setup's pairing step takes the same lock, so it refuses to pair while a listener runs.
 5. Run `filo doctor`, then enter the exact consent command shown in the private bot chat.
 
 `export` returns decrypted user-owned application state, formulation, memory items, sessions, and
@@ -820,7 +971,8 @@ so the user's superseded wording cannot return through retrieval or derived text
 Near-identical claims merge conservatively using the standard library, while differing numbers or
 negation always remain distinct. An unaccepted proposed focus expires when the session closes.
 
-On the first turn after at least seven days, the harness marks the old formulation as provisional
+On the first turn after at least seven days since the most recent closed session (not the most
+relevant one), the harness marks the old formulation as provisional
 and requires orientation to what changed and, when relevant, the outcome of the previous experiment
 before extending an old pattern to new material.
 
@@ -885,6 +1037,9 @@ plainly distinguishes AI-supported conversation or self-help from diagnosis and 
 - Reported adverse effects stop the current intervention and are reviewed before another technique.
 - User correction wins over prior inference and no superseded wording returns via derived context.
 - Selective forgetting and full deletion work; sensitive plaintext is absent from SQLite.
+- Content forgotten in the conversation or through the CLI, including content that never became a
+  claim, does not return through claims, round excerpts, session summaries or risk notes, the most
+  recent session, or consolidation.
 - Eight-hour segmentation, `/end`, interrupted consolidation, and session resumption preserve data.
 - Context stays bounded with hundreds of sessions; history is not truncated after an arbitrary turn
   count, emits one warning near capacity, and rolls over before exceeding the per-model limit capped
@@ -937,8 +1092,13 @@ verify localized behavior or multilingual retrieval.
 
 Longitudinal tests must cover retrieval after several months, encrypted persistence across process
 restart, evidence provenance, fact/hypothesis separation, correction precedence, selective
-forgetting, semantic reindexing and fail-closed behavior, complete active-session history beyond ten
-turns, warning and automatic rollover at hard context bounds, and command/output separation. A
+forgetting, semantic reindexing and fail-closed behavior, forgetting that reaches every round and
+summary that carried the content, time fields and most-recent-session continuity, complete
+active-session history beyond ten turns, warning and automatic rollover at hard context bounds,
+and command/output separation. `tests/test_retrieval_and_time.py` asks for forgotten content
+through every retrieval path and expects nothing back. `tests/test_memory_guards.py` covers
+relevance-ranked preferences, third-party attribution, relevant formulation and rejected
+hypotheses, and `superseded_at`. A
 separate `live`
 test exercises the same high-level path
 against a real OpenAI model. It is skipped unless explicitly enabled:

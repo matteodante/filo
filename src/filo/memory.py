@@ -5,14 +5,15 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import math
 import os
 import re
 import sqlite3
 import threading
 import unicodedata
-from collections.abc import Iterator
+from collections import OrderedDict
+from collections.abc import Callable, Generator, Iterable, Iterator
 from contextlib import contextmanager, nullcontext, suppress
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
 from enum import StrEnum
@@ -20,8 +21,9 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import numpy as np
 from cryptography.fernet import Fernet, InvalidToken
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_ai import Embedder, ModelMessage, ModelMessagesTypeAdapter
 
 SESSION_GAP = timedelta(hours=8)
@@ -75,7 +77,28 @@ CREATE TABLE IF NOT EXISTS telegram_outbox (
 """
 DEFAULT_STALE_HYPOTHESIS_DAYS = 180
 BUSY_TIMEOUT_SECONDS = 10.0
-MIN_SEMANTIC_RELEVANCE = 0.2
+# Calibrated for Qwen3-Embedding-0.6B on 384 synthetic Italian/English query-memory pairs
+# (scripts/calibrate_semantic_floor.py): 0.20 let 90% of unrelated pairs through, 0.40 lets 4%
+# through while keeping 67% of related pairs. Ranking then keeps only the top items above it.
+MIN_SEMANTIC_RELEVANCE = 0.4
+# A long round shares some four-letter word with almost any query, so one shared token is not
+# evidence of relevance for rounds and sessions the way it is for a short claim.
+MIN_LEXICAL_OVERLAP = 2
+# Embedding is local but not free: a store that predates round indexing, or one restored from
+# export, would otherwise embed its whole archive inside one conversation turn. Newest rounds are
+# embedded first; older ones stay lexically retrievable until later retrievals index them.
+MAX_ROUND_EMBEDDINGS_PER_RETRIEVAL = 64
+MIN_FORGET_QUOTE_WORDS = 3
+# Share of a forgotten wording's tokens that a round must repeat to count as carrying it, which
+# catches an assistant reply echoing the story in slightly different order or inflection.
+ROUND_CARRY_COVERAGE = 0.75
+CONSOLIDATION_CLAIM_LIMIT = 50
+# Decrypted round text is cached only for recently used rounds; scans that touch the whole
+# archive (forgetting, quote lookup) decrypt as they go and keep nothing.
+ROUND_TEXT_CACHE_SIZE = 1_024
+# Rounds whose text is read for lexical scoring in one retrieval: the best semantic matches plus
+# the most recent ones. Everything else is ranked by its vector alone.
+ROUND_LEXICAL_CANDIDATES = 200
 
 
 def _now() -> datetime:
@@ -113,6 +136,52 @@ the damage, so those keep the user's exact wording.
 """
 
 MIN_PARAPHRASE_QUOTE_WORDS = 4
+
+
+class TimePrecision(StrEnum):
+    DAY = "day"
+    MONTH = "month"
+    SEASON = "season"
+    YEAR = "year"
+
+
+_TIME_VALUE_PATTERNS = {
+    TimePrecision.DAY: re.compile(r"\d{4}-\d{2}-\d{2}"),
+    TimePrecision.MONTH: re.compile(r"\d{4}-(0[1-9]|1[0-2])"),
+    TimePrecision.SEASON: re.compile(r"\d{4}-(spring|summer|autumn|winter)"),
+    TimePrecision.YEAR: re.compile(r"\d{4}"),
+}
+
+
+class TimeExpression(BaseModel):
+    """When a reported situation began, exactly as the user dated it.
+
+    ``quote`` is the user's own time expression from the current message. ``value`` may resolve it
+    only to the precision the expression itself carries: "last spring" can become a season, never
+    a day, and a vague "lately" is not a time expression at all.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    quote: str = Field(min_length=1, max_length=100)
+    precision: TimePrecision
+    value: str | None = Field(
+        default=None,
+        description="Optional: YYYY-MM-DD, YYYY-MM, YYYY-<season> or YYYY, matching precision.",
+    )
+
+    @model_validator(mode="after")
+    def value_matches_quote(self) -> TimeExpression:
+        if self.value is None:
+            return self
+        if not _TIME_VALUE_PATTERNS[self.precision].fullmatch(self.value):
+            raise ValueError("The time value must use the format of its precision.")
+        if self.precision is TimePrecision.DAY:
+            datetime.strptime(self.value, "%Y-%m-%d")
+        years = set(re.findall(r"\b\d{4}\b", self.quote))
+        if years and self.value[:4] not in years:
+            raise ValueError("The time value must keep the year the user wrote.")
+        return self
 
 
 class ClaimOrigin(StrEnum):
@@ -274,6 +343,16 @@ class UserReport(StrictModel):
         default=None,
         description="ID of an available user report of the same kind that this repeats.",
     )
+    valid_from: TimeExpression | None = Field(
+        default=None,
+        description="Only when the current message dates the situation; never inferred.",
+    )
+    about_others: bool = Field(
+        default=False,
+        description="True when the report says what another person did, intends, thinks, or is, "
+        "or that the user is being watched, followed, or targeted. It is then kept as the user's "
+        "account, never as established fact about that person.",
+    )
 
 
 class ClaimCorrection(StrictModel):
@@ -304,6 +383,13 @@ class MemoryItem(StrictModel):
     first_seen_at: str
     last_seen_at: str
     last_reviewed_at: str | None = None
+    observed_at: str | None = None
+    valid_from: TimeExpression | None = None
+    # When a correction replaced this claim's wording or superseded it outright; with observed_at
+    # it says what the store held as true at a given time.
+    superseded_at: str | None = None
+    # The user's account of another person or of being targeted, never fact about that person.
+    about_others: bool = False
 
 
 class SessionRecord(StrictModel):
@@ -322,6 +408,7 @@ class SessionRecord(StrictModel):
     process_feedback: list[str] = Field(default_factory=list)
     support_choices: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
+    risk_notes: list[str] = Field(default_factory=list)
     consolidation_error: str | None = None
     end_reason: SessionEndReason | None = None
     context_warning_sent: bool = False
@@ -329,6 +416,29 @@ class SessionRecord(StrictModel):
     # Set when the user said in this session that they are under 18; the post-turn extractor then
     # records no user report for the rest of the session.
     user_reports_withheld: bool = False
+    # Set when content in this still-open session was forgotten; it then closes without a
+    # reflection, exactly as a closed session holding forgotten content loses its own.
+    reflection_withheld: bool = False
+
+
+SESSION_REFLECTION_LIST_FIELDS = (
+    "themes",
+    "user_defined_concerns",
+    "meaningful_changes",
+    "interventions_discussed",
+    "tried",
+    "outcomes",
+    "unwanted_effects",
+    "process_feedback",
+    "support_choices",
+    "open_questions",
+    "risk_notes",
+)
+"""Every model-written session field besides the summary.
+
+Correction, forgetting, retention and closing all walk this one tuple, so a new reflection field
+cannot be left out of a cleanup path.
+"""
 
 
 class InterventionRecord(StrictModel):
@@ -435,6 +545,12 @@ class ContextClaim(StrictModel):
     first_seen_at: str
     last_seen_at: str
     last_reviewed_at: str | None
+    observed_at: str | None = None
+    valid_from: TimeExpression | None = None
+    about_others: bool = False
+    # The formulation fields this claim supports: the formulation reaches the model only through
+    # claims relevant to the turn.
+    formulation_fields: list[str] = Field(default_factory=list)
     conflict_ids: list[str]
     semantic_relevance: float | None = None
     lexical_relevance: float = 0.0
@@ -449,6 +565,7 @@ class ClaimConflict(StrictModel):
 
 class ContextSession(StrictModel):
     id: str
+    started_at: str
     ended_at: str | None
     summary: str
     themes: list[str]
@@ -456,6 +573,7 @@ class ContextSession(StrictModel):
     unwanted_effects: list[str]
     process_feedback: list[str]
     support_choices: list[str]
+    risk_notes: list[str] = Field(default_factory=list)
     semantic_relevance: float | None = None
 
 
@@ -470,6 +588,7 @@ class ContextIntervention(StrictModel):
     unwanted_effects: str | None
     decision: InterventionDecision
     follow_up_information: str | None
+    offered_at: str
     updated_at: str
     semantic_relevance: float | None = None
 
@@ -478,6 +597,8 @@ class ContextPreference(StrictModel):
     id: str
     content: str
     evidence: EvidenceRef
+    updated_at: str
+    semantic_relevance: float | None = None
 
 
 class ContextSupportChoice(StrictModel):
@@ -486,22 +607,31 @@ class ContextSupportChoice(StrictModel):
     evidence: EvidenceRef
     barrier: str | None
     preference: str | None
+    updated_at: str
 
 
 class ContextExcerpt(StrictModel):
+    """One conversation round: a user message and the reply it received."""
+
     message_id: int
     quote: str
+    assistant_reply: str = ""
     created_at: str
     semantic_relevance: float | None = None
     lexical_relevance: float = 0.0
 
 
 class CaseContextEnvelope(StrictModel):
-    schema_version: int = 1
+    schema_version: int = 3
+    today: str | None = None
+    latest_session: ContextSession | None = None
+    elapsed_since_latest_session: str | None = None
     accepted_focus: str | None = None
     proposed_focus: str | None = None
     user_reports: list[ContextClaim] = Field(default_factory=list)
     hypotheses: list[ContextClaim] = Field(default_factory=list)
+    # Hypotheses the user said do not fit, so they are not proposed again.
+    rejected_hypotheses: list[ContextClaim] = Field(default_factory=list)
     conflicts: list[ClaimConflict] = Field(default_factory=list)
     relevant_sessions: list[ContextSession] = Field(default_factory=list)
     active_interventions: list[ContextIntervention] = Field(default_factory=list)
@@ -516,6 +646,93 @@ class CaseContextResult(CaseContextEnvelope):
 
 class MemoryError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class _RoundRef:
+    """Plaintext metadata of a round, read without decrypting anything."""
+
+    id: int
+    session_id: str
+    created_at: str
+    reply_id: int | None
+
+
+class _VectorTable:
+    """Unit vectors of one entity type, kept as one float32 matrix and updated in place.
+
+    Rows are added and removed as entities change; scoring is one matrix-vector product over
+    the occupied rows. Memory is one row per indexed entity and nothing else.
+    """
+
+    def __init__(self) -> None:
+        self.ids: list[str] = []
+        self.rows: dict[str, int] = {}
+        self.hashes: dict[str, str] = {}
+        self.matrix = np.zeros((0, 0), dtype=np.float32)
+
+    def reserve(self, rows: int, dimensions: int) -> None:
+        """Grow once to hold ``rows`` vectors, instead of doubling while loading them."""
+        if self.matrix.shape[1] != dimensions:
+            # Empty, or about to be reset by put() for a new dimension.
+            self.__init__()
+            self.matrix = np.zeros((max(rows, 16), dimensions), dtype=np.float32)
+        elif rows > self.matrix.shape[0]:
+            grown = np.zeros((rows, dimensions), dtype=np.float32)
+            grown[: len(self.ids)] = self.matrix[: len(self.ids)]
+            self.matrix = grown
+
+    def put(self, entity_id: str, content_hash: str, unit: np.ndarray) -> None:
+        if self.matrix.shape[1] != unit.size:
+            # A different model or dimension invalidates every row at once.
+            self.__init__()
+            self.matrix = np.zeros((16, unit.size), dtype=np.float32)
+        row = self.rows.get(entity_id)
+        if row is None:
+            row = len(self.ids)
+            if row == self.matrix.shape[0]:
+                grown = np.zeros((max(16, row * 2), unit.size), dtype=np.float32)
+                grown[:row] = self.matrix[:row]
+                self.matrix = grown
+            self.ids.append(entity_id)
+            self.rows[entity_id] = row
+        self.matrix[row] = unit
+        self.hashes[entity_id] = content_hash
+
+    def remove(self, entity_id: str) -> None:
+        row = self.rows.pop(entity_id, None)
+        self.hashes.pop(entity_id, None)
+        if row is None:
+            return
+        last = len(self.ids) - 1
+        if row != last:
+            moved = self.ids[last]
+            self.ids[row] = moved
+            self.rows[moved] = row
+            self.matrix[row] = self.matrix[last]
+        self.ids.pop()
+
+    def scores(self, query_vector: np.ndarray) -> dict[str, float]:
+        if not self.ids or self.matrix.shape[1] != query_vector.size:
+            return {}
+        values = self.matrix[: len(self.ids)] @ query_vector
+        return dict(zip(self.ids, values.tolist(), strict=True))
+
+
+@dataclass(frozen=True)
+class _Round:
+    """A user message and the assistant reply saved with it, keyed by the user message ID."""
+
+    id: int
+    session_id: str
+    created_at: str
+    user: str
+    assistant: str
+    tokens: frozenset[str]
+
+    @property
+    def text(self) -> str:
+        return f"{self.user}\n{self.assistant}"
 
 
 class MemoryStore:
@@ -545,6 +762,12 @@ class MemoryStore:
         self._local = threading.local()
         self._embedding_model = embedding_model or ("injected" if embedder else None)
         self._embedder = embedder or (Embedder(embedding_model) if embedding_model else None)
+        # Derived, in-process only: unit vectors keyed by entity and content hash, and the
+        # decrypted text of archived rounds, which never change once written. Both are rebuilt
+        # from SQLite on demand and pruned when their source rows disappear.
+        self._cache_lock = threading.Lock()
+        self._vector_tables: dict[str, _VectorTable] = {}
+        self._round_cache: OrderedDict[int, _Round] = OrderedDict()
         if ephemeral:
             self.directory = Path(":memory:")
             self.database_path = Path(":memory:")
@@ -591,6 +814,9 @@ class MemoryStore:
                     database.execute(statement)
             if not tables:
                 self._write_state("schema_version", SCHEMA_VERSION)
+            # Earlier filo-1 development stores indexed user messages as "message"; rounds
+            # replaced them, and nothing else would ever delete those vectors.
+            database.execute("DELETE FROM semantic_index WHERE entity_type = 'message'")
 
     def load_app_state(self) -> AppState:
         payload = self._read_state("app")
@@ -598,6 +824,15 @@ class MemoryStore:
 
     def save_app_state(self, state: AppState) -> None:
         self._write_state("app", state.model_dump_json().encode())
+
+    def record_failure(self, kind: str, error_class: str, now: datetime | None = None) -> None:
+        """Keep the last failed turn's kind and exception class, never its content."""
+        payload = {"kind": kind, "error_class": error_class, "at": _iso(now or _now())}
+        self._write_state("last_failure", json.dumps(payload).encode())
+
+    def last_failure(self) -> dict[str, str] | None:
+        payload = self._read_state("last_failure")
+        return None if payload is None else json.loads(payload)
 
     def load_formulation(self) -> CaseFormulation:
         payload = self._read_state("formulation")
@@ -696,7 +931,9 @@ class MemoryStore:
                     continue
                 ids.append(item_id)
             if ids:
-                setattr(formulation, field_name, [active[item_id].content for item_id in ids])
+                setattr(
+                    formulation, field_name, [_formulation_text(active[item_id]) for item_id in ids]
+                )
                 formulation.evidence[field_name] = ids
         self.save_formulation(formulation, now)
         return formulation
@@ -752,6 +989,7 @@ class MemoryStore:
         process_feedback: list[str] | None = None,
         support_choices: list[str] | None = None,
         open_questions: list[str] | None = None,
+        risk_notes: list[str] | None = None,
         consolidation_error: str | None = None,
         end_reason: SessionEndReason | None = None,
         now: datetime | None = None,
@@ -769,6 +1007,7 @@ class MemoryStore:
         session.process_feedback = process_feedback or []
         session.support_choices = support_choices or []
         session.open_questions = open_questions or []
+        session.risk_notes = risk_notes or []
         session.consolidation_error = consolidation_error
         session.end_reason = end_reason
         self.save_session(session)
@@ -1015,6 +1254,13 @@ class MemoryStore:
                 )
             _require_grounded_paraphrase(content, quote, "a user report")
             _require_quoted_aliases(report.aliases, evidence_text)
+            if report.valid_from is not None:
+                observed = self._message_time(evidence_message_id)
+                _require_quoted_time(
+                    report.valid_from,
+                    evidence_text,
+                    datetime.fromisoformat(observed) if observed else now or _now(),
+                )
             duplicate = next(
                 (
                     item
@@ -1053,6 +1299,8 @@ class MemoryStore:
                         )
                     )
                 duplicate.aliases = list(dict.fromkeys([*duplicate.aliases, *report.aliases]))[:5]
+                duplicate.valid_from = duplicate.valid_from or report.valid_from
+                duplicate.about_others = duplicate.about_others or report.about_others
                 self._save_claim(duplicate)
                 saved.append(duplicate)
                 continue
@@ -1067,6 +1315,9 @@ class MemoryStore:
                 aliases=report.aliases,
                 first_seen_at=timestamp,
                 last_seen_at=timestamp,
+                observed_at=self._message_time(evidence_message_id) or timestamp,
+                valid_from=report.valid_from,
+                about_others=report.about_others,
             )
             for other in existing:
                 if (
@@ -1157,6 +1408,10 @@ class MemoryStore:
             linked_claim_ids=linked_claim_ids,
             first_seen_at=timestamp,
             last_seen_at=timestamp,
+            observed_at=(
+                self._message_time(evidence_message_id) if evidence_message_id is not None else None
+            )
+            or timestamp,
         )
         self._save_claim(item)
         return item
@@ -1236,17 +1491,21 @@ class MemoryStore:
             item.aliases = []
             item.last_seen_at = timestamp
             item.last_reviewed_at = timestamp
+            item.superseded_at = timestamp
             if correction.replacement_quote:
                 item.content = _normalized(correction.replacement_quote)
                 item.origin = ClaimOrigin.USER_STATEMENT
                 item.fit = ClaimFit.NOT_APPLICABLE
+                # The replacement is a new observation, and the old date described the old claim.
+                item.observed_at = self._message_time(evidence_message_id) or timestamp
+                item.valid_from = None
             else:
                 item.lifecycle = ClaimLifecycle.SUPERSEDED
                 item.conflict_ids = []
             self._save_claim(item)
             self._delete_semantic_entities("claim", [item.id])
             self._delete_semantic_entities(
-                "message", [str(reference.message_id) for reference in item.evidence]
+                "round", [str(reference.message_id) for reference in item.evidence]
             )
             self._rebuild_claim_conflicts()
             self._refresh_formulation_links()
@@ -1255,6 +1514,16 @@ class MemoryStore:
             # drawn from would fragment the derived text and leave the quote unmatchable.
             for wording in sorted({old, *superseded_quotes}, key=len, reverse=True):
                 self._invalidate_derived_text(wording, replacement)
+            # A later round that repeats the superseded wording would bring it straight back as an
+            # excerpt, although it is not the claim's evidence.
+            self._forget_rounds(
+                self._rounds_carrying([old, *superseded_quotes])
+                | {
+                    reference.message_id
+                    for reference in item.evidence
+                    if reference.relation is EvidenceRelation.SUPPORTS
+                }
+            )
             self._clear_pending_hypothesis(item.id)
             return item
 
@@ -1330,25 +1599,119 @@ class MemoryStore:
     def forget_claim(self, item_id: str, now: datetime | None = None) -> MemoryItem:
         with self.transaction():
             self._discard_telegram_output()
-            item = self._get_claim(item_id)
-            item.lifecycle = ClaimLifecycle.ARCHIVED
-            item.conflict_ids = []
-            item.last_seen_at = _iso(now)
-            self._save_claim(item)
-            self._delete_semantic_entities("claim", [item.id])
-            self._delete_semantic_entities(
-                "message", [str(reference.message_id) for reference in item.evidence]
+            return self._forget_claim(self._get_claim(item_id), now)
+
+    def _forget_claim(self, item: MemoryItem, now: datetime | None) -> MemoryItem:
+        item.lifecycle = ClaimLifecycle.ARCHIVED
+        item.conflict_ids = []
+        item.last_seen_at = _iso(now)
+        self._save_claim(item)
+        self._delete_semantic_entities("claim", [item.id])
+        self._rebuild_claim_conflicts()
+        self._refresh_formulation_links()
+        # Derived text quotes what the user actually wrote, which for a restated claim is not
+        # the stored content, so forgetting has to reach both. Longest first, or removing the
+        # shorter content leaves the longer quote unmatchable.
+        wordings = {item.content, *(ref.quote for ref in item.evidence if ref.quote)}
+        for wording in sorted(wordings, key=len, reverse=True):
+            self._invalidate_derived_text(wording, "", forgotten_id=item.id)
+        self._forget_rounds(
+            {reference.message_id for reference in item.evidence} | self._rounds_carrying(wordings)
+        )
+        self._clear_pending_hypothesis(item.id)
+        return item
+
+    def has_user_quote(self, quote: str, *, before_id: int | None = None) -> bool:
+        """Whether an archived user message contains this exact wording."""
+        sql = "SELECT payload FROM messages WHERE role = 'user'"
+        parameters: tuple[int, ...] = ()
+        if before_id is not None:
+            sql += " AND id < ?"
+            parameters = (before_id,)
+        with self._connect() as database:
+            rows = database.execute(sql, parameters).fetchall()
+        return any(
+            _supported_quote(quote, self._decrypt_json(payload).get("content", ""))
+            for (payload,) in rows
+        )
+
+    def forget_content(
+        self,
+        quotes: list[str],
+        request_quote: str,
+        evidence_message_id: int,
+        evidence_text: str,
+        now: datetime | None = None,
+    ) -> dict[str, object]:
+        """Forget archived content the user asked about, whether or not it ever became a claim.
+
+        Each quote must be exact wording from an earlier user message, and the request itself an
+        exact quote of the current one, so a refusal cannot be mined into a request. Forgetting
+        suppresses every round that carried the wording, archives claims built on it, and clears
+        the reflection of every closed session that contained such a round, because a summary can
+        paraphrase a story without repeating any of its words. The archive itself is kept.
+        """
+        if not _supported_quote(request_quote, evidence_text):
+            raise ValueError("A forget request requires an exact current-message quote.")
+        if not quote_keeps_clause_polarity(request_quote, evidence_text):
+            raise ValueError(
+                "A forget request may not quote across the negation that qualified it."
             )
-            self._rebuild_claim_conflicts()
-            self._refresh_formulation_links()
-            # Derived text quotes what the user actually wrote, which for a restated claim is not
-            # the stored content, so forgetting has to reach both. Longest first, or removing the
-            # shorter content leaves the longer quote unmatchable.
-            wordings = {item.content, *(ref.quote for ref in item.evidence if ref.quote)}
+        wordings = [_normalized(quote) for quote in quotes]
+        if not wordings:
+            raise ValueError("Name at least one quote to forget.")
+        for wording in wordings:
+            if len(re.findall(r"\w+", wording)) < MIN_FORGET_QUOTE_WORDS:
+                raise ValueError(
+                    f"Each quote to forget needs at least {MIN_FORGET_QUOTE_WORDS} words."
+                )
+            if not self.has_user_quote(wording, before_id=evidence_message_id):
+                raise ValueError("Each quote to forget must come from an earlier user message.")
+        with self.transaction():
+            # Not counted as a discard: this turn's own reply is queued after it and must not be
+            # mistaken for a view rendered before a deletion.
+            self._discard_telegram_output(count=False)
+            forgotten = [
+                item
+                for item in self.list_claims()
+                if any(
+                    _carries(wording, text) or _carries(text, wording)
+                    for wording in wordings
+                    for text in [item.content, *(ref.quote for ref in item.evidence if ref.quote)]
+                )
+            ]
+            for item in forgotten:
+                self._forget_claim(item, now)
             for wording in sorted(wordings, key=len, reverse=True):
-                self._invalidate_derived_text(wording, "", forgotten_id=item.id)
-            self._clear_pending_hypothesis(item.id)
-            return item
+                self._invalidate_derived_text(wording, "")
+            # The request names what it asks to forget, so its own round goes too.
+            rounds = self._rounds_carrying(wordings) | {evidence_message_id}
+            self._forget_rounds(rounds)
+        return {"rounds": len(rounds), "claims": [item.id for item in forgotten]}
+
+    def _forget_rounds(self, round_ids: set[int]) -> None:
+        """Suppress rounds and every reflection that may paraphrase them."""
+        self._suppress_rounds(round_ids)
+        session_ids = {item.session_id for item in self._round_refs() if item.id in round_ids}
+        for session in self.list_sessions():
+            if session.id not in session_ids:
+                continue
+            if session.ended_at:
+                _clear_session_reflection(session)
+                self._delete_semantic_entities("session", [session.id])
+            else:
+                session.reflection_withheld = True
+            self.save_session(session)
+
+    def reflection_withheld(self, session_id: str) -> bool:
+        with self._connect() as database:
+            row = database.execute(
+                "SELECT payload FROM sessions WHERE id = ?", (session_id,)
+            ).fetchone()
+        return row is not None and self._decrypt_model(row[0], SessionRecord).reflection_withheld
+
+    def round_suppressed(self, round_id: int) -> bool:
+        return round_id in self._suppressed_round_ids()
 
     def list_claims(self, include_inactive: bool = False) -> list[MemoryItem]:
         sql = "SELECT payload FROM memory_items"
@@ -1360,6 +1723,27 @@ class MemoryStore:
         with self._connect() as database:
             rows = database.execute(sql, parameters).fetchall()
         return [self._decrypt_model(row[0], MemoryItem) for row in rows]
+
+    def claims_as_of(self, moment: datetime) -> list[MemoryItem]:
+        """Claims the store held as true at ``moment``: observed by then, not yet superseded.
+
+        A corrected claim's current wording counts from the correction, which resets
+        ``observed_at``; its earlier wording is not reconstructed. Forgotten claims never count.
+        An inspection query only: retrieval never returns superseded wording.
+        """
+        return [
+            item
+            for item in self.list_claims(include_inactive=True)
+            if item.lifecycle is not ClaimLifecycle.ARCHIVED
+            and datetime.fromisoformat(item.observed_at or item.first_seen_at) <= moment
+            and (
+                item.lifecycle is ClaimLifecycle.ACTIVE
+                or (
+                    item.superseded_at is not None
+                    and moment < datetime.fromisoformat(item.superseded_at)
+                )
+            )
+        ]
 
     def record_process_preference(
         self,
@@ -1590,20 +1974,40 @@ class MemoryStore:
         return [self._decrypt_model(row[0], InterventionRecord) for row in rows]
 
     def retrieve_case_context(
-        self, query: str, *, allow_index_write: bool = True
+        self,
+        query: str,
+        *,
+        allow_index_write: bool = True,
+        now: datetime | None = None,
     ) -> CaseContextResult:
+        current = now or _now()
         if not self._ephemeral:
             policy = self.load_app_state().retention_policy
             if policy != RetentionPolicy():
                 self.apply_retention(policy)
+        # One query embedding serves every entity type in this retrieval.
+        query_vector = self._query_vector(query)
+        query_tokens = _tokens(query)
         claims = self.list_claims()
-        semantic_scores = self._semantic_scores(query, claims, allow_index_write=allow_index_write)
+        semantic_scores = self._semantic_text_scores(
+            query_vector,
+            "claim",
+            {item.id: " ".join([item.content, *item.aliases]) for item in claims},
+            allow_index_write=allow_index_write,
+        )
         app_state = self.load_app_state()
         pending_hypothesis_id = app_state.pending_hypothesis_id
+        formulation = self.load_formulation()
+        formulation_fields: dict[str, list[str]] = {}
+        for field_name, ids in formulation.evidence.items():
+            for item_id in ids:
+                formulation_fields.setdefault(item_id, []).append(field_name)
         ranked: list[ContextClaim] = []
         for index, item in enumerate(claims):
             semantic = semantic_scores.get(item.id)
-            lexical = min(_lexical_score(query, " ".join([item.content, *item.aliases])), 3) / 3
+            lexical = (
+                min(len(query_tokens & _tokens(" ".join([item.content, *item.aliases]))), 3) / 3
+            )
             stale = _is_stale_hypothesis(item)
             pinned = item.id == pending_hypothesis_id or bool(item.conflict_ids)
             relevant = (
@@ -1612,8 +2016,6 @@ class MemoryStore:
                 or (semantic is not None and semantic >= MIN_SEMANTIC_RELEVANCE)
             )
             if not relevant:
-                continue
-            if item.origin is ClaimOrigin.AGENT_HYPOTHESIS and item.fit is ClaimFit.DOES_NOT_FIT:
                 continue
             ranked.append(
                 ContextClaim(
@@ -1631,6 +2033,10 @@ class MemoryStore:
                     first_seen_at=item.first_seen_at,
                     last_seen_at=item.last_seen_at,
                     last_reviewed_at=item.last_reviewed_at,
+                    observed_at=item.observed_at,
+                    valid_from=item.valid_from,
+                    about_others=item.about_others,
+                    formulation_fields=formulation_fields.get(item.id, []),
                     conflict_ids=item.conflict_ids,
                     semantic_relevance=semantic,
                     lexical_relevance=lexical,
@@ -1647,6 +2053,12 @@ class MemoryStore:
             ),
             reverse=True,
         )
+        rejected = [
+            item
+            for item in ranked
+            if item.origin is ClaimOrigin.AGENT_HYPOTHESIS and item.fit is ClaimFit.DOES_NOT_FIT
+        ]
+        ranked = [item for item in ranked if item not in rejected]
         user_reports = [item for item in ranked if item.origin is ClaimOrigin.USER_STATEMENT][:15]
         hypotheses = [
             item
@@ -1685,33 +2097,76 @@ class MemoryStore:
                         claims=[visible[pair[0]], visible[pair[1]]],
                     )
                 )
+        # Claims are index keys that point back to the rounds they came from: a matching claim
+        # lifts its own evidence rounds even when the round text itself scores lower.
+        claim_round_scores: dict[int, float] = {}
+        for item in ranked:
+            for reference in item.evidence:
+                claim_round_scores[reference.message_id] = max(
+                    claim_round_scores.get(reference.message_id, 0.0), _context_claim_score(item)
+                )
         interventions = self._relevant_interventions(
             query,
+            query_vector,
             app_state.pending_intervention_id,
             allow_index_write=allow_index_write,
         )
-        sessions = self._relevant_sessions(query, allow_index_write=allow_index_write)
-        excerpts = self._relevant_excerpts(query, allow_index_write=allow_index_write)
-        support_choices = self._relevant_support_choices(query, allow_index_write=allow_index_write)
-        formulation = self.load_formulation()
+        latest, sessions = self._relevant_sessions(
+            query, query_vector, allow_index_write=allow_index_write
+        )
+        excerpts = self._relevant_excerpts(
+            query, query_vector, claim_round_scores, allow_index_write=allow_index_write
+        )
+        support_choices = self._relevant_support_choices(
+            query, query_vector, allow_index_write=allow_index_write
+        )
+        preferences = self.list_process_preferences()
+        preference_scores = self._semantic_text_scores(
+            query_vector,
+            "preference",
+            {item.id: item.content for item in preferences},
+            allow_index_write=allow_index_write,
+        )
+        # Ranked by relevance to the turn, newest first among equals, rather than by recency alone.
+        preferences.sort(
+            key=lambda item: (
+                _hybrid_text_score(query, item.content, preference_scores.get(item.id)),
+                item.updated_at,
+            ),
+            reverse=True,
+        )
         return CaseContextResult(
+            today=current.date().isoformat(),
+            latest_session=latest,
+            elapsed_since_latest_session=(
+                _elapsed(current - datetime.fromisoformat(latest.ended_at))
+                if latest is not None and latest.ended_at
+                else None
+            ),
             accepted_focus=formulation.accepted_focus,
             proposed_focus=formulation.proposed_focus,
             user_reports=user_reports[:20],
             hypotheses=hypotheses[:10],
+            rejected_hypotheses=rejected[:5],
             conflicts=conflicts[:5],
             relevant_sessions=sessions[:3],
             active_interventions=interventions[:5],
             process_preferences=[
-                ContextPreference(id=item.id, content=item.content, evidence=item.evidence)
-                for item in self.list_process_preferences()[:10]
+                ContextPreference(
+                    id=item.id,
+                    content=item.content,
+                    evidence=item.evidence,
+                    updated_at=item.updated_at,
+                    semantic_relevance=preference_scores.get(item.id),
+                )
+                for item in preferences[:10]
             ],
             support_choices=support_choices[:10],
             relevant_excerpts=excerpts[:5],
         )
 
     def _relevant_support_choices(
-        self, query: str, *, allow_index_write: bool
+        self, query: str, query_vector: np.ndarray | None, *, allow_index_write: bool
     ) -> list[ContextSupportChoice]:
         items = self.list_support_choices()
         texts = {
@@ -1721,7 +2176,7 @@ class MemoryStore:
             for item in items
         }
         scores = self._semantic_text_scores(
-            query, "support", texts, allow_index_write=allow_index_write
+            query_vector, "support", texts, allow_index_write=allow_index_write
         )
         ranked = sorted(
             items,
@@ -1741,6 +2196,7 @@ class MemoryStore:
     def _relevant_interventions(
         self,
         query: str,
+        query_vector: np.ndarray | None,
         pending_id: str | None,
         *,
         allow_index_write: bool,
@@ -1763,7 +2219,7 @@ class MemoryStore:
             for item in items
         }
         scores = self._semantic_text_scores(
-            query, "intervention", text, allow_index_write=allow_index_write
+            query_vector, "intervention", text, allow_index_write=allow_index_write
         )
         items.sort(
             key=lambda item: (
@@ -1785,6 +2241,7 @@ class MemoryStore:
                 unwanted_effects=item.unwanted_effects,
                 decision=item.decision,
                 follow_up_information=item.follow_up_information,
+                offered_at=item.offered_at,
                 updated_at=item.updated_at,
                 semantic_relevance=scores.get(item.id),
             )
@@ -1795,26 +2252,20 @@ class MemoryStore:
             or item.unwanted_effects is not None
         ]
 
-    def _relevant_sessions(self, query: str, *, allow_index_write: bool) -> list[ContextSession]:
-        sessions = [item for item in self.list_sessions() if item.ended_at]
-        texts = {
-            item.id: " ".join(
-                [
-                    item.summary,
-                    *item.themes,
-                    *item.user_defined_concerns,
-                    *item.meaningful_changes,
-                    *item.outcomes,
-                    *item.unwanted_effects,
-                    *item.process_feedback,
-                    *item.support_choices,
-                    *item.open_questions,
-                ]
-            )
-            for item in sessions
-        }
+    def _relevant_sessions(
+        self, query: str, query_vector: np.ndarray | None, *, allow_index_write: bool
+    ) -> tuple[ContextSession | None, list[ContextSession]]:
+        """Return the most recent closed session, always, and the relevant earlier ones.
+
+        Recency and relevance are separate questions: the long-gap check and "last time" both
+        need the session that actually came last, whatever the current message is about.
+        """
+        closed = [item for item in self.list_sessions() if item.ended_at]
+        latest = max(closed, key=lambda item: item.ended_at or "", default=None)
+        sessions = [item for item in closed if item is not latest]
+        texts = {item.id: " ".join([item.summary, *_reflection_values(item)]) for item in sessions}
         scores = self._semantic_text_scores(
-            query, "session", texts, allow_index_write=allow_index_write
+            query_vector, "session", texts, allow_index_write=allow_index_write
         )
         sessions.sort(
             key=lambda item: (
@@ -1826,60 +2277,100 @@ class MemoryStore:
         selected = [
             item
             for item in sessions
-            if _lexical_score(query, texts[item.id]) > 0
-            or scores.get(item.id, 0.0) >= MIN_SEMANTIC_RELEVANCE
+            if _is_relevant(_lexical_score(query, texts[item.id]), scores.get(item.id))
         ]
-        if sessions and sessions[0] not in selected:
-            selected.append(sessions[0])
-        return [
-            ContextSession(
-                id=item.id,
-                ended_at=item.ended_at,
-                summary=item.summary,
-                themes=item.themes,
-                outcomes=item.outcomes,
-                unwanted_effects=item.unwanted_effects,
-                process_feedback=item.process_feedback,
-                support_choices=item.support_choices,
-                semantic_relevance=scores.get(item.id),
-            )
-            for item in selected
-        ]
+        return (
+            None if latest is None else _context_session(latest, None),
+            [_context_session(item, scores.get(item.id)) for item in selected],
+        )
 
-    def _relevant_excerpts(self, query: str, *, allow_index_write: bool) -> list[ContextExcerpt]:
-        excluded_message_ids = {
-            reference.message_id
-            for item in self.list_claims(include_inactive=True)
-            if item.lifecycle is not ClaimLifecycle.ACTIVE or item.superseded_content
-            for reference in item.evidence
+    def _relevant_excerpts(
+        self,
+        query: str,
+        query_vector: np.ndarray | None,
+        claim_round_scores: dict[int, float],
+        *,
+        allow_index_write: bool,
+    ) -> list[ContextExcerpt]:
+        excluded = self._excluded_round_ids()
+        refs = {item.id: item for item in self._round_refs() if item.id not in excluded}
+        # A round never changes once written, so its ID and timestamp identify its content
+        # without decrypting it; both are plaintext columns already, so the key reveals nothing
+        # an HMAC would hide. Newest first: the embedding budget goes to recent rounds.
+        expected = {
+            str(item.id): f"round:{item.id}:{item.created_at}"
+            for item in sorted(refs.values(), key=lambda ref: ref.id, reverse=True)
         }
-        candidates = self._archive_candidates(excluded_message_ids)
-        scores = self._semantic_text_scores(
-            query,
-            "message",
-            {str(item[0]): item[2] for item in candidates},
+        scores = self._semantic_scores(
+            query_vector,
+            "round",
+            expected,
+            lambda ids: {
+                str(item.id): item.text
+                for item in self._decrypt_rounds([refs[int(entity_id)] for entity_id in ids])
+            },
             allow_index_write=allow_index_write,
+            embed_limit=MAX_ROUND_EMBEDDINGS_PER_RETRIEVAL,
         )
-        ranked = sorted(
-            candidates,
-            key=lambda item: (
-                _hybrid_text_score(query, item[2], scores.get(str(item[0]))),
-                item[0],
-            ),
-            reverse=True,
-        )
+        # Only a bounded candidate set is decrypted for lexical scoring: the best semantic
+        # matches, the most recent rounds (which also covers rounds not yet embedded), and the
+        # rounds that matching claims point to.
+        best = sorted(scores, key=scores.__getitem__, reverse=True)[:ROUND_LEXICAL_CANDIDATES]
+        candidate_ids = {
+            *(int(item) for item in best),
+            *sorted(refs, reverse=True)[:ROUND_LEXICAL_CANDIDATES],
+            *(item for item in claim_round_scores if item in refs),
+        }
+        rounds = self._cached_rounds([refs[item] for item in sorted(candidate_ids)])
+        query_tokens = _tokens(query)
+        candidates: list[tuple[float, int, _Round, float | None, int]] = []
+        for item in rounds.values():
+            semantic = scores.get(str(item.id))
+            overlap = len(query_tokens & item.tokens)
+            pointer = claim_round_scores.get(item.id)
+            if pointer is None and not _is_relevant(overlap, semantic):
+                continue
+            lexical = min(overlap, 3) / 3
+            score = lexical if semantic is None else 0.7 * max(0.0, semantic) + 0.3 * lexical
+            candidates.append((max(score, pointer or 0.0), item.id, item, semantic, overlap))
+        candidates.sort(key=lambda value: (value[0], value[1]), reverse=True)
         return [
             ContextExcerpt(
-                message_id=message_id,
-                quote=text,
-                created_at=created_at,
-                semantic_relevance=scores.get(str(message_id)),
-                lexical_relevance=min(_lexical_score(query, text), 3) / 3,
+                message_id=item.id,
+                quote=item.user,
+                assistant_reply=item.assistant,
+                created_at=item.created_at,
+                semantic_relevance=semantic,
+                lexical_relevance=min(overlap, 3) / 3,
             )
-            for message_id, created_at, text in ranked
-            if _lexical_score(query, text) > 0
-            or scores.get(str(message_id), 0.0) >= MIN_SEMANTIC_RELEVANCE
+            for _score, _id, item, semantic, overlap in candidates[:5]
         ]
+
+    def consolidation_rounds(self, session_id: str) -> list[tuple[str, str, str]]:
+        """Dated rounds of one session that consolidation may summarize.
+
+        Rounds suppressed by forgetting or correction are left out, so closing a session cannot
+        write forgotten or superseded content back into its summary.
+        """
+        excluded = self._excluded_round_ids()
+        refs = [
+            item
+            for item in self._round_refs()
+            if item.session_id == session_id and item.id not in excluded
+        ]
+        return [(item.created_at, item.user, item.assistant) for item in self._decrypt_rounds(refs)]
+
+    def consolidation_claims(self, session_id: str) -> list[MemoryItem]:
+        """Active claims for consolidation: this session's own first, then the most recent."""
+        session_rounds = {item.id for item in self._round_refs() if item.session_id == session_id}
+        claims = self.list_claims()
+        own = [
+            item
+            for item in claims
+            if any(reference.message_id in session_rounds for reference in item.evidence)
+        ]
+        others = [item for item in claims if item not in own]
+        return [*own, *others][:CONSOLIDATION_CLAIM_LIMIT]
 
     def apply_retention(
         self,
@@ -2039,6 +2530,7 @@ class MemoryStore:
             "interventions": [item.model_dump(mode="json") for item in self.list_interventions()],
             "sessions": [session.model_dump(mode="json") for session in self.list_sessions()],
             "messages": messages,
+            "suppressed_round_ids": sorted(self._suppressed_round_ids()),
             "telegram_outbox": [
                 item.model_dump(mode="json") for _id, item in self.list_telegram_output()
             ],
@@ -2075,6 +2567,7 @@ class MemoryStore:
                 database.execute(f"DELETE FROM {table}")
             self._write_state("schema_version", SCHEMA_VERSION)
             self._write_state("telegram_output_epoch", str(epoch).encode())
+        self._clear_caches()
 
     def _save_claim(self, item: MemoryItem) -> None:
         with self._connect() as database:
@@ -2141,91 +2634,282 @@ class MemoryStore:
             raise KeyError(f"Unknown intervention: {record_id}")
         return self._decrypt_model(row[0], InterventionRecord)
 
-    def _archive_candidates(self, excluded_message_ids: set[int]) -> list[tuple[int, str, str]]:
+    def _round_refs(self) -> list[_RoundRef]:
+        """Every archived round in ID order, from plaintext columns only."""
         with self._connect() as database:
             rows = database.execute(
-                "SELECT id, created_at, payload FROM messages "
-                "WHERE role = 'user' ORDER BY id DESC LIMIT 1000"
+                "SELECT id, session_id, role, created_at FROM messages ORDER BY id"
             ).fetchall()
-        return [
-            (message_id, created_at, self._decrypt_json(payload).get("content", ""))
-            for message_id, created_at, payload in rows
-            if message_id not in excluded_message_ids
-        ]
+        refs = []
+        for index, (message_id, session_id, role, created_at) in enumerate(rows):
+            if role != "user":
+                continue
+            following = rows[index + 1] if index + 1 < len(rows) else None
+            reply_id = (
+                following[0]
+                if following and following[2] == "assistant" and following[1] == session_id
+                else None
+            )
+            refs.append(_RoundRef(message_id, session_id, created_at, reply_id))
+        return refs
 
-    def _semantic_scores(
-        self,
-        query: str,
-        claims: list[MemoryItem],
-        *,
-        allow_index_write: bool,
-    ) -> dict[str, float]:
-        return self._semantic_text_scores(
-            query,
-            "claim",
-            {item.id: " ".join([item.content, *item.aliases]) for item in claims},
-            allow_index_write=allow_index_write,
-        )
+    def _decrypt_rounds(self, refs: list[_RoundRef]) -> Iterator[_Round]:
+        """Decrypt rounds in batches, without caching them."""
+        for start in range(0, len(refs), 500):
+            batch = refs[start : start + 500]
+            wanted = [
+                message_id
+                for ref in batch
+                for message_id in (ref.id, ref.reply_id)
+                if message_id is not None
+            ]
+            with self._connect() as database:
+                payloads = dict(
+                    database.execute(
+                        "SELECT id, payload FROM messages WHERE id IN "
+                        f"({','.join('?' for _ in wanted)})",
+                        wanted,
+                    ).fetchall()
+                )
+            for ref in batch:
+                if ref.id not in payloads:
+                    continue
+                user = self._decrypt_json(payloads[ref.id]).get("content", "")
+                assistant = (
+                    self._decrypt_json(payloads[ref.reply_id]).get("content", "")
+                    if ref.reply_id is not None and ref.reply_id in payloads
+                    else ""
+                )
+                yield _Round(
+                    id=ref.id,
+                    session_id=ref.session_id,
+                    created_at=ref.created_at,
+                    user=user,
+                    assistant=assistant,
+                    tokens=frozenset(_tokens(f"{user}\n{assistant}")),
+                )
+
+    def _cached_rounds(self, refs: list[_RoundRef]) -> dict[int, _Round]:
+        """Decrypt a bounded set of rounds through a small LRU of recently used ones.
+
+        A cached round is reused only if its timestamp still matches: an ID can come back with
+        other content after a rolled-back transaction.
+        """
+        found: dict[int, _Round] = {}
+        missing: list[_RoundRef] = []
+        with self._cache_lock:
+            for ref in refs:
+                cached = self._round_cache.get(ref.id)
+                if cached is not None and cached.created_at == ref.created_at:
+                    self._round_cache.move_to_end(ref.id)
+                    found[ref.id] = cached
+                else:
+                    missing.append(ref)
+        loaded = {item.id: item for item in self._decrypt_rounds(missing)}
+        found.update(loaded)
+        with self._cache_lock:
+            self._round_cache.update(loaded)
+            while len(self._round_cache) > ROUND_TEXT_CACHE_SIZE:
+                self._round_cache.popitem(last=False)
+        return found
+
+    def _clear_caches(self) -> None:
+        with self._cache_lock:
+            self._vector_tables.clear()
+            self._round_cache.clear()
+
+    def _message_time(self, message_id: int) -> str | None:
+        with self._connect() as database:
+            row = database.execute(
+                "SELECT created_at FROM messages WHERE id = ?", (message_id,)
+            ).fetchone()
+        return None if row is None else row[0]
+
+    def _excluded_round_ids(self) -> set[int]:
+        """Rounds no retrieval or consolidation may return: forgotten or superseded provenance."""
+        return self._suppressed_round_ids() | {
+            reference.message_id
+            for item in self.list_claims(include_inactive=True)
+            if item.lifecycle is not ClaimLifecycle.ACTIVE or item.superseded_content
+            for reference in item.evidence
+        }
+
+    def _suppressed_round_ids(self) -> set[int]:
+        payload = self._read_state("suppressed_rounds")
+        return set() if payload is None else set(json.loads(payload))
+
+    def _suppress_rounds(self, round_ids: set[int]) -> None:
+        if not round_ids:
+            return
+        suppressed = self._suppressed_round_ids() | round_ids
+        self._write_state("suppressed_rounds", json.dumps(sorted(suppressed)).encode())
+        self._delete_semantic_entities("round", [str(item) for item in round_ids])
+        # A pending split-mode extraction would otherwise record the forgotten wording later.
+        with self._connect() as database:
+            database.executemany(
+                "DELETE FROM pending_extractions WHERE message_id = ?",
+                ((item,) for item in round_ids),
+            )
+
+    def _rounds_carrying(self, wordings: Iterable[str]) -> set[int]:
+        """Rounds whose user message or assistant reply repeats any of these wordings.
+
+        A wording shorter than three words is too generic to match by content ("tired" occurs in
+        "retired"); its own evidence rounds are still suppressed by provenance.
+        """
+        wordings = [
+            wording
+            for wording in wordings
+            if wording and len(re.findall(r"\w+", wording)) >= MIN_FORGET_QUOTE_WORDS
+        ]
+        return {
+            item.id
+            for item in self._decrypt_rounds(self._round_refs())
+            if any(
+                _carries(wording, item.user) or _carries(wording, item.assistant)
+                for wording in wordings
+            )
+        }
+
+    def _query_vector(self, query: str) -> np.ndarray | None:
+        if not self._embedder or not self._embedding_model or not query.strip():
+            return None
+        try:
+            return _unit(self._embedder.embed_query_sync(query).embeddings[0])
+        except Exception as error:
+            raise MemoryError(
+                "Semantic memory is unavailable. Run `filo setup` and try again."
+            ) from error
 
     def _semantic_text_scores(
         self,
-        query: str,
+        query_vector: np.ndarray | None,
         entity_type: str,
         texts: dict[str, str],
         *,
         allow_index_write: bool,
     ) -> dict[str, float]:
-        if not self._embedder or not self._embedding_model or not query.strip() or not texts:
+        return self._semantic_scores(
+            query_vector,
+            entity_type,
+            {entity_id: self._content_hash(text) for entity_id, text in texts.items()},
+            lambda ids: {entity_id: texts[entity_id] for entity_id in ids},
+            allow_index_write=allow_index_write,
+        )
+
+    def _semantic_scores(
+        self,
+        query_vector: np.ndarray | None,
+        entity_type: str,
+        expected: dict[str, str],
+        texts_for: Callable[[list[str]], dict[str, str]],
+        *,
+        allow_index_write: bool,
+        embed_limit: int | None = None,
+    ) -> dict[str, float]:
+        """Score every expected entity, loading or embedding only what the table lacks.
+
+        ``expected`` maps entity IDs to content hashes, in the order to embed missing ones.
+        Rows the table holds for anything not expected, or under another hash, are dropped, so
+        deletion, suppression and correction reach the in-process table without a callback.
+        """
+        embedder = self._embedder
+        if query_vector is None or embedder is None:
             return {}
         try:
-            expected = {entity_id: self._content_hash(text) for entity_id, text in texts.items()}
-            with self._connect() as database:
-                rows = database.execute(
-                    "SELECT entity_id, content_hash, dimensions, payload FROM semantic_index "
-                    "WHERE model = ? AND entity_type = ?",
-                    (self._embedding_model, entity_type),
-                ).fetchall()
-            vectors: dict[str, list[float]] = {}
-            for entity_id, content_hash, dimensions, payload in rows:
-                vector = self._decrypt_json(payload)["vector"]
-                if expected.get(entity_id) == content_hash and len(vector) == dimensions:
-                    vectors[entity_id] = vector
-            missing = {
-                entity_id: text for entity_id, text in texts.items() if entity_id not in vectors
-            }
-            if missing:
-                result = self._embedder.embed_documents_sync(list(missing.values()))
-                for entity_id, vector in zip(missing, result.embeddings, strict=True):
-                    vectors[entity_id] = list(vector)
-                if allow_index_write:
+            with self._cache_lock:
+                table = self._vector_tables.setdefault(entity_type, _VectorTable())
+                for entity_id in [
+                    item for item in table.ids if expected.get(item) != table.hashes[item]
+                ]:
+                    table.remove(entity_id)
+                missing = [item for item in expected if item not in table.rows]
+            found: set[str] = set()
+            loaded: dict[str, np.ndarray] = {}
+            capacity = len(table.ids) + len(missing)
+            for start in range(0, len(missing), 500):
+                batch = missing[start : start + 500]
+                with self._connect() as database:
+                    rows = database.execute(
+                        "SELECT entity_id, content_hash, dimensions, payload FROM semantic_index "
+                        "WHERE model = ? AND entity_type = ? AND entity_id IN "
+                        f"({','.join('?' for _ in batch)})",
+                        (self._embedding_model, entity_type, *batch),
+                    ).fetchall()
+                batch_loaded: dict[str, np.ndarray] = {}
+                for entity_id, content_hash, dimensions, payload in rows:
+                    if expected[entity_id] != content_hash:
+                        continue
+                    raw = self._decrypt(payload)
+                    # Packed little-endian float32; any other layout is rebuilt below.
+                    if len(raw) == dimensions * 4:
+                        unit = _unit(np.frombuffer(raw, dtype="<f4"))
+                        if unit is not None:
+                            batch_loaded[entity_id] = unit
+                # Straight into the matrix, so a cold start never holds the vectors twice.
+                self._put_vectors(table, expected, batch_loaded, capacity)
+                found.update(batch_loaded)
+            embed = [item for item in missing if item not in found][:embed_limit]
+            if embed:
+                texts = texts_for(embed)
+                embed = [item for item in embed if item in texts]
+                result = embedder.embed_documents_sync([texts[item] for item in embed])
+                rows_to_write = []
+                for entity_id, vector in zip(embed, result.embeddings, strict=True):
+                    packed = np.asarray(vector, dtype="<f4")
+                    unit = _unit(packed)
+                    if unit is None:
+                        continue
+                    loaded[entity_id] = unit
+                    rows_to_write.append(
+                        (
+                            entity_type,
+                            entity_id,
+                            self._embedding_model,
+                            expected[entity_id],
+                            packed.size,
+                            self._cipher.encrypt(packed.tobytes()),
+                        )
+                    )
+                if allow_index_write and rows_to_write:
                     with self._connect() as database:
-                        for entity_id in missing:
-                            stored = vectors[entity_id]
-                            database.execute(
-                                "INSERT INTO semantic_index(entity_type, entity_id, model, "
-                                "content_hash, dimensions, payload) VALUES (?, ?, ?, ?, ?, ?) "
-                                "ON CONFLICT(entity_type, entity_id) DO UPDATE SET "
-                                "model = excluded.model, content_hash = excluded.content_hash, "
-                                "dimensions = excluded.dimensions, payload = excluded.payload",
-                                (
-                                    entity_type,
-                                    entity_id,
-                                    self._embedding_model,
-                                    expected[entity_id],
-                                    len(stored),
-                                    self._encrypt_json({"vector": stored}),
-                                ),
-                            )
-            query_vector = list(self._embedder.embed_query_sync(query).embeddings[0])
-            return {
-                item_id: similarity
-                for item_id, vector in vectors.items()
-                if (similarity := _cosine_similarity(query_vector, vector)) is not None
-            }
+                        database.executemany(
+                            "INSERT INTO semantic_index(entity_type, entity_id, model, "
+                            "content_hash, dimensions, payload) VALUES (?, ?, ?, ?, ?, ?) "
+                            "ON CONFLICT(entity_type, entity_id) DO UPDATE SET "
+                            "model = excluded.model, content_hash = excluded.content_hash, "
+                            "dimensions = excluded.dimensions, payload = excluded.payload",
+                            rows_to_write,
+                        )
+            self._put_vectors(table, expected, loaded, capacity)
+            with self._cache_lock:
+                return {
+                    entity_id: score
+                    for entity_id, score in table.scores(query_vector).items()
+                    if entity_id in expected
+                }
+        except MemoryError:
+            raise
         except Exception as error:
             raise MemoryError(
                 "Semantic memory is unavailable. Run `filo setup` and try again."
             ) from error
+
+    def _put_vectors(
+        self,
+        table: _VectorTable,
+        expected: dict[str, str],
+        vectors: dict[str, np.ndarray],
+        capacity: int,
+    ) -> None:
+        if not vectors:
+            return
+        with self._cache_lock:
+            table.reserve(
+                max(capacity, len(table.ids) + len(vectors)), next(iter(vectors.values())).size
+            )
+            for entity_id, unit in vectors.items():
+                table.put(entity_id, expected[entity_id], unit)
 
     def _delete_semantic_entities(self, entity_type: str, entity_ids: list[str]) -> None:
         if not entity_ids:
@@ -2256,7 +2940,7 @@ class MemoryStore:
                 "DELETE FROM pending_extractions WHERE message_id = ?",
                 ((item,) for item in message_ids),
             )
-        self._delete_semantic_entities("message", [str(item) for item in message_ids])
+        self._delete_semantic_entities("round", [str(item) for item in message_ids])
         for claim in self.list_claims(include_inactive=True):
             claim.evidence = [
                 reference for reference in claim.evidence if reference.message_id not in message_set
@@ -2287,10 +2971,12 @@ class MemoryStore:
             if item.evidence.message_id in message_set:
                 with self._connect() as database:
                     database.execute("DELETE FROM process_preferences WHERE id = ?", (item.id,))
+                self._delete_semantic_entities("preference", [item.id])
         for item in self.list_support_choices():
             if item.evidence.message_id in message_set:
                 with self._connect() as database:
                     database.execute("DELETE FROM support_choices WHERE id = ?", (item.id,))
+                self._delete_semantic_entities("support", [item.id])
         for session in self.list_sessions():
             if session.id in session_ids:
                 _clear_session_reflection(session)
@@ -2355,18 +3041,7 @@ class MemoryStore:
             self._save_intervention(intervention)
         for session in self.list_sessions():
             session.summary = _replace_derived(session.summary, old, new)
-            for field_name in (
-                "themes",
-                "user_defined_concerns",
-                "meaningful_changes",
-                "interventions_discussed",
-                "tried",
-                "outcomes",
-                "unwanted_effects",
-                "process_feedback",
-                "support_choices",
-                "open_questions",
-            ):
+            for field_name in SESSION_REFLECTION_LIST_FIELDS:
                 setattr(
                     session,
                     field_name,
@@ -2443,11 +3118,16 @@ class MemoryStore:
         with self._connect() as database:
             database.execute("DELETE FROM telegram_outbox WHERE id = ?", (entry_id,))
 
-    def _discard_telegram_output(self, before: datetime | None = None) -> None:
+    def _discard_telegram_output(
+        self, before: datetime | None = None, *, count: bool = True
+    ) -> None:
         # An undelivered Telegram reply can quote what is being deleted, and
         # nothing ties a queued message to the records it mentions, so a
         # deletion drops every queued reply that could predate it.
-        self._write_state("telegram_output_epoch", str(self.telegram_output_epoch() + 1).encode())
+        if count:
+            self._write_state(
+                "telegram_output_epoch", str(self.telegram_output_epoch() + 1).encode()
+            )
         with self._connect() as database:
             if before is None:
                 database.execute("DELETE FROM telegram_outbox")
@@ -2491,7 +3171,7 @@ class MemoryStore:
         self._local.transaction = database
 
     @contextmanager
-    def transaction(self) -> Iterator[None]:
+    def transaction(self) -> Generator[None]:
         with self._ephemeral_lock if self._ephemeral else nullcontext():
             yield from self._transaction_scope()
 
@@ -2504,6 +3184,11 @@ class MemoryStore:
             try:
                 with self._ephemeral_database:
                     yield
+            except BaseException:
+                # SQLite hands a rolled-back row ID out again, so nothing read inside the
+                # transaction may outlive it.
+                self._clear_caches()
+                raise
             finally:
                 self._transaction = None
             return
@@ -2524,6 +3209,7 @@ class MemoryStore:
             except BaseException:
                 if database.in_transaction:
                     database.execute("ROLLBACK")
+                self._clear_caches()
                 raise
             database.execute("COMMIT")
         finally:
@@ -2531,7 +3217,7 @@ class MemoryStore:
             database.close()
 
     @contextmanager
-    def _connect(self) -> Iterator[sqlite3.Connection]:
+    def _connect(self) -> Generator[sqlite3.Connection]:
         with self._ephemeral_lock if self._ephemeral else nullcontext():
             yield from self._connection_scope()
 
@@ -2601,6 +3287,11 @@ def _claim_allowed_in_formulation(item: MemoryItem, field_name: str) -> bool:
     return False
 
 
+def _formulation_text(item: MemoryItem) -> str:
+    # A claim about another person stays in the formulation, attributed to the user who told it.
+    return f"User's account: {item.content}" if item.about_others else item.content
+
+
 def _is_stale_hypothesis(item: MemoryItem, now: datetime | None = None) -> bool:
     if item.origin is not ClaimOrigin.AGENT_HYPOTHESIS or item.fit not in {
         ClaimFit.NOT_REVIEWED,
@@ -2616,15 +3307,14 @@ def _context_claim_score(item: ContextClaim) -> float:
     return 0.7 * semantic + 0.3 * item.lexical_relevance
 
 
+# Kana, CJK ideographs and Thai are written without spaces between words.
+_UNSPACED_SCRIPT = re.compile("[\u3040-\u30ff\u3400-\u9fff\u0e00-\u0e7f]")
+
+
 def _tokens(text: str) -> set[str]:
     normalized = text.casefold()
     tokens = {token for token in re.findall(r"\w+", normalized) if len(token) >= 4}
-    if any(
-        "\u3040" <= character <= "\u30ff"
-        or "\u3400" <= character <= "\u9fff"
-        or "\u0e00" <= character <= "\u0e7f"
-        for character in normalized
-    ):
+    if _UNSPACED_SCRIPT.search(normalized):
         characters = "".join(
             character
             for character in normalized
@@ -2645,14 +3335,12 @@ def _hybrid_text_score(query: str, text: str, semantic_score: float | None) -> f
     return (0.7 * max(0.0, semantic_score)) + (0.3 * lexical)
 
 
-def _cosine_similarity(left: list[float], right: list[float]) -> float | None:
-    if len(left) != len(right) or not left:
+def _unit(vector: Any) -> np.ndarray | None:
+    array = np.asarray(vector, dtype=np.float32)
+    norm = float(np.linalg.norm(array))
+    if array.ndim != 1 or not array.size or not norm or not np.isfinite(norm):
         return None
-    left_norm = math.sqrt(sum(value * value for value in left))
-    right_norm = math.sqrt(sum(value * value for value in right))
-    if not left_norm or not right_norm:
-        return None
-    return sum(a * b for a, b in zip(left, right, strict=True)) / (left_norm * right_norm)
+    return array / norm
 
 
 def _near_duplicate(left: str, right: str) -> bool:
@@ -2897,13 +3585,223 @@ def _replace_derived(value: str, old: str, new: str) -> str:
 
 def _clear_session_reflection(session: SessionRecord) -> None:
     session.summary = ""
-    session.themes = []
-    session.user_defined_concerns = []
-    session.meaningful_changes = []
-    session.interventions_discussed = []
-    session.tried = []
-    session.outcomes = []
-    session.unwanted_effects = []
-    session.process_feedback = []
-    session.support_choices = []
-    session.open_questions = []
+    for field_name in SESSION_REFLECTION_LIST_FIELDS:
+        setattr(session, field_name, [])
+
+
+def _reflection_values(session: SessionRecord) -> list[str]:
+    return [
+        value
+        for field_name in SESSION_REFLECTION_LIST_FIELDS
+        for value in getattr(session, field_name)
+    ]
+
+
+def _context_session(session: SessionRecord, relevance: float | None) -> ContextSession:
+    return ContextSession(
+        id=session.id,
+        started_at=session.started_at,
+        ended_at=session.ended_at,
+        summary=session.summary,
+        themes=session.themes,
+        outcomes=session.outcomes,
+        unwanted_effects=session.unwanted_effects,
+        process_feedback=session.process_feedback,
+        support_choices=session.support_choices,
+        risk_notes=session.risk_notes,
+        semantic_relevance=relevance,
+    )
+
+
+def _elapsed(delta: timedelta) -> str:
+    """Coarse elapsed time for the model; the absolute dates sit beside it in the envelope."""
+    seconds = max(0, int(delta.total_seconds()))
+    for unit, size in (("day", 86_400), ("hour", 3_600), ("minute", 60)):
+        if seconds >= size:
+            count = seconds // size
+            return f"{count} {unit}{'s' if count != 1 else ''}"
+    return "less than a minute"
+
+
+def _is_relevant(lexical_overlap: int, semantic: float | None) -> bool:
+    return (
+        semantic is not None and semantic >= MIN_SEMANTIC_RELEVANCE
+    ) or lexical_overlap >= MIN_LEXICAL_OVERLAP
+
+
+def _carries(wording: str, text: str) -> bool:
+    """Whether text repeats a wording, verbatim or with most of its content words."""
+    if _supported_quote(wording, text):
+        return True
+    wanted = _tokens(wording)
+    if len(wanted) < 3:
+        return False
+    return len(wanted & _tokens(text)) / len(wanted) >= ROUND_CARRY_COVERAGE
+
+
+_MONTHS = {
+    name: number
+    for number, names in enumerate(
+        (
+            ("january", "gennaio"),
+            ("february", "febbraio"),
+            ("march", "marzo"),
+            ("april", "aprile"),
+            ("may", "maggio"),
+            ("june", "giugno"),
+            ("july", "luglio"),
+            ("august", "agosto"),
+            ("september", "settembre"),
+            ("october", "ottobre"),
+            ("november", "novembre"),
+            ("december", "dicembre"),
+        ),
+        start=1,
+    )
+    for name in names
+}
+_SEASONS = {
+    "spring": "spring",
+    "primavera": "spring",
+    "summer": "summer",
+    "estate": "summer",
+    "autumn": "autumn",
+    "fall": "autumn",
+    "autunno": "autumn",
+    "winter": "winter",
+    "inverno": "winter",
+}
+_SEASON_START_MONTH = {"spring": 3, "summer": 6, "autumn": 9, "winter": 12}
+_MONTH_NAME = "|".join(_MONTHS)
+_DAY_ANCHOR = re.compile(
+    r"\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b"
+    rf"|\b\d{{1,2}}\s+(?:di\s+)?(?:{_MONTH_NAME})\b|\b(?:{_MONTH_NAME})\s+\d{{1,2}}\b"
+    r"|\b(?:yesterday|today|tonight|ieri|oggi|stamattina|stasera|stanotte)\b"
+    r"|\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|luned[iì]|marted[iì]"
+    r"|mercoled[iì]|gioved[iì]|venerd[iì]|sabato|domenica)\b"
+    r"|\b\d+\s+(?:days?|giorni)\s+(?:ago|fa)\b"
+)
+_MONTH_ANCHOR = re.compile(
+    rf"\b(?:{_MONTH_NAME})\b|\b\d{{4}}-\d{{2}}\b"
+    r"|\b(?:last|this)\s+month\b|\bmese\s+scorso\b|\bquesto\s+mese\b"
+    r"|\b\d+\s+(?:months?|mesi)\s+(?:ago|fa)\b"
+)
+_SEASON_ANCHOR = re.compile(rf"\b(?:{'|'.join(_SEASONS)})\b")
+_YEAR_ANCHOR = re.compile(
+    r"\b\d{4}\b|\b(?:last|this)\s+year\b|\banno\s+scorso\b|\bquest'anno\b"
+    r"|\b\d+\s+(?:years?|anni)\s+(?:ago|fa)\b"
+)
+_PRECISION_RANK = {
+    TimePrecision.YEAR: 0,
+    TimePrecision.SEASON: 1,
+    TimePrecision.MONTH: 2,
+    TimePrecision.DAY: 3,
+}
+
+
+def _supported_precision(quote: str) -> TimePrecision | None:
+    """The finest precision a time expression itself carries, or None if it dates nothing.
+
+    "Lately" or "for a while" carry no date at all, "last spring" a season, "in March" a month.
+    A recorded precision may be coarser than this, never finer.
+    """
+    folded = _fold_apostrophes(quote)
+    for precision, anchor in (
+        (TimePrecision.DAY, _DAY_ANCHOR),
+        (TimePrecision.MONTH, _MONTH_ANCHOR),
+        (TimePrecision.SEASON, _SEASON_ANCHOR),
+        (TimePrecision.YEAR, _YEAR_ANCHOR),
+    ):
+        if anchor.search(folded):
+            return precision
+    return None
+
+
+def _period_start(expression: TimeExpression) -> datetime:
+    value = expression.value or ""
+    year = int(value[:4])
+    if expression.precision is TimePrecision.DAY:
+        return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=UTC)
+    if expression.precision is TimePrecision.MONTH:
+        return datetime(year, int(value[5:7]), 1, tzinfo=UTC)
+    if expression.precision is TimePrecision.SEASON:
+        return datetime(year, _SEASON_START_MONTH[value[5:]], 1, tzinfo=UTC)
+    return datetime(year, 1, 1, tzinfo=UTC)
+
+
+def time_expression_problem(
+    expression: TimeExpression, evidence: str, message_time: datetime
+) -> str | None:
+    """Explain why a time expression cannot be recorded, or return None if it can.
+
+    Shared by the conversation tool and the extractor, where the model can retry, and the
+    store, where it is the backstop. The value may only resolve what the quote says, against
+    the date of the message that said it.
+    """
+    if not _supported_quote(expression.quote, evidence):
+        return "valid_from.quote must be an exact span of the current user message."
+    if not quote_keeps_clause_polarity(expression.quote, evidence):
+        return "valid_from.quote may not be taken out of the negation that qualified it."
+    supported = _supported_precision(expression.quote)
+    if supported is None:
+        return (
+            "valid_from.quote names no date, month, season or year; leave valid_from unset "
+            "for a vague phrase such as 'lately'."
+        )
+    if _PRECISION_RANK[expression.precision] > _PRECISION_RANK[supported]:
+        return (
+            f"valid_from.precision {expression.precision.value} is finer than the quote "
+            f"supports ({supported.value}); use {supported.value} or coarser."
+        )
+    if expression.value is None:
+        return None
+    folded = _fold_apostrophes(expression.quote)
+    message_date = message_time.astimezone(UTC) if message_time.tzinfo else message_time
+    message_date = message_date.replace(tzinfo=UTC)
+    if _period_start(expression) > message_date:
+        return "valid_from.value lies after the message that dated it."
+    months = {number for name, number in _MONTHS.items() if re.search(rf"\b{name}\b", folded)}
+    if (
+        months
+        and expression.precision in {TimePrecision.MONTH, TimePrecision.DAY}
+        and int(expression.value[5:7]) not in months
+    ):
+        return "valid_from.value must keep the month the user named."
+    seasons = {season for name, season in _SEASONS.items() if re.search(rf"\b{name}\b", folded)}
+    if (
+        seasons
+        and expression.precision is TimePrecision.SEASON
+        and expression.value[5:] not in seasons
+    ):
+        return "valid_from.value must keep the season the user named."
+    if re.search(r"\b\d{4}\b", folded):
+        return None
+    year = int(expression.value[:4])
+    ago = re.search(r"\b(\d+)\s+(?:years?|anni)\s+(?:ago|fa)\b", folded)
+    if ago:
+        expected = {message_date.year - int(ago.group(1))}
+    elif re.search(r"\blast\s+year\b|\banno\s+scorso\b", folded):
+        expected = {message_date.year - 1}
+    elif re.search(r"\bthis\s+year\b|\bquest'anno\b", folded):
+        expected = {message_date.year}
+    else:
+        # A relative expression without a year ("last spring", "in March") resolves against the
+        # message date: this year or the one before, never an arbitrary one.
+        expected = {message_date.year, message_date.year - 1}
+    if year not in expected:
+        return "valid_from.value must resolve the quote against the message date."
+    relative_days = {"yesterday": 1, "ieri": 1, "today": 0, "oggi": 0, "tonight": 0}
+    for word, offset in relative_days.items():
+        if (
+            re.search(rf"\b{word}\b", folded)
+            and expression.precision is TimePrecision.DAY
+            and expression.value != (message_date - timedelta(days=offset)).date().isoformat()
+        ):
+            return "valid_from.value must resolve the quote against the message date."
+    return None
+
+
+def _require_quoted_time(expression: TimeExpression, evidence: str, message_time: datetime) -> None:
+    problem = time_expression_problem(expression, evidence, message_time)
+    if problem:
+        raise ValueError(problem)

@@ -16,15 +16,23 @@ Formerly published as Therapist (v0.1–v0.3).
 ## Install
 
 Until the first release published under the Filo name, install from a checkout. This needs Git and
-[uv](https://docs.astral.sh/uv/):
+[uv](https://docs.astral.sh/uv/) 0.11.31 or later:
 
 ```bash
 git clone https://github.com/matteodante/filo.git
 cd filo
-uv tool install --python 3.12 .
+uv export --frozen --no-dev --no-emit-project --no-hashes |
+  grep -v "^torch==.*sys_platform != 'linux'" >filo-constraints.txt
+uv tool install --python 3.12 --constraints filo-constraints.txt .
 filo setup
 filo doctor
 ```
+
+The constraints file pins the versions in `uv.lock`, which `uv tool install` does not read, so the
+installation uses the tested versions. On Linux the project selects the CPU build of PyTorch: the
+embedding model runs on the CPU, and the default Linux build adds several gigabytes of CUDA
+libraries. Outside Linux PyTorch is left unpinned, because the locked release has no wheel for
+Intel Macs or macOS 13.
 
 The one-line bootstrap installers (`install.sh`, `install.ps1`) still pin `v0.3.1`, which predates
 the rename, so they are not usable until that release. They need no administrator privileges,
@@ -77,13 +85,23 @@ choices, and a derived semantic index.
 - No quote is taken out of the clause that qualified it, so a refusal cannot be recorded as
   agreement to an exercise.
 - A hypothesis remains an agent hypothesis even when the user says it fits.
-- Corrections preserve superseded history in export while preventing old wording from returning in
-  active context.
+- Corrections preserve superseded history, with the time each claim stopped holding, in export
+  while preventing old wording from returning in active context.
+- What you say about another person, or about being watched or followed, is kept as your account,
+  never as established fact about them.
 - Conflicts remain explicit; semantic similarity never establishes truth.
 
+- Claims record when you said something, and when it started only if you named a time; "last
+  spring" stays a season, never a guessed date.
+- Asking in the conversation to forget something you said, in any memory mode, stops it coming back
+  through claims, past conversations, and session summaries, even if it never became a claim. The
+  archive keeps it until you delete it locally.
+
 Retrieval combines lexical overlap, local multilingual embeddings, recency, focus, pending
-interventions, process preferences, conflicts, relevant sessions, and concrete excerpts. Results are
-bounded as complete JSON records. Missing embeddings fail closed.
+interventions, process preferences ranked by relevance, conflicts, relevant sessions, the parts of
+the formulation that bear on the message, hypotheses you rejected, and excerpts from every past
+exchange, not only recent ones. The most recent session and today's date are always in context.
+Results are bounded as complete JSON records. Missing embeddings fail closed.
 
 `--memory-writing split` is an experimental alternative under evaluation: instead of the
 conversation agent, one extra model call after each delivered reply records what you reported,
@@ -152,6 +170,11 @@ reachable, so conversations can stay on your own hardware; set `FILO_LOCAL_BASE_
 server is not on `http://localhost:8080/v1`. That path carries no support claim, and the remaining
 PydanticAI providers stay technical escape hatches. Telegram checks private-chat type and numeric
 allowlist and keeps configuration secrets out of process arguments.
+
+When a reply fails, Filo says why and what to do: a usage limit with its reset time, a ChatGPT login
+to renew (`filo auth login`), a conversation too long for the model (`/end`), or a temporary
+problem. `/retry` sends the failed message again. `filo doctor` shows the login, the Telegram
+service, and the last failure. A second `filo telegram` for the same data directory refuses to start.
 
 Type `/crisis` in chat or in the Telegram bot for emergency and crisis resources (Italy/EU and US)
 in your locale. It is static text with no model call, so it works when the provider is down, and it

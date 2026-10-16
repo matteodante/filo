@@ -506,3 +506,50 @@ def test_inline_report_rejection_says_exactly_what_to_change(tmp_path) -> None:
     ).respond("I slept badly last night.")
     assert any("set content to exactly the evidence_quote text" in item for item in seen)
     assert _active(store) == ["I slept badly"]
+
+
+STORY = "my brother crashed the boat at the lake"
+
+
+def test_forgetting_removes_a_pending_extraction_marker(tmp_path) -> None:
+    store = MemoryStore(tmp_path)
+    model = Model(RuntimeError("provider down"), {"reports": [_report(STORY)]})
+    chat = _session(store, model)
+    chat.respond(f"Last summer {STORY}.")
+    chat.extract_pending()
+    [story_id] = _markers(store)
+    request = "Please forget the boat story."
+    request_id = store.save_turn(store.active_session(), request, "Done.", [])  # type: ignore[arg-type]
+    store.forget_content([STORY], "Please forget", request_id, request)
+    assert story_id not in _markers(store)
+    chat.extract_pending()
+    assert _active(store) == []
+
+
+def test_extractor_records_nothing_from_a_suppressed_round(tmp_path) -> None:
+    store = MemoryStore(tmp_path)
+    model = Model({"reports": [_report(STORY)]})
+    chat = _session(store, model)
+    chat.respond(f"Last summer {STORY}.")
+    [story_id] = _markers(store)
+    store._suppress_rounds({story_id})
+    # A marker written after the suppression, as a concurrent turn could.
+    store.add_pending_extraction(story_id)
+    chat.extract_pending()
+    assert _active(store) == []
+    assert _markers(store) == []
+
+
+def test_extractor_retries_an_unusable_time_expression(tmp_path) -> None:
+    store = MemoryStore(tmp_path)
+    dated = {
+        **_report("Lately I wake at four"),
+        "valid_from": {"quote": "Lately", "precision": "day"},
+    }
+    model = Model({"reports": [dated]}, {"reports": [_report("Lately I wake at four")]})
+    chat = _session(store, model)
+    chat.respond("Lately I wake at four.")
+    assert chat.extract_pending() == 1
+    assert "names no date" in _retries(model.extractor_messages[1])[0]
+    [claim] = store.list_claims()
+    assert claim.valid_from is None

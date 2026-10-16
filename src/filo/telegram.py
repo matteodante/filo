@@ -12,6 +12,7 @@ import sqlite3
 import threading
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -19,6 +20,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from filo.chat import ChatSession, ChatTurn, TurnStreamEvent, TurnStreamKind, crisis_resources
+from filo.failures import classify
 from filo.memory import MemoryMode, MemoryStore, TelegramDelivery
 
 API_ROOT = "https://api.telegram.org"
@@ -87,6 +89,7 @@ class TelegramBot:
             ("sessions", "Sessions and summaries"),
             ("interventions", "Recorded interventions"),
             ("privacy", "Data, providers and limits"),
+            ("retry", "Send the last failed message again"),
             ("end", "Close the session"),
         ]
         self._call("deleteMyCommands", {})
@@ -257,6 +260,8 @@ class TelegramChannel:
             try:
                 self._listen()
             except _ConfigurationChanged:
+                # A failed message belongs to the configuration that received it.
+                self.session.discard_failed()
                 state = self.config_store.load_app_state()
                 token = self.config_store.load_secret(TELEGRAM_SECRET)
                 if not token or not state.telegram_allowed_user_id:
@@ -497,6 +502,11 @@ class TelegramChannel:
         if command == "/end":
             send(self._command_response(command, None) or self._unknown_command())
             return True, False
+        if command == "/retry":
+            if self.session.failed_text is None:
+                send("Nothing to retry.")
+                return True, False
+            text, command = self.session.failed_text, None
         if command:
             # These views render stored records. A local deletion between the
             # read and the queue write would otherwise let a discarded record
@@ -582,20 +592,22 @@ class TelegramChannel:
             # one, and keep the body out: it can echo conversation content.
             status = getattr(error, "status_code", None)
             status_note = f" (HTTP {status})" if status else ""
-            # The type alone cannot separate a refused request from a dropped
-            # connection. Bound the message: a provider can echo prompt content
-            # back in an error, and conversations must not reach the log.
-            summary = " ".join(str(error).split())[:200]
             cause = error.__cause__
             cause_note = f" <- {type(cause).__name__}" if cause is not None else ""
+            failure = classify(error)
+            # Kind and classes only, never the message: a provider can echo conversation
+            # content in an error, and this log is plain text.
             print(
-                f"Model error while handling Telegram message: "
-                f"{type(error).__name__}{status_note}{cause_note}: {summary}"
+                f"Model error ({failure.kind.value}) while handling Telegram message: "
+                f"{type(error).__name__}{status_note}{cause_note}"
             )
+            if not self._ephemeral:  # Ephemeral mode writes nothing about the conversation.
+                with suppress(Exception):  # A busy store must not hide the notice.
+                    self.config_store.record_failure(failure.kind.value, failure.error_class)
             # Any failure inside the turn transaction rolled the queued replies
             # back with it, so the caller queues this notice instead.
             outbox.clear()
-            send(self._model_error())
+            send(failure.notice())
             return True, False
         finally:
             typing_stopped.set()
@@ -634,6 +646,7 @@ class TelegramChannel:
                 "/start — identity, notice, and consent\n"
                 "/status — agent, session, and archive status\n"
                 "/crisis — emergency resources, without a model reply\n"
+                "/retry — send the last failed message again\n"
                 "/end — close and summarize the session\n\n"
                 "TRANSPARENCY\n"
                 "/case — formulation and linked evidence\n"
@@ -795,6 +808,7 @@ class TelegramChannel:
             "Process feedback",
             "Support choices",
             "Open questions",
+            "Risk and safety notes",
         )
         lines = [
             f"SESSION {session.id}",
@@ -813,6 +827,7 @@ class TelegramChannel:
             session.process_feedback,
             session.support_choices,
             session.open_questions,
+            session.risk_notes,
         )
         for label, value in zip(labels, values, strict=True):
             if value:
@@ -877,6 +892,8 @@ class TelegramChannel:
             "• Agent tool inputs and outputs are shown and retained in encrypted history.\n"
             "• Any durable changes are disclosed after each reply.\n"
             "• Internal prompts, tokens, and private reasoning are not shown.\n\n"
+            "Asking in the chat to forget something you said stops it coming back in retrieval "
+            "and summaries; the archive keeps it until local deletion. "
             "Use the local CLI for export, correction, forgetting, and local deletion. "
             "Changing mode does not erase existing data. Local deletion cannot remove provider, "
             "Telegram, plaintext export, backup, or terminal-capture copies."
@@ -894,7 +911,14 @@ class TelegramChannel:
     ) -> str | None:
         old_memory, old_interventions, old_formulation = before
         changes: list[str] = []
-        for item in self.store.list_claims():
+        every = {item.id: item for item in self.store.list_claims(include_inactive=True)}
+        current = [item for item in every.values() if item.lifecycle.value == "active"]
+        for item_id in old_memory.keys() - {item.id for item in current}:
+            # Named by ID only: repeating forgotten content would defeat the request.
+            ended = every.get(item_id)
+            state = "superseded" if ended and ended.lifecycle.value == "superseded" else "forgotten"
+            changes.append(f"Memory {state} [{item_id}]")
+        for item in current:
             old = old_memory.get(item.id)
             if old is None:
                 label = _memory_label(item.kind.value)
@@ -946,12 +970,6 @@ class TelegramChannel:
 
     def _unknown_command(self) -> str:
         return "Unknown command. Use /help."
-
-    def _model_error(self) -> str:
-        return (
-            "I couldn't respond. Please try again shortly. "
-            "If you may be in danger, /crisis shows emergency resources."
-        )
 
 
 def split_message(text: str, limit: int = MESSAGE_LIMIT) -> list[str]:
