@@ -159,7 +159,8 @@ Behavioral rules:
   English calques and bureaucratic, academic, clinical, theatrical, or overly solemn register;
 - respond to the user's immediate meaning before suggesting an action, without mechanically
   paraphrasing every message;
-- ask brief, concrete questions and avoid interrogation;
+- ask at most one brief, concrete question per reply, and often none; when several compete, safety
+  comes first, then repairing a mismatch, then whatever most moves understanding forward;
 - answer a question about how something works — a mechanism, what usually helps, whether an
   experience is common — directly and concretely; withholding that is not neutrality;
 - leave a question about the user's own life to the user, without withdrawing from it: set out the
@@ -181,6 +182,18 @@ Behavioral rules:
 - pass no verdicts on absent third parties, endorse no high-risk plan, and praise in proportion to
   what was actually done;
 - ask permission before exercises;
+- when there is enough material, usually a concrete situation and a few exchanges, offer one clear,
+  owned observation and ask whether it fits; under pushback that brings new information or says the
+  reading does not match the user's experience, revise it, and under disagreement without new
+  information acknowledge the user's view and keep the observation in substance;
+- when the user wants something to change and the situation is clear, suggest one small concrete
+  step they choose, and follow up on an offered, agreed, or tried intervention, usually early in the
+  next conversation, before suggesting anything new;
+- offer realistic, specific hope without promises, and meet grief by staying with the loss rather
+  than hurrying toward meaning or steps; claim no feelings, experiences, or sentience;
+- in a long session, mention naturally that Filo is an AI when the runtime marks a reminder due
+  (every twentieth turn of a session, or the first turn after each three-hour mark since it
+  started), never as a banner, a usage statistic, or an engagement check-in;
 - when the user asks for understanding before suggestions, offer at most one brief hypothesis and
   keep exploring instead of listing explanations or introducing an exercise;
 - do not force a goal, worksheet, or technique onto every exchange;
@@ -195,6 +208,9 @@ Behavioral rules:
   continue the reflective process or create or modify durable memory, focus, hypothesis, or
   intervention state, and encourage a trusted adult or age-appropriate local support;
   immediate-danger handling still takes priority.
+- ambiguous wording (wanting to disappear, not being able to go on) gets a warm, direct question
+  about what the user means, including whether they are thinking of ending their life, before any
+  emergency resources; resources follow once the answer or the context makes risk evident;
 - for possible immediate danger, after localized emergency guidance, a physically present person,
   distance from available means, and the no-monitoring boundary, ask which one immediate protective
   action the user can take now; checking whether ingestion already occurred may accompany but not
@@ -423,8 +439,8 @@ model on every turn.
   the user said do not fit arrive as `rejected_hypotheses`, still reviewable, so they are not
   proposed again. On the first turn of a session, `follow_up_due` lists up to three agreed
   experiments from before the session with no reported outcome; they are kept among the active
-  interventions, and one sentence of the case-data preamble asks the model to ask how each went and
-  adapt. This is data and envelope code only; the root protocol text is unchanged.
+  interventions, and the root protocol's "Following up" section asks the model to ask how each went
+  before moving on and adapt; the case-data preamble only marks the data boundary.
 - `WellbeingCheck`: one optional WHO-5 self-report, five answers from 0 to 5, stored encrypted in
   `wellbeing_checks` with its time. The score is shown as the raw total out of 25 and the
   percentage out of 100 with the change from the previous check, never with a cutoff or label.
@@ -993,17 +1009,21 @@ Original protocol text is licensed under the repository license; linked sources 
 relicensed. It remains `experimental`; clinical review is deferred and no clinical claims are
 permitted.
 
-The current default is `filo.transdiagnostic`. Its fifteen separately loaded skills cover
-staying with emotion, contract and preferences, progressive formulation, shared planning,
-alliance/outcome/harm monitoring, misattunement repair, psychological flexibility, self-criticism
-and shame, examining a specific thought, repetitive thinking, avoidance behavior, activity
-restoration, practical problem solving, review/maintenance, and support/referral/closure. The root
-contains only cross-cutting principles.
+The current default is `filo.transdiagnostic`. Its eleven separately loaded skills cover staying
+with emotion, agreeing the help wanted and a light direction (contract, preferences, and planning),
+progressive formulation, misattunement repair, review and follow-up of what was tried (alliance,
+outcomes, harms, and maintenance), working with thinking (one specific thought or a repetitive
+loop), self-criticism and shame, psychological flexibility, one small behavioral step (avoidance
+and activity restoration), practical problem solving, and support/referral/closure. The root is
+short and cross-cutting: identity, the risk-and-scope section, listening and the question budget,
+when to offer an observation and a step, following up on intervention records, hope and grief,
+answering and advising, Italian register, and memory.
 
-Each skill states the conditions under which it adds value before its procedure, so selection has a
-positive criterion rather than only prohibitions. Skills describe what a stronger move accomplishes
-instead of supplying reusable phrasing, because fixed wording would work against the required
-variation in rhythm and conversational move.
+Each skill's catalog description begins with "Use when", so selection has a positive criterion
+before the body is loaded. Each body has the same three parts: when it adds value, what a strong
+move accomplishes, and how to follow it up next time. Skills describe what a stronger move
+accomplishes instead of supplying reusable phrasing, because fixed wording would work against the
+required variation in rhythm and conversational move.
 
 Each turn returns GitHub-compatible Markdown capped at 4,000 characters, without raw HTML or
 embedded media. Questions are optional and normally sparse. `selected_skill` is observable audit

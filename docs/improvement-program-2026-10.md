@@ -500,9 +500,8 @@ history.
 - **W5.1 Experiments with follow-up.** An agreed experiment keeps, on its existing
   `InterventionRecord`, what it is, when the person means to try it (`planned_for`), and what they
   expect (`prediction`), in their own words. On the first turn of the next session the case-data
-  envelope lists agreed experiments with no reported outcome in `follow_up_due`, and one sentence of
-  the envelope preamble asks the model to ask how each went and adapt. The root protocol text stays
-  with W3.3.
+  envelope lists agreed experiments with no reported outcome in `follow_up_due`. The instruction to
+  ask how each went and adapt lives in the root protocol's "Following up" section (W3.3).
 - **W5.2 Recap on request.** `/recap [weeks]` in the CLI, TUI, and Telegram, `filo memory recap`,
   and `retrieve_case_context(recap_weeks=...)` for a natural-language ask. It lists recurring themes,
   what was tried and how it went, new reports, reviewed hypotheses, corrections, and wellbeing
