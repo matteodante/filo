@@ -4,10 +4,12 @@ import os
 import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from urllib.error import URLError
 
 import pytest
-from pydantic_ai import ModelRequest, ModelResponse, UserPromptPart
+from pydantic_ai import Embedder, ModelRequest, ModelResponse, UserPromptPart
+from pydantic_ai.embeddings import TestEmbeddingModel
 from pydantic_ai.messages import TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models import infer_model
 from pydantic_ai.models.anthropic import AnthropicModel
@@ -38,7 +40,9 @@ from filo.cli import (
     build_parser,
     main,
 )
+from filo.failures import SetupProblem
 from filo.memory import MemoryKind, MemoryStore, UserReport
+from filo.process_lock import exclusive_lock
 
 
 def test_guided_setup_advertises_only_the_supported_chatgpt_provider(
@@ -945,6 +949,55 @@ def test_telegram_fails_closed_without_channel_credentials(
 
     assert main(["--data-dir", str(tmp_path), "telegram", "--model", "test"]) == 2
     assert "Run `filo setup`" in capsys.readouterr().out  # type: ignore[attr-defined]
+
+
+def _paired_telegram(path: Path) -> MemoryStore:
+    store = MemoryStore(path)
+    store.save_secret("telegram_bot_token", b"synthetic-token")
+    state = store.load_app_state()
+    state.telegram_allowed_user_id = 42
+    store.save_app_state(state)
+    return store
+
+
+def test_a_second_telegram_listener_exits_with_a_clear_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
+    _paired_telegram(tmp_path)
+    monkeypatch.setattr("filo.cli._conversation", lambda *_: pytest.fail("must not start"))
+
+    with exclusive_lock(tmp_path / "telegram-poller.lock"):
+        assert main(["--data-dir", str(tmp_path), "telegram"]) == 2
+
+    assert "already running" in capsys.readouterr().out  # type: ignore[attr-defined]
+
+
+def test_telegram_listener_starts_despite_missing_setup_and_reports_it_per_turn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _paired_telegram(tmp_path)  # no login, no default model, no semantic memory
+    channels: list[Any] = []
+    monkeypatch.setattr("filo.cli.TelegramChannel.run", lambda channel: channels.append(channel))
+
+    assert main(["--data-dir", str(tmp_path), "telegram"]) == 0
+
+    (channel,) = channels
+    assert channel.session.model.model_name == DEFAULT_CODEX_MODEL.removeprefix("codex:")
+    with pytest.raises(SetupProblem, match="filo setup"):
+        channel.store._embedder.embed_query_sync("work calls")
+
+    # Once setup is complete, the same running listener embeds without a restart.
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.embedding_model = DEFAULT_EMBEDDING_MODEL
+    store.save_app_state(state)
+    with pytest.raises(SetupProblem, match="filo memory model install"):
+        channel.store._embedder.embed_query_sync("work calls")
+    monkeypatch.setattr(
+        "filo.cli._default_embedder",
+        lambda **_: Embedder(TestEmbeddingModel(dimensions=8)),
+    )
+    assert len(channel.store._embedder.embed_query_sync("work calls").embeddings[0]) == 8
 
 
 def test_setup_stops_when_semantic_memory_cannot_be_prepared(

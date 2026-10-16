@@ -5,17 +5,12 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
-import errno
 import json
 import math
-import os
-import sys
 import threading
 import time
 import webbrowser
-from collections.abc import Awaitable, Callable, Generator
-from contextlib import contextmanager
-from pathlib import Path
+from collections.abc import Awaitable, Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -32,6 +27,7 @@ from pydantic_ai.providers.openai_codex import (
 )
 
 from filo.memory import MemoryStore
+from filo.process_lock import exclusive_lock
 
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 AUTH_BASE_URL = "https://auth.openai.com"
@@ -153,7 +149,7 @@ def logout_codex(store: MemoryStore) -> None:
 
 def credential_lock(store: MemoryStore) -> contextlib.AbstractContextManager[None]:
     """Serialize a credential change with any refresh in another process."""
-    return _exclusive_lock(store.directory / LOCK_NAME)
+    return exclusive_lock(store.directory / LOCK_NAME)
 
 
 class CodexTokenSource(OpenAICodexCredentialSource):
@@ -205,7 +201,7 @@ class CodexTokenSource(OpenAICodexCredentialSource):
     def _refreshed(
         self, stale: CodexCredential, *, after_rejection: bool = False
     ) -> CodexCredential:
-        with self._thread_lock, _exclusive_lock(self._lock_path):
+        with self._thread_lock, exclusive_lock(self._lock_path):
             stored = load_credential(self._store)
             if stored is None:
                 raise LoginRequired("Not logged in. Run `filo auth login` first.")
@@ -260,40 +256,6 @@ def _provider_credentials(credential: CodexCredential) -> OpenAICodexCredentials
         refresh_token=credential.refresh_token,
         account_id=credential.account_id,
     )
-
-
-@contextmanager
-def _exclusive_lock(path: Path) -> Generator[None]:
-    descriptor = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
-    try:
-        if sys.platform == "win32":
-            import msvcrt
-
-            while True:
-                try:
-                    msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
-                    break
-                except OSError as error:
-                    # msvcrt reports a lock held elsewhere as EACCES or
-                    # EDEADLOCK; anything else is a real failure.
-                    if error.errno not in {errno.EACCES, errno.EDEADLOCK}:
-                        raise
-                    time.sleep(0.05)
-            try:
-                yield
-            finally:
-                os.lseek(descriptor, 0, os.SEEK_SET)
-                msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(descriptor, fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(descriptor, fcntl.LOCK_UN)
-    finally:
-        os.close(descriptor)
 
 
 def codex_model(

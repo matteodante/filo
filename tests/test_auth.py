@@ -19,6 +19,7 @@ import filo.auth as auth
 from filo.auth import CodexCredential
 from filo.cli import main
 from filo.memory import MemoryStore
+from filo.process_lock import exclusive_lock
 
 CODEX_URL = "https://chatgpt.com/backend-api/codex/responses"
 
@@ -422,7 +423,7 @@ def test_login_waits_for_a_refresh_holding_the_lock(
         },
     )
 
-    with auth._exclusive_lock(store.directory / auth.LOCK_NAME):
+    with exclusive_lock(store.directory / auth.LOCK_NAME):
         login.start()
         login.join(timeout=0.5)
         assert login.is_alive()

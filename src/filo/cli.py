@@ -6,6 +6,7 @@ import json
 import os
 import secrets
 import sys
+import threading
 from collections.abc import Callable, Sequence
 from contextlib import suppress
 from datetime import UTC, datetime
@@ -20,6 +21,8 @@ import questionary
 from huggingface_hub import HfApi, scan_cache_dir, snapshot_download
 from huggingface_hub.errors import CacheNotFound
 from pydantic_ai import Embedder
+from pydantic_ai.embeddings import EmbeddingModel, EmbeddingResult, EmbeddingSettings
+from pydantic_ai.embeddings.result import EmbedInputType
 from pydantic_ai.models import Model
 from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
 from pydantic_ai.models.openai import (
@@ -51,7 +54,7 @@ from filo.chat import (
     TurnStreamKind,
     crisis_resources,
 )
-from filo.failures import classify
+from filo.failures import SetupProblem, classify
 from filo.memory import (
     ClaimCorrection,
     ClaimFit,
@@ -63,6 +66,7 @@ from filo.memory import (
 from filo.memory import (
     MemoryError as MemoryStoreError,
 )
+from filo.process_lock import LockHeld, exclusive_lock
 from filo.protocol import ProtocolError, ProtocolPack
 from filo.telegram import TELEGRAM_SECRET, TelegramBot, TelegramChannel, TelegramError
 
@@ -70,6 +74,7 @@ PACKAGE_PROTOCOL = Path(__file__).resolve().parent / "protocols" / "transdiagnos
 REPOSITORY_PROTOCOL = Path(__file__).resolve().parents[2] / "protocols" / "transdiagnostic"
 DEFAULT_PROTOCOL = PACKAGE_PROTOCOL if PACKAGE_PROTOCOL.is_dir() else REPOSITORY_PROTOCOL
 DEFAULT_CODEX_MODEL = "codex:gpt-5.6-sol"
+TELEGRAM_POLLER_LOCK = "telegram-poller.lock"
 DEFAULT_EMBEDDING_REPO = "Qwen/Qwen3-Embedding-0.6B"
 DEFAULT_EMBEDDING_REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
 DEFAULT_EMBEDDING_MODEL = (
@@ -324,101 +329,25 @@ def _main(argv: Sequence[str] | None = None) -> int:
         result = store.delete_before(args.date)
         print(f"Deleted {result['sessions']} session(s) before {args.date.isoformat()}.")
         return 0
-    if args.command in {"chat", "telegram"}:
-        state = store.load_app_state()
-        if state.embedding_model != DEFAULT_EMBEDDING_MODEL:
-            print("Semantic memory is not configured. Run `filo setup`.")
-            return 2
-        try:
-            embedder = _default_embedder(local_files_only=True)
-            if args.command == "chat" and _uses_tui(args):
-                _verify_embedding_inference(embedder)
-            store = MemoryStore(
-                args.data_dir,
-                embedding_model=DEFAULT_EMBEDDING_MODEL,
-                embedder=embedder,
-            )
-        except Exception as error:
-            print(
-                f"Semantic memory is unavailable ({type(error).__name__}). "
-                "Run `filo memory model install`."
-            )
-            return 2
-        selected_model = args.model or state.default_model
-        if not selected_model and load_credential(store):
-            selected_model = DEFAULT_CODEX_MODEL
-        if not selected_model:
-            print("Missing model. Run `filo setup` or pass --model.")
-            return 2
-        _load_provider_secret(store, selected_model)
-        locale = args.locale or state.default_locale or "en-US"
-        try:
-            model = _conversation_model(store, selected_model)
-            if selected_model.startswith("ollama:"):
-                os.environ["OLLAMA_BASE_URL"] = "http://localhost:11434/v1"
-        except AuthError as error:
-            print(f"Authentication error: {error}")
-            return 2
-        model_context_window = (
-            state.default_context_window_tokens if selected_model == state.default_model else None
-        ) or _model_context_window(selected_model)
-        context_window_tokens = min(
-            args.context_window_tokens or model_context_window,
-            model_context_window,
-            MAX_CONTEXT_WINDOW_TOKENS,
-        )
-        memory_mode = MemoryMode(args.memory_mode or state.default_memory_mode)
-        if memory_mode is not MemoryMode.EPHEMERAL:
-            store.apply_retention(state.retention_policy)
-        conversation_store = (
-            MemoryStore(
-                embedding_model=DEFAULT_EMBEDDING_MODEL,
-                embedder=embedder,
-                ephemeral=True,
-            )
-            if memory_mode is MemoryMode.EPHEMERAL
-            else store
-        )
-        try:
-            session = ChatSession(
-                model,
-                pack,
-                conversation_store,
-                locale,
-                context_window_tokens=context_window_tokens,
-                memory_mode=memory_mode,
-                memory_writing=args.memory_writing,
-            )
-        except ValueError as error:
-            print(f"Context configuration error: {error}")
-            return 2
-        if args.command == "chat":
-            if not _uses_tui(args):
-                return _chat(session, store)
-            return _chat_tui(session, store)
+    if args.command == "telegram":
         token_payload = store.load_secret(TELEGRAM_SECRET)
-        token = token_payload.decode() if token_payload else ""
-        if not token:
-            print("Telegram is not configured. Run `filo setup`.")
-            return 2
-        allowed_user_id = args.allowed_user_id or state.telegram_allowed_user_id
-        if not allowed_user_id or allowed_user_id <= 0:
+        allowed_user_id = args.allowed_user_id or store.load_app_state().telegram_allowed_user_id
+        if not token_payload or not allowed_user_id or allowed_user_id <= 0:
             print("Telegram is not configured. Run `filo setup`.")
             return 2
         try:
-            TelegramChannel(
-                TelegramBot(token),
-                session,
-                conversation_store,
-                allowed_user_id,
-                configuration_store=store,
-            ).run()
-        except TelegramError as error:
-            print(f"Telegram startup error: {error}")
+            # Two pollers on one bot token steal each other's updates.
+            with exclusive_lock(args.data_dir / TELEGRAM_POLLER_LOCK, wait=False):
+                return _conversation(args, store, pack)
+        except LockHeld:
+            print(
+                "Another Filo Telegram listener is already running for this data directory, "
+                "for example the background service (`filo telegram-service status`). "
+                "Only one listener can poll the bot."
+            )
             return 2
-        except KeyboardInterrupt:
-            print()
-        return 0
+    if args.command == "chat":
+        return _conversation(args, store, pack)
     if args.command == "memory":
         return _memory(args, store)
     if args.command == "export":
@@ -444,6 +373,100 @@ def _main(argv: Sequence[str] | None = None) -> int:
         print("Local conversation and memory data deleted.")
         return 0
     return 2
+
+
+def _conversation(args: argparse.Namespace, store: MemoryStore, pack: ProtocolPack) -> int:
+    state = store.load_app_state()
+    listener = args.command == "telegram"
+    if listener:
+        # A background listener that exits on a configuration problem is restarted into the same
+        # problem. It keeps answering instead, and each turn reports what to fix until it is.
+        embedder = Embedder(_LocalEmbeddingModel(store))
+    else:
+        if state.embedding_model != DEFAULT_EMBEDDING_MODEL:
+            print("Semantic memory is not configured. Run `filo setup`.")
+            return 2
+        try:
+            embedder = _default_embedder(local_files_only=True)
+            if _uses_tui(args):
+                _verify_embedding_inference(embedder)
+        except Exception as error:
+            print(
+                f"Semantic memory is unavailable ({type(error).__name__}). "
+                "Run `filo memory model install`."
+            )
+            return 2
+    store = MemoryStore(args.data_dir, embedding_model=DEFAULT_EMBEDDING_MODEL, embedder=embedder)
+    selected_model = args.model or state.default_model
+    if not selected_model and (listener or load_credential(store)):
+        selected_model = DEFAULT_CODEX_MODEL
+    if not selected_model:
+        print("Missing model. Run `filo setup` or pass --model.")
+        return 2
+    _load_provider_secret(store, selected_model)
+    locale = args.locale or state.default_locale or "en-US"
+    try:
+        model = _conversation_model(store, selected_model, check_login=not listener)
+        if selected_model.startswith("ollama:"):
+            os.environ["OLLAMA_BASE_URL"] = "http://localhost:11434/v1"
+    except AuthError as error:
+        print(f"Authentication error: {error}")
+        return 2
+    model_context_window = (
+        state.default_context_window_tokens if selected_model == state.default_model else None
+    ) or _model_context_window(selected_model)
+    context_window_tokens = min(
+        args.context_window_tokens or model_context_window,
+        model_context_window,
+        MAX_CONTEXT_WINDOW_TOKENS,
+    )
+    memory_mode = MemoryMode(args.memory_mode or state.default_memory_mode)
+    if memory_mode is not MemoryMode.EPHEMERAL:
+        store.apply_retention(state.retention_policy)
+    conversation_store = (
+        MemoryStore(
+            embedding_model=DEFAULT_EMBEDDING_MODEL,
+            embedder=embedder,
+            ephemeral=True,
+        )
+        if memory_mode is MemoryMode.EPHEMERAL
+        else store
+    )
+    try:
+        session = ChatSession(
+            model,
+            pack,
+            conversation_store,
+            locale,
+            context_window_tokens=context_window_tokens,
+            memory_mode=memory_mode,
+            memory_writing=args.memory_writing,
+        )
+    except ValueError as error:
+        print(f"Context configuration error: {error}")
+        return 2
+    if args.command == "chat":
+        if not _uses_tui(args):
+            return _chat(session, store)
+        return _chat_tui(session, store)
+    token_payload = store.load_secret(TELEGRAM_SECRET)
+    allowed_user_id = args.allowed_user_id or state.telegram_allowed_user_id
+    assert token_payload and allowed_user_id  # checked before the poller lock
+    token = token_payload.decode()
+    try:
+        TelegramChannel(
+            TelegramBot(token),
+            session,
+            conversation_store,
+            allowed_user_id,
+            configuration_store=store,
+        ).run()
+    except TelegramError as error:
+        print(f"Telegram startup error: {error}")
+        return 2
+    except KeyboardInterrupt:
+        print()
+    return 0
 
 
 def _telegram_service(args: argparse.Namespace, database_exists: bool) -> int:
@@ -698,9 +721,9 @@ def _provider_secret_config(model: str) -> tuple[str, str, str] | None:
     )
 
 
-def _conversation_model(store: MemoryStore, model: str) -> str | Model:
+def _conversation_model(store: MemoryStore, model: str, *, check_login: bool = True) -> str | Model:
     if model.startswith("codex:"):
-        return codex_model(store, model.removeprefix("codex:"))
+        return codex_model(store, model.removeprefix("codex:"), check_login=check_login)
     if model.startswith(LOCAL_PREFIX):
         return _local_model(model.removeprefix(LOCAL_PREFIX))
     if model.startswith("openai:"):
@@ -949,6 +972,56 @@ def _default_embedder(*, local_files_only: bool) -> Embedder:
         local_files_only=local_files_only,
     )
     return Embedder(f"sentence-transformers:{snapshot}")
+
+
+class _LocalEmbeddingModel(EmbeddingModel):
+    """The local embedding model, resolved on first use and again after every failure.
+
+    Until setup is complete each use fails closed with the fix, so a running listener recovers
+    as soon as the model is installed, without a restart.
+    """
+
+    def __init__(self, store: MemoryStore) -> None:
+        super().__init__()
+        self._store = store
+        self._model: EmbeddingModel | None = None
+        self._lock = threading.Lock()
+
+    @property
+    def model_name(self) -> str:
+        return DEFAULT_EMBEDDING_MODEL
+
+    @property
+    def system(self) -> str:
+        return "sentence-transformers"
+
+    async def embed(
+        self,
+        inputs: str | Sequence[str],
+        *,
+        input_type: EmbedInputType,
+        settings: EmbeddingSettings | None = None,
+    ) -> EmbeddingResult:
+        return await self._resolve().embed(inputs, input_type=input_type, settings=settings)
+
+    def _resolve(self) -> EmbeddingModel:
+        with self._lock:
+            if self._model is None:
+                if self._store.load_app_state().embedding_model != DEFAULT_EMBEDDING_MODEL:
+                    raise SetupProblem(
+                        "Semantic memory is not configured. "
+                        "Run `filo setup` on the computer that runs Filo."
+                    )
+                try:
+                    model = _default_embedder(local_files_only=True).model
+                except Exception as error:
+                    raise SetupProblem(
+                        "Semantic memory is unavailable. "
+                        "Run `filo memory model install` on the computer that runs Filo."
+                    ) from error
+                assert isinstance(model, EmbeddingModel)
+                self._model = model
+            return self._model
 
 
 def _verify_embedding_inference(embedder: Embedder) -> int:
