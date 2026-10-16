@@ -574,8 +574,9 @@ after Telegram accepted a message but before its removal can send that one messa
 400 or 403 rejection of one queued message is logged and dropped, so later replies are not wedged;
 401 and 404 mean an invalid or revoked token and stop the listener, while 408, 429, 5xx, and every
 network failure, including resets, TLS errors, and truncated responses, surface as a transient
-`TelegramError` and are retried. A queued message whose chat is no longer the allowlisted user, for
-example after setup paired another account, is dropped without being sent. The typing indicator is
+`TelegramError` and are retried. A queued message whose chat is no longer the allowlisted user is
+dropped without being sent; the listener rereads the pairing before every send, so once setup pairs
+another account even a listener that is still running stops delivering to the old one. The typing indicator is
 repeated every four seconds while a turn runs and pauses for any longer `retry_after`. In
 `ephemeral` mode queued replies stay in process memory and are queued only after the in-memory turn
 returns; only the update offset is written to the on-disk configuration store, so a crash before

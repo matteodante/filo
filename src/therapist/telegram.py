@@ -202,6 +202,11 @@ class TelegramChannel:
         default_factory=list, init=False, repr=False
     )
 
+    def __post_init__(self) -> None:
+        # The pairing this listener started with; a later change by setup
+        # deauthorizes the old account even while this process keeps running.
+        self._paired_at_start = self.config_store.load_app_state().telegram_allowed_user_id
+
     @property
     def config_store(self) -> MemoryStore:
         return self.configuration_store or self.store
@@ -279,13 +284,16 @@ class TelegramChannel:
             # The durable queue goes first: replies committed by an earlier run in
             # standard or transcript-only mode still need delivery after a restart
             # in ephemeral mode.
-            durable = self.config_store.load_app_state().telegram_outbox
+            state = self.config_store.load_app_state()
+            durable = state.telegram_outbox
             from_memory = not durable and self._ephemeral
             pending = self._ephemeral_outbox if from_memory else durable
             if not pending:
                 return
             delivery = pending[0]
-            if delivery.chat_id != self.allowed_user_id:
+            paired = state.telegram_allowed_user_id
+            repaired = paired != self._paired_at_start and delivery.chat_id != paired
+            if delivery.chat_id != self.allowed_user_id or repaired:
                 # Queued for an account that is no longer paired; never send
                 # private content to it.
                 print("Telegram dropped a queued message for a chat that is no longer allowed.")

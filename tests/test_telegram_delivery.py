@@ -20,7 +20,14 @@ from pydantic_ai import models
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 
 from therapist.chat import ChatSession
-from therapist.memory import MemoryMode, MemoryStore, RetentionPolicy
+from therapist.memory import (
+    MemoryKind,
+    MemoryMode,
+    MemoryStore,
+    RetentionPolicy,
+    TelegramDelivery,
+    UserReport,
+)
 from therapist.protocol import ProtocolPack
 from therapist.telegram import CONSENT_VERSION, TelegramBot, TelegramChannel, TelegramError
 
@@ -475,3 +482,96 @@ def test_request_timeout_is_transient() -> None:
     assert not TelegramError("timeout", error_code=408).fatal
     assert not TelegramError("flood", error_code=429).fatal
     assert TelegramError("blocked", error_code=403).fatal
+
+
+def test_running_listener_stops_delivering_once_setup_pairs_another_account(
+    tmp_path: Path,
+) -> None:
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.telegram_allowed_user_id = 42
+    state.telegram_outbox = [TelegramDelivery(chat_id=42, text=REPLY)]
+    store.save_app_state(state)
+    sent: list[int] = []
+
+    class RecordingBot:
+        def send_message(self, chat_id: int, text: str) -> None:
+            sent.append(chat_id)
+
+    channel, _store = _channel(tmp_path, [])
+    channel.bot = RecordingBot()  # type: ignore[assignment]
+    state = store.load_app_state()
+    state.telegram_allowed_user_id = 43  # setup re-paired while this listener runs
+    store.save_app_state(state)
+
+    channel.deliver_pending()
+
+    assert sent == []
+    assert store.load_app_state().telegram_outbox == []
+
+
+def test_unchanged_pairing_still_honors_an_explicit_listener_override(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.telegram_allowed_user_id = 42
+    state.telegram_outbox = [TelegramDelivery(chat_id=50, text=REPLY)]
+    store.save_app_state(state)
+    sent: list[int] = []
+
+    class RecordingBot:
+        def send_message(self, chat_id: int, text: str) -> None:
+            sent.append(chat_id)
+
+    channel, _store = _channel(tmp_path, [])
+    channel.bot = RecordingBot()  # type: ignore[assignment]
+    channel.allowed_user_id = 50  # thera telegram --allowed-user-id 50
+
+    channel.deliver_pending()
+
+    assert sent == [50]
+
+
+def test_a_model_correction_in_another_conversation_keeps_the_queue_discarded(
+    tmp_path: Path,
+) -> None:
+    store = MemoryStore(tmp_path)
+    message_id = store.save_turn(store.start_session(), USER_TEXT, "Noted.", [])
+    store.add_user_reports(
+        [UserReport(kind=MemoryKind.FACT, content=USER_TEXT, evidence_quote=USER_TEXT)],
+        message_id,
+        USER_TEXT,
+    )
+    claim_id = store.list_claims()[0].id
+    state = store.load_app_state()
+    state.telegram_outbox = [TelegramDelivery(chat_id=42, text=f"Saved fact: {USER_TEXT}")]
+    store.save_app_state(state)
+    correction = "I do not work from home anymore"
+
+    async def stream(messages: list[Any], _info: Any):
+        returned = any(
+            getattr(part, "part_kind", "") == "tool-return"
+            for message in messages[-1:]
+            for part in message.parts
+        )
+        if returned:
+            yield "Thanks for correcting that."
+            return
+        yield {
+            0: DeltaToolCall(
+                name="correct_claim",
+                json_args=json.dumps(
+                    {"correction": {"memory_id": claim_id, "correction_quote": correction}}
+                ),
+                tool_call_id="call-1",
+            )
+        }
+
+    ChatSession(
+        FunctionModel(stream_function=stream),
+        ProtocolPack.load(Path("protocols/transdiagnostic")),
+        store,
+        "en-US",
+    ).respond(correction)
+
+    assert store.list_claims() == []
+    assert store.load_app_state().telegram_outbox == []
