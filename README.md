@@ -153,6 +153,11 @@ server is not on `http://localhost:8080/v1`. That path carries no support claim,
 PydanticAI providers stay technical escape hatches. Telegram checks private-chat type and numeric
 allowlist and keeps configuration secrets out of process arguments.
 
+Type `/crisis` in chat or in the Telegram bot for emergency and crisis resources (Italy/EU and US)
+in your locale. It is static text with no model call, so it works when the provider is down, and it
+is not archived. The same text appears at the consent prompt, and in Telegram `/crisis` works
+before consent.
+
 ## Clean-break storage
 
 This revision intentionally has no data migration or runtime compatibility layer. An existing store

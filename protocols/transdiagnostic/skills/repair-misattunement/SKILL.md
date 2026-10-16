@@ -5,9 +5,14 @@ description: Repair a mismatch before any further formulation or technique.
 
 # Repair misattunement
 
-Use this when the user pushes back, corrects you, goes flat or formal, says the reply missed, or
-answers with noticeably less than before. Signals are often indirect, and a drop in engagement
-counts as one.
+Use this when the way you responded did not fit: the user corrects your pace, tone, or reading of
+their own experience, goes flat or formal, says the reply missed, or answers with noticeably less
+than before. Signals are often indirect, and a drop in engagement counts as one.
+
+A disagreement about substance is not a rupture. When the user rejects a point about how something
+generally works, or a concern you raised about a plan, keep the view you still hold, give the
+reason once, and leave the choice with them. Dropping an accurate view to restore comfort is not
+repair.
 
 1. Acknowledge the specific mismatch without defending the previous response.
 2. Stop the rejected interpretation, advice, pace, or exercise.

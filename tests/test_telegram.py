@@ -6,7 +6,7 @@ from urllib.error import HTTPError
 
 import pytest
 
-from filo.chat import ChatTurn, TurnStreamEvent, TurnStreamKind
+from filo.chat import ChatTurn, TurnStreamEvent, TurnStreamKind, crisis_resources
 from filo.memory import MemoryKind, MemoryMode, MemoryStore, UserReport
 from filo.telegram import (
     TelegramBot,
@@ -65,6 +65,7 @@ class FakeSession:
         self.received: list[str] = []
         self.end_calls = 0
         self.memory_mode = MemoryMode.STANDARD
+        self.locale = "en-US"
 
     def respond(
         self, text: str, *, on_event: object | None = None, on_commit: object | None = None
@@ -161,6 +162,46 @@ def test_channel_requires_separate_consent_then_uses_shared_session(
     assert bot.rich_drafts[-1][1] > 0
     assert bot.rich_drafts[-1][2] == "reply: I feel stuck"
     assert bot.typing == [42]
+
+
+def test_crisis_command_answers_before_consent_without_model_or_archive(
+    tmp_path: Path,
+) -> None:
+    bot = FakeBot()
+    session = FakeSession()
+    session.locale = "it-IT"
+    store = MemoryStore(tmp_path)
+    channel = TelegramChannel(bot, session, store, 42)  # type: ignore[arg-type]
+
+    assert channel.process_update(private_update(1, 42, "/crisis")) is True
+
+    assert bot.messages == [(42, crisis_resources("it-IT"))]
+    assert bot.typing == []
+    assert session.received == []
+    assert store.list_sessions() == []
+    assert store.load_app_state().telegram_consent_version is None
+
+
+def test_model_failure_points_to_the_crisis_command(tmp_path: Path) -> None:
+    class FailingSession(FakeSession):
+        def respond(
+            self, text: str, *, on_event: object | None = None, on_commit: object | None = None
+        ) -> ChatTurn:
+            self.received.append(text)
+            raise RuntimeError("provider unavailable")
+
+    bot = FakeBot()
+    session = FailingSession()
+    store = MemoryStore(tmp_path)
+    channel = TelegramChannel(bot, session, store, 42)  # type: ignore[arg-type]
+    channel.process_update(private_update(1, 42, "/consent I UNDERSTAND"))
+
+    channel.process_update(private_update(2, 42, "I am not safe"))
+    assert "/crisis" in bot.messages[-1][1]
+
+    channel.process_update(private_update(3, 42, "/crisis"))
+    assert bot.messages[-1] == (42, crisis_resources("en-US"))
+    assert session.received == ["I am not safe"]
 
 
 def test_run_persists_update_watermark_after_dispatch(tmp_path: Path) -> None:
@@ -501,6 +542,7 @@ def test_bot_configures_commands_only_for_allowlisted_chat(
     assert {item["command"] for item in commands["commands"]} == {
         "start",
         "help",
+        "crisis",
         "status",
         "case",
         "memory",
