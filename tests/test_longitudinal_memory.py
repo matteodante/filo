@@ -82,7 +82,7 @@ def test_accepted_focus_pending_intervention_and_process_preference_are_pinned(t
         "I want reflection before advice",
     )
     intervention = store.create_intervention(
-        skill="change-avoidance-behavior",
+        skill="take-a-small-step",
         description="One two-minute call",
         state=InterventionState.AGREED,
         linked_claim_ids=[claim.id],

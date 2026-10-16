@@ -63,7 +63,7 @@ def _valid_pack(tmp_path: Path) -> Path:
 def test_root_and_skills_are_loaded_separately() -> None:
     pack = ProtocolPack.load(ROOT)
     assert pack.status == "experimental"
-    assert len(pack.skill_ids) == 15
+    assert len(pack.skill_ids) == 11
     assert "Skill catalog" not in pack.root_instructions
     assert all(body not in pack.root_instructions for body in pack.skills.values())
 
@@ -159,7 +159,7 @@ def test_protocol_validation_output_includes_governance(capsys) -> None:
     output = capsys.readouterr().out
     assert "Status: experimental" in output
     assert "Population:" in output
-    assert "Skills: 15" in output
+    assert "Skills: 11" in output
     assert "Categories:" in output
     assert "Reviewers: 0" in output
     assert "Next review: not scheduled" in output

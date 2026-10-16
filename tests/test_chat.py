@@ -556,7 +556,7 @@ def test_intervention_tool_creates_then_updates_single_record(tmp_path) -> None:
                 "record_intervention",
                 {
                     "action": {
-                        "skill": "change-avoidance-behavior",
+                        "skill": "take-a-small-step",
                         "description": "Make one two-minute call",
                         "state": "agreed",
                         "consent_evidence_quote": "Yes",
@@ -711,6 +711,32 @@ def test_long_gap_instruction_reorients_to_current_situation(tmp_path) -> None:
         if isinstance(message, ModelRequest)
     )
     assert "long gap" in instructions
+
+
+def test_ai_reminder_is_due_periodically_in_long_sessions(tmp_path) -> None:
+    due: list[bool] = []
+
+    async def stream(messages: list[Any], _info: Any):
+        due.append(
+            any(
+                "An AI reminder is due:" in str(getattr(message, "instructions", ""))
+                for message in messages[-1:]
+            )
+        )
+        yield "Reply."
+
+    chat = ChatSession(
+        FunctionModel(stream_function=stream), _pack(), MemoryStore(tmp_path), "en-US"
+    )
+    start = datetime.now(UTC)
+    for turn in range(22):
+        chat.respond(f"Message {turn}", now=start + timedelta(minutes=turn))
+    assert [index for index, value in enumerate(due) if value] == [20]
+
+    due.clear()
+    chat.respond("Still here", now=start + timedelta(hours=3, minutes=1))
+    chat.respond("And again", now=start + timedelta(hours=3, minutes=2))
+    assert due == [True, False]
 
 
 def test_slash_command_is_rejected_before_model_run(tmp_path) -> None:

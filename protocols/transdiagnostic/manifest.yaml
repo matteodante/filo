@@ -3,97 +3,73 @@ status: experimental
 locales: [it-IT, en-US]
 population: adults-18-plus
 intended_use: Adult self-reflection and organization of user-provided thoughts; not diagnosis, treatment, monitoring, or emergency care.
-root_sha256: d6b775bee1d0fe90cdb5a187fbd27a3b2e1bb32c058c605d33e75e1e9bf1beda
+root_sha256: ac932e92d34a4169f9a00dc2bf6921369a820f3ccde1cd2e1118eb9834e658af
 skills:
   - id: stay-with-emotion
     path: skills/stay-with-emotion/SKILL.md
-    sha256: dab3b75edf9eede9dbe705a2dfd40e00d17f57444bb0178d0afe0967d0463091
+    sha256: c91ef865b22fb0d8e782aa5dd5704fb52238db981644b4bc6b3757371e2c12bd
     category: core
-    description: Stay with what is felt, name it accurately, and let it be understood.
+    description: Use when a feeling is present but unclear, named only in passing, kept abstract, or covering another feeling, and the person needs it understood before anything changes.
     locales: [it-IT, en-US]
-  - id: establish-contract-and-preferences
-    path: skills/establish-contract-and-preferences/SKILL.md
-    sha256: 103f50b83e1ecf5b834a9c1502fc55898f43ef6ed9069195a26d344dab353c6f
+  - id: agree-help-and-direction
+    path: skills/agree-help-and-direction/SKILL.md
+    sha256: b60afb8c856ac4d27b5921bc849b0b62ce5be33c02900af9da6f4f789039132f
     category: core
-    description: Clarify desired help and reusable conversational preferences without onboarding.
+    description: Use when the kind of help wanted is unclear, several concerns compete, the work has drifted, or the person says how they want to be talked to; agree what help fits and a light direction.
     locales: [it-IT, en-US]
   - id: build-shared-formulation
     path: skills/build-shared-formulation/SKILL.md
-    sha256: cd26b0c42aaeb1aaf8f6dfa2f8a6444a10818477b998f99f6d0039bcc3686ed3
+    sha256: 0c67504babd65690f77e8e22bfd2812a48685a3d138578237a55cbd83455a155
     category: core
-    description: Build a progressive, collaborative, evidence-linked understanding.
-    locales: [it-IT, en-US]
-  - id: agree-plan-and-review-criteria
-    path: skills/agree-plan-and-review-criteria/SKILL.md
-    sha256: aded61f615c078a23c27ff82a8e6ac43d5f3601100e34dd7b733bc087841d7db
-    category: core
-    description: Agree a light plan and criteria for usefulness or poor fit.
-    locales: [it-IT, en-US]
-  - id: monitor-alliance-outcomes-and-harms
-    path: skills/monitor-alliance-outcomes-and-harms/SKILL.md
-    sha256: d3b5e82ca0170a19cc5e7648f569e168bb395ba31760f472790b4fa7c89babd3
-    category: review
-    description: Review conversational fit, outcomes, functioning, and unwanted effects.
+    description: Use when a pattern shows across more than one account, the person asks why this keeps happening, or an existing understanding no longer fits; build one shared, evidence-linked reading.
     locales: [it-IT, en-US]
   - id: repair-misattunement
     path: skills/repair-misattunement/SKILL.md
-    sha256: 1fcad428c0d53ff6a39a1240440db3b6f0b65ab0efa00411d04bcc5589c57f5a
+    sha256: f12c161b19a475059e539d6fe1e2e4bf0d2fc8c398717c79e84f9f2639abb2ee
     category: repair
-    description: Repair a specific mismatch before further formulation or technique.
+    description: Use when your reply did not fit, because the person corrects your pace, tone, or reading of their experience, goes flat or formal, or answers with less than before.
     locales: [it-IT, en-US]
-  - id: increase-psychological-flexibility
-    path: skills/increase-psychological-flexibility/SKILL.md
-    sha256: 67c2a6e1fca0c309e0254339d68ce7a77c20902bac4c1a1ec3994eebbf2b9c08
+  - id: review-and-follow-up
+    path: skills/review-and-follow-up/SKILL.md
+    sha256: c94d1ab35a95de20fa1a0904f3b018125e34d8f7bddcbfd2d3e4b2e6240e3d5f
+    category: review
+    description: Use when something offered, agreed, or tried has had time to happen, the person reports back, replies have grown shorter or more compliant, or a stretch of work is closing; review what happened and decide what next.
+    locales: [it-IT, en-US]
+  - id: work-with-thinking
+    path: skills/work-with-thinking/SKILL.md
+    sha256: 2c5333bce0e9da50c6d8c06cf88fb83eb8deda07b1d187753330aa159064d22e
     category: intervention
-    description: Use one consented awareness, defusion, acceptance, values, or kindness process.
+    description: Use when one specific thought is driving a feeling or decision and treated as fact, or when thinking loops without arriving (rumination, worry); examine the thought or change how the loop runs.
     locales: [it-IT, en-US]
   - id: meet-self-criticism
     path: skills/meet-self-criticism/SKILL.md
-    sha256: ddb571c9b81c167ee3a34e2bd0c134ec286f87caa2a35fe7951a347fbfc1f664
+    sha256: 9f8622a7563cba580d436e9147446ee88e9746b105539530ae82994893129947
     category: intervention
-    description: Work with the critical voice and with shame without arguing against them.
+    description: Use when an event becomes a verdict about who the person is, they are far harsher on themselves than on anyone else, shame is present, or reassurance has already bounced off.
     locales: [it-IT, en-US]
-  - id: examine-a-thought
-    path: skills/examine-a-thought/SKILL.md
-    sha256: 42cde864f29de8712e2def340c5c0a490d2245d62ac8ab18572f63a326645c14
+  - id: increase-psychological-flexibility
+    path: skills/increase-psychological-flexibility/SKILL.md
+    sha256: 9d5fa4c6a6547712c8ae3b777e43189139646f4a787a2bdd93f71e5083ad279f
     category: intervention
-    description: Examine one specific thought collaboratively, testing it rather than correcting it.
+    description: Use when the struggle is with an inner experience (fighting a thought, pushing a feeling away, avoiding an internal state, acting against what matters to stay comfortable); offer one consented exercise.
     locales: [it-IT, en-US]
-  - id: interrupt-rumination
-    path: skills/interrupt-rumination/SKILL.md
-    sha256: b9e3ce8057e501a1a29a7b94557f068c76e486b8866802a48efbcb2e2643b2de
+  - id: take-a-small-step
+    path: skills/take-a-small-step/SKILL.md
+    sha256: 533fcdbf35a8ff5e56f7b2343407a79e3fa13da676b8581ea0e0c6a3de9504de
     category: intervention
-    description: Work with repetitive thinking by changing how it runs rather than what it concludes.
-    locales: [it-IT, en-US]
-  - id: change-avoidance-behavior
-    path: skills/change-avoidance-behavior/SKILL.md
-    sha256: 9b0637edf2959eb009320f3487a01916717f623630e039baed8fe9a76f3da522
-    category: intervention
-    description: Design or review one small behavioral experiment below the avoidance threshold.
-    locales: [it-IT, en-US]
-  - id: restore-activity
-    path: skills/restore-activity/SKILL.md
-    sha256: 2ac6d9fa915d79e1fd781ff65ba384f6a89fabe151b362d504bdffbddd56966d
-    category: intervention
-    description: Rebuild contact with activity that matters when withdrawal has become self-sustaining.
+    description: Use when something is avoided at a cost, a fear has never been tested, the days have shrunk while waiting for energy, or the person keeps not doing what they want to; agree one small behavioral step.
     locales: [it-IT, en-US]
   - id: solve-practical-problems
     path: skills/solve-practical-problems/SKILL.md
-    sha256: 1e118cac29659be98f4686d700b5bef5ba99cd4b1d3fc480344252ffe6ef8527
+    sha256: 6e10de6c2d65020fb079a9186cca07f3e5f1036aee0b478523c78b3997bef8da
     category: intervention
-    description: Support one bounded user-chosen response to a controllable external problem.
-    locales: [it-IT, en-US]
-  - id: review-and-maintain-change
-    path: skills/review-and-maintain-change/SKILL.md
-    sha256: fc1c747a9630cd02fc1570c318d5a8067b371fdfa7905b1b55f1baf54c8e8e5d
-    category: review
-    description: Compare actual use, prediction, outcomes, unwanted effects, and next decision.
+    description: Use when the person asks for practical help, a concrete external obstacle blocks something that matters, or a solvable problem is being carried as a mood; work one bounded problem to a chosen step.
     locales: [it-IT, en-US]
   - id: support-referral-and-closure
     path: skills/support-referral-and-closure/SKILL.md
-    sha256: d65602764ea2e330c6ea42ed9a60ae9f7d7c96abcf4eac53b2d1066f8bff4f91
+    sha256: 1d0376258a667d1aa028d69c19843e9f7586be7ec931bfe102a10aa164dc7572
     category: support
-    description: Discuss desired human support, barriers, different needs, and pressure-free closure.
+    description: Use when a need falls outside this conversation, isolation is part of the picture, the person raises professional help or says this is not enough, or a session or stretch of work is ending.
     locales: [it-IT, en-US]
 references:
   - path: references/risk-resources.md
@@ -120,26 +96,14 @@ references:
     revision: "2020-04-29"
     verified_at: 2026-08-04
     license: links-and-original-summary-only
-  - path: skills/examine-a-thought/references/basis.md
-    sha256: f2017b735fa59c09fb5a7149ba09e09924677b52fe388fb66e9c85cbec18f302
+  - path: skills/work-with-thinking/references/basis.md
+    sha256: 23acd0e604df1a431e81a510e64fdd7e49c77ad7da006bdd47c8871429768270
     url: https://www.nice.org.uk/guidance/ng222/chapter/Recommendations
     revision: "2026-01-30"
     verified_at: 2026-08-04
     license: links-and-original-summary-only
-  - path: skills/interrupt-rumination/references/basis.md
-    sha256: 2bb8478a0296f7c222e95f40200c2dbcebe692987830ef2ebab6d720a619319c
-    url: https://www.cci.health.wa.gov.au/resources/looking-after-yourself/worry-and-rumination
-    revision: "2023-07-10"
-    verified_at: 2026-08-04
-    license: links-and-original-summary-only
-  - path: skills/restore-activity/references/basis.md
-    sha256: 9fea18cd2583e8569ca2210b08e89f2215d0c56a0ba32f9b3e77898f921f54fd
-    url: https://www.who.int/publications/i/item/B09738
-    revision: "2026-06-01"
-    verified_at: 2026-08-04
-    license: links-and-original-summary-only
-  - path: skills/establish-contract-and-preferences/references/basis.md
-    sha256: 13173228e988bc6041975a09b2d5dd8b218b1ded64ec4a796804840e321720fb
+  - path: skills/agree-help-and-direction/references/basis.md
+    sha256: 7982e53049e7eb67ada10e75d3879642467aa981930d6d9c0e576f1b197e18df
     url: https://www.who.int/publications/i/item/9789240105935
     revision: "2025-07-10"
     verified_at: 2026-07-24
@@ -150,26 +114,14 @@ references:
     revision: "2026-01-30"
     verified_at: 2026-07-24
     license: links-and-original-summary-only
-  - path: skills/agree-plan-and-review-criteria/references/basis.md
-    sha256: 28a8f7940a03cbe515b705b8d0f4ed8cf8b18a2393abd5824a1337c778aaf4ca
-    url: https://www.nice.org.uk/guidance/ng222/chapter/Recommendations
-    revision: "2026-01-30"
-    verified_at: 2026-07-24
-    license: links-and-original-summary-only
-  - path: skills/monitor-alliance-outcomes-and-harms/references/basis.md
-    sha256: e494919f71824929bdb62c2c58247c076387cddfe7c4007292f317c61dd3d8b0
-    url: https://www.who.int/publications/i/item/9789240121041
-    revision: "2026-05-20"
-    verified_at: 2026-07-24
-    license: links-and-original-summary-only
   - path: skills/increase-psychological-flexibility/references/basis.md
     sha256: e9757ff57e5a915f8194e72e0191e05445d902c949c7a7b019dfe2b3e1251a53
     url: https://www.who.int/publications/i/item/9789240003927
     revision: "2020-04-29"
     verified_at: 2026-07-24
     license: links-and-original-summary-only
-  - path: skills/change-avoidance-behavior/references/basis.md
-    sha256: 0c5e10cb832e4c771da159d4526c999b925a61c98d26b5ab113ce6287b823c17
+  - path: skills/take-a-small-step/references/basis.md
+    sha256: f36c300a8a704489b9fa1ee3dff9f8b2ade3cc3c840cd48300ce77b2f2130168
     url: https://www.who.int/publications/i/item/B09738
     revision: "2026-06-01"
     verified_at: 2026-07-24
@@ -180,8 +132,8 @@ references:
     revision: "2025-11-19"
     verified_at: 2026-07-24
     license: links-and-original-summary-only
-  - path: skills/review-and-maintain-change/references/basis.md
-    sha256: 708f8ffb274780dfe2df165b6340fbdef538588867e81dd7df9e3910c6b2857c
+  - path: skills/review-and-follow-up/references/basis.md
+    sha256: 1b882a9d256dffdd6a056dd31c9b08c4cb2fc776169e6e99239fb446bfa3c383
     url: https://www.nice.org.uk/guidance/ng222/chapter/Recommendations
     revision: "2026-01-30"
     verified_at: 2026-07-24

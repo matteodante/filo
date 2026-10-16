@@ -432,7 +432,7 @@ def test_intervention_consent_cannot_be_mined_out_of_a_refusal(tmp_path) -> None
     refusal = "non sono d'accordo a provare l'esercizio stasera"
     with pytest.raises(ValueError, match="negation"):
         store.create_intervention(
-            skill="change-avoidance-behavior",
+            skill="take-a-small-step",
             description="One small step tonight",
             state=InterventionState.AGREED,
             linked_claim_ids=[],
@@ -446,7 +446,7 @@ def test_intervention_consent_must_come_from_the_message(tmp_path) -> None:
     store = MemoryStore(tmp_path)
     with pytest.raises(ValueError, match="current message"):
         store.create_intervention(
-            skill="change-avoidance-behavior",
+            skill="take-a-small-step",
             description="One small step tonight",
             state=InterventionState.AGREED,
             linked_claim_ids=[],
@@ -779,7 +779,7 @@ def test_intervention_is_updated_in_place_with_outcome_and_harm(tmp_path) -> Non
     store = MemoryStore(tmp_path)
     item = _report(store, "I avoid calls")
     record = store.create_intervention(
-        skill="change-avoidance-behavior",
+        skill="take-a-small-step",
         description="Make one short call",
         state=InterventionState.AGREED,
         linked_claim_ids=[item.id],

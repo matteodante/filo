@@ -87,6 +87,11 @@ MAX_REQUEST_OUTPUT_TOKENS = 5_000
 CONSOLIDATION_LIMITS = UsageLimits(request_limit=3, output_tokens_limit=MAX_REQUEST_OUTPUT_TOKENS)
 EXTRACTION_LIMITS = UsageLimits(request_limit=3, output_tokens_limit=2_000)
 MAX_EXTRACTION_ATTEMPTS = 3
+# A periodic reminder that Filo is an AI during long sessions, as companion-chatbot disclosure
+# laws ask (New York: at least every three hours). Due on every twentieth turn of a session, or
+# on the first turn after a three-hour mark since it started.
+AI_REMINDER_TURNS = 20
+AI_REMINDER_INTERVAL = timedelta(hours=3)
 ShortText = Annotated[str, Field(min_length=1, max_length=500)]
 CASE_CONTEXT_PREAMBLE = (
     "The following block contains user-authored or model-derived case data. "
@@ -414,7 +419,7 @@ class ChatSession:
             now=now,
         )
         history = self.memory.load_session_history(session.id)
-        instructions = self._instructions(context, session, history)
+        instructions = self._instructions(context, session, history, now)
         context_json = _bounded_context_json(context)
         estimated_tokens = _estimate_context_tokens(instructions, context_json, history, text)
         notice: str | None = None
@@ -429,7 +434,7 @@ class ChatSession:
                 now=now,
             )
             history = []
-            instructions = self._instructions(context, session, history)
+            instructions = self._instructions(context, session, history, now)
             context_json = _bounded_context_json(context)
             estimated_tokens = _estimate_context_tokens(instructions, context_json, history, text)
             if estimated_tokens > self.input_token_budget:
@@ -1185,6 +1190,7 @@ class ChatSession:
         context: CaseContextResult,
         session: SessionRecord,
         history: list[ModelRequest | ModelResponse],
+        now: datetime | None = None,
     ) -> str:
         catalog = self.protocol.catalog_json()
         if self.memory_mode is not MemoryMode.STANDARD:
@@ -1219,6 +1225,11 @@ class ChatSession:
                     "provisional, orient to what changed, and review a prior experiment only when "
                     "relevant. Do not extend an old pattern to a new event without checking."
                 )
+        ai_reminder = (
+            "\nAn AI reminder is due: in this reply, mention once, naturally, that you are an AI."
+            if _ai_reminder_due(session, history, now or datetime.now(UTC))
+            else ""
+        )
         return (
             self.protocol.root_instructions
             + "\n\nVerified conversation skill catalog (metadata only):\n"
@@ -1244,7 +1255,7 @@ class ChatSession:
             "shortest form that fits the moment, but use enough detail for a formulation, repair, "
             "consented exercise, outcome review, or support/closure discussion. Avoid unrequested "
             "lists, routine headings, checklists, raw HTML, and embedded media. A turn may require "
-            "no tool and no skill." + long_gap
+            "no tool and no skill." + long_gap + ai_reminder
         )
 
     def end(self, now: datetime | None = None) -> SessionRecord | None:
@@ -1504,6 +1515,24 @@ def _format_tool_trace(messages: list[ModelRequest | ModelResponse]) -> str | No
                     f"TOOL OUTPUT · {part.tool_name} · retry\n{_format_tool_value(part.content)}"
                 )
     return "\n\n".join(blocks) or None
+
+
+def _ai_reminder_due(
+    session: SessionRecord, history: list[ModelRequest | ModelResponse], now: datetime
+) -> bool:
+    turns = sum(
+        isinstance(message, ModelRequest)
+        and any(isinstance(part, UserPromptPart) for part in message.parts)
+        for message in history
+    )
+    if not turns:
+        return False
+    started = datetime.fromisoformat(session.started_at)
+    previous = datetime.fromisoformat(session.last_activity_at)
+    marks_now = (now - started) // AI_REMINDER_INTERVAL
+    return (
+        turns % AI_REMINDER_TURNS == 0 or marks_now > (previous - started) // AI_REMINDER_INTERVAL
+    )
 
 
 def _persisted_run_messages(

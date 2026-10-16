@@ -58,6 +58,13 @@ semantically calls `load_skill`; no skill is also valid. At most one skill and o
 intervention approach are used per turn. There is no keyword router, process classifier, state
 machine, or stored chain-of-thought.
 
+The experimental behavior pack in `protocols/transdiagnostic/` has a short root protocol and eleven
+skills (emotion, help and direction, formulation, repair, review and follow-up, thinking,
+self-criticism, flexibility, a small behavioral step, practical problems, and support/closure). The
+agent offers one owned observation when it has enough material, suggests one small step when change
+is wanted, follows up on what was tried, asks what ambiguous wording means before giving emergency
+resources, and in long sessions mentions from time to time that it is an AI.
+
 The agent may call tools repeatedly to refine retrieval or stage distinct evidence-supported
 changes. Integrity is enforced over the whole staged turn—two new user reports, one new hypothesis,
 one intervention change, exact evidence, valid IDs, and non-conflicting record mutations—before one
