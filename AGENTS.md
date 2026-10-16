@@ -282,6 +282,20 @@ transaction, so one thread's statements never commit or roll back with another's
 class, and a marker stops being retried after three failed attempts. `transcript_only` and
 `ephemeral` create no markers.
 
+One further tool, `forget_content`, is a privacy control rather than a memory write and is available in
+every memory mode. When the user asks in the conversation to forget something said earlier, the
+model passes the exact current-message wording of the request and one to three exact quotes, of at
+least three words each, from earlier user messages. A request quote mined out of a refusal ("don't
+forget it") is rejected like any other quote across its negation. Committing it suppresses every
+round whose user message or assistant reply carries a quote, plus the request's own round, archives
+active claims built on a quote, invalidates overlapping derived text, deletes any pending split-mode
+extraction marker of a suppressed round, and clears the reflection of every closed session that
+contained a suppressed round, because a summary can paraphrase a story without repeating its words.
+A still-open session holding one is flagged and later closes with no reflection at all, since its
+remaining rounds can paraphrase the story too; the extractor also re-checks suppression before it
+records anything. The archive keeps the messages until local deletion, and the active session's
+own model history keeps them until that session ends.
+
 An agent-authored explanation or pattern that is important enough to revisit or ask the user to
 review later is recorded with `record_hypothesis` in the same turn before it is presented. A later
 user agreement reviews that agent-origin record rather than recasting the formulation as a direct
@@ -305,11 +319,18 @@ hypothesis reviews, corrections, accepted focus, reusable process feedback, supp
 intervention consent/outcomes where relevant. The last offered hypothesis and active intervention
 remain pending so later review updates the same records.
 
-When a session closes, use one additional model call with the structured `SessionReflection` output
-to summarize the episode and link existing claims into the case formulation. Consolidation allows
-two output retries and at most three model requests. It cannot create a confirmed claim. If it fails,
-preserve the transcript, record a content-free error class, and leave the previous formulation
-intact. Both agent runs use PydanticAI's complete synchronous API with an event stream handler so the
+When a session closes, consolidation runs over the whole session with the structured
+`SessionReflection` output to summarize the episode and link existing claims into the case
+formulation. The transcript is split into parts of complete rounds, each round dated in UTC, of at
+least 20,000 characters and at most eight parts; each part is one model run that receives the
+reflection so far and returns it updated, so a long session is not summarized from its tail. The
+formulation links and unlinks of every part are merged, so a later part cannot drop an earlier
+part's link by omission. Each run allows two output retries and at most three model requests. The claims it sees are the
+session's own first, then the most recently touched, fifty in all. Rounds suppressed by forgetting
+or correction are left out. The reflection carries `risk_notes`: any danger discussed and the
+protective step the user chose, so the next session can follow up. It cannot create a confirmed
+claim. If any part fails, preserve the transcript, record a content-free error class, and leave the
+previous formulation intact. Both agent runs use PydanticAI's complete synchronous API with an event stream handler so the
 experimental ChatGPT Codex backend can require `stream=true`; conversation transports stream
 cumulative Markdown snapshots while preserving the complete tool graph, then render the validated
 final reply. Consolidation consumes its stream without exposing a draft.
@@ -318,12 +339,33 @@ Consolidation preserves valid formulation links when the model omits them and re
 through an explicit `formulation_unlinks` entry. Existing evidence is retained before new links when
 a field reaches its five-claim bound, so omission or overflow cannot silently evict history.
 
-Memory retrieval uses local hybrid ranking over validated claims, active interventions, and up to
-1,000 recent user archive messages by default: lexical overlap plus semantic similarity through
-PydanticAI `Embedder`, with recency as a tie-breaker. The semantic index is an encrypted, derived
-SQLite cache keyed by entity type, entity ID, exact model revision, and keyed content hash; it is
-rebuilt after content or model changes and its affected rows are deleted on correction or
-forgetting. SQLite/Fernet remains the source of truth.
+Memory retrieval uses local hybrid ranking over validated claims, active interventions, session
+reflections, and every archived round (a user message with the assistant reply saved with it):
+lexical overlap plus semantic similarity through PydanticAI `Embedder`, with recency as a
+tie-breaker. Claims are index keys that point back to rounds: a matching claim lifts the rounds it
+cites. The query is embedded once per retrieval and scored against every entity type by one matrix
+product. The envelope's query is the current message plus the session's two previous user
+messages, so a follow-up still retrieves what it refers to; the `retrieve_case_context` tool uses
+the model's own query. Items are kept only above a semantic floor of 0.40 or, for rounds and
+sessions, with at least two shared lexical tokens, then cut to the top few per type. The floor was
+calibrated for Qwen3-Embedding-0.6B with `scripts/calibrate_semantic_floor.py` on synthetic
+Italian/English pairs, where the previous 0.20 let 90% of unrelated pairs through and 0.40 lets 4%
+through while keeping two thirds of related pairs. The semantic index is an encrypted, derived
+SQLite cache of packed float32 vectors keyed by entity type, entity ID, exact model revision, and
+keyed content hash; it is rebuilt after content or model changes and its affected rows are deleted
+on correction or forgetting. A round never changes once written, so its index entry is keyed by
+its ID and timestamp, both already plaintext columns, and is validated without decrypting it. Each process keeps
+one float32 matrix of unit vectors per entity type, built once from the index and updated in place
+as entities appear, change, or disappear (about 4 KB per round with the 1,024-dimension model), and
+a least-recently-used cache of at most 1,024 decrypted rounds. A retrieval reads the text of a
+bounded candidate set for lexical scoring: the 200 best semantic matches, the 200 most recent
+rounds, and the rounds that matching claims point to. Scans over the whole archive (forgetting,
+quote lookup) decrypt as they go and keep nothing. Both caches are cleared when a transaction rolls
+back, because SQLite can hand a rolled-back row ID out again. A retrieval embeds at most 64
+not-yet-indexed rounds, newest first, so an archive that predates round indexing is indexed over
+several turns rather than inside one; until then an old round is reachable only through the claims
+that cite it. Index rows of the earlier `message` entity type are deleted when a store opens.
+SQLite/Fernet remains the source of truth.
 Semantic retrieval is a required memory capability: setup downloads and verifies the local model,
 and conversation fails closed with setup guidance when embeddings are unavailable rather than
 silently switching to lexical-only ranking. Historical excerpts use the same hybrid ranking and a
@@ -343,19 +385,34 @@ model on every turn.
 
 - `Message`: complete encrypted user/assistant archive retained until deletion.
 - `Session`: time- or context-bounded episode with summary, themes, interventions, user response,
-  open questions, and an explicit end reason.
+  open questions, risk notes, and an explicit end reason. Correction, forgetting, retention, and
+  closing all walk one list of reflection fields, so a new field cannot miss a cleanup path.
 - `MemoryItem`: a durable fact reported by the user, preference, event, pattern, or hypothesis with
-  independent origin, fit, lifecycle, evidence, conflict links, and timestamps.
+  independent origin, fit, lifecycle, evidence, conflict links, and timestamps. `observed_at` is
+  when the evidence message was sent. `valid_from` stays unset unless the current message quotes a
+  time expression; it stores that exact quote, its precision (day, month, season, or year), and
+  optionally a value in that precision's format. The precision may not be finer than the quote
+  supports: a quote with no date, month, season, or year anchor ("lately") is rejected, "last
+  spring" allows season or year, "in March" month or coarser. The value keeps any year, month, or
+  season the user named, resolves a relative expression against the message date (this year or
+  the one before, "yesterday" to the day before, "2 years ago" exactly), and never lies after the
+  message, so a vague phrase never becomes a specific date and observation time never becomes
+  onset. The conversation tool and the split extractor apply the same check, so a bad expression
+  is retried instead of rolling back the turn; the store repeats it as the backstop. A correction
+  with a replacement resets `observed_at` to the correction and clears `valid_from`; forgetting
+  archives both with the claim.
 - `CaseFormulation`: an evidence map that derives concerns, triggers, thoughts, behavior, coping,
   relationships, course, functioning, explanatory model, preferences, maintaining factors,
   strengths, hypotheses, and focus from active memory claim IDs.
 - `InterventionRecord`: one offered or agreed technique with consent state, linked claims,
   prediction, outcome, user appraisal, and follow-up information. It is not a goal.
-- `CaseContextEnvelope`: bounded user reports, hypotheses, conflicts, relevant sessions, active
-  interventions, process preferences, support choices, excerpts, and accepted/proposed focus.
-- `SemanticIndex`: encrypted vectors for active memory items, active interventions, and bounded
-  candidate user messages. It is derived, excluded from export, safe to discard, and never
-  establishes truth or provenance.
+- `CaseContextEnvelope`: today's date, the most recent closed session with the time elapsed since
+  it (always present, whatever the message is about), bounded user reports, hypotheses, conflicts,
+  relevant earlier sessions, active interventions, process preferences, support choices, round
+  excerpts, and accepted/proposed focus. Every item carries an absolute date.
+- `SemanticIndex`: encrypted packed float32 vectors for active memory items, active interventions,
+  session reflections, support choices, and archived rounds. It is derived, excluded from export,
+  safe to discard, and never establishes truth or provenance.
 
 Claim dimensions:
 
@@ -400,7 +457,14 @@ Claim dimensions:
   Filo store started as a clean break without migration.
 
 The complete archive is retained until the user deletes it. Corrections and forgotten items must be
-removed from derived formulation and summaries and suppressed from future retrieval. Current-session
+removed from derived formulation and summaries and suppressed from future retrieval. Suppression
+reaches rounds by provenance and by content: forgetting a claim suppresses its evidence rounds and
+every round whose user message or assistant reply repeats its content or quotes (verbatim, or with
+at least three quarters of its content words), and clears the reflection of every closed session
+holding such a round. A correction does the same for the rounds repeating the superseded wording
+and for the claim's supporting rounds, so a paraphrased summary does not survive a correction. The
+suppressed round IDs live in encrypted state, are included in export, and are honored by
+retrieval and consolidation alike. Current-session
 model history retains every complete successful run, including tool exchanges, until the context
 boundary; long-term continuity across the resulting sessions comes from structured context and
 relevant excerpts.
@@ -721,8 +785,9 @@ and is answered before consent so it never sits behind the notice.
 show the agent identity, active session, bounded paginated structured state, evidence links, data
 flow, and limitations. `/start`, `/help`, and `/end` manage consent, guidance, and the conversational
 session. After each normal reply, the bot reports any durable memory, focus, or intervention changes
-committed for that turn. Correcting or forgetting memory, auth, export, and deletion remain local CLI
-operations. Command messages, rendered command output, context warnings, and rollover notices are
+committed for that turn; a claim that was forgotten or superseded is named by ID only. Correcting
+or forgetting memory by ID, auth, export, and deletion remain local CLI operations; asking in the
+conversation to forget something reaches `forget_content` like in any other transport. Command messages, rendered command output, context warnings, and rollover notices are
 transport-only and are not archived or sent back to the conversation model. Internal prompts,
 secrets, and private model reasoning are never exposed. Function-tool inputs and outputs are sent as
 separate messages before the final reply and remain in encrypted model history. Reply generation
@@ -895,7 +960,8 @@ so the user's superseded wording cannot return through retrieval or derived text
 Near-identical claims merge conservatively using the standard library, while differing numbers or
 negation always remain distinct. An unaccepted proposed focus expires when the session closes.
 
-On the first turn after at least seven days, the harness marks the old formulation as provisional
+On the first turn after at least seven days since the most recent closed session (not the most
+relevant one), the harness marks the old formulation as provisional
 and requires orientation to what changed and, when relevant, the outcome of the previous experiment
 before extending an old pattern to new material.
 
@@ -960,6 +1026,9 @@ plainly distinguishes AI-supported conversation or self-help from diagnosis and 
 - Reported adverse effects stop the current intervention and are reviewed before another technique.
 - User correction wins over prior inference and no superseded wording returns via derived context.
 - Selective forgetting and full deletion work; sensitive plaintext is absent from SQLite.
+- Content forgotten in the conversation or through the CLI, including content that never became a
+  claim, does not return through claims, round excerpts, session summaries or risk notes, the most
+  recent session, or consolidation.
 - Eight-hour segmentation, `/end`, interrupted consolidation, and session resumption preserve data.
 - Context stays bounded with hundreds of sessions; history is not truncated after an arbitrary turn
   count, emits one warning near capacity, and rolls over before exceeding the per-model limit capped
@@ -1012,8 +1081,11 @@ verify localized behavior or multilingual retrieval.
 
 Longitudinal tests must cover retrieval after several months, encrypted persistence across process
 restart, evidence provenance, fact/hypothesis separation, correction precedence, selective
-forgetting, semantic reindexing and fail-closed behavior, complete active-session history beyond ten
-turns, warning and automatic rollover at hard context bounds, and command/output separation. A
+forgetting, semantic reindexing and fail-closed behavior, forgetting that reaches every round and
+summary that carried the content, time fields and most-recent-session continuity, complete
+active-session history beyond ten turns, warning and automatic rollover at hard context bounds,
+and command/output separation. `tests/test_retrieval_and_time.py` asks for forgotten content
+through every retrieval path and expects nothing back. A
 separate `live`
 test exercises the same high-level path
 against a real OpenAI model. It is skipped unless explicitly enabled:
