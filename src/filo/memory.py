@@ -828,33 +828,72 @@ class MemoryStore:
         self._initialize_schema()
 
     def _initialize_schema(self) -> None:
-        with self._connect() as database:
-            tables = {
-                row[0]
-                for row in database.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
-            }
-        existing_version = self._read_state("schema_version") if "state" in tables else None
-        if tables:
-            generation = _schema_generation(existing_version)
-            if generation is None or generation > SCHEMA_GENERATION:
-                # Only an empty database may be initialized. Anything else without a known marker,
-                # including a store written by a newer Filo, is rejected before a table is
-                # created, so it is left unmodified.
+        if self._ephemeral:
+            with self.transaction():
+                self._apply_schema(fresh=True)
+            return
+        # The whole check, any migration and the schema statements run in one transaction that
+        # holds the write lock from the start, so no other process can migrate, write, or settle
+        # a recovery copy between reading the marker and acting on it.
+        database = sqlite3.connect(
+            self.database_path, autocommit=True, timeout=BUSY_TIMEOUT_SECONDS
+        )
+        try:
+            database.execute("PRAGMA foreign_keys = ON")
+            try:
+                database.execute("BEGIN IMMEDIATE")
+            except sqlite3.OperationalError as error:
                 raise MemoryError(
-                    "This data store uses an unknown or newer schema. Use the Filo version that "
-                    "wrote it, or a new data directory."
-                )
-            if generation < SCHEMA_GENERATION:
-                self._migrate()
-            else:
-                self._settle_migration_backup()
+                    "Another Filo process is updating the data store. Try again shortly."
+                ) from error
+            self._transaction = database
+            try:
+                self._open_locked(database)
+                database.execute("COMMIT")
+            except BaseException:
+                if database.in_transaction:
+                    database.execute("ROLLBACK")
+                self._clear_caches()
+                raise
+            finally:
+                self._transaction = None
+        finally:
+            database.close()
+
+    def _open_locked(self, database: sqlite3.Connection) -> None:
+        tables = {
+            row[0]
+            for row in database.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+        if not tables:
+            self._apply_schema(fresh=True)
+            return
+        generation = _schema_generation(
+            self._read_state("schema_version") if "state" in tables else None
+        )
+        if generation is None or generation > SCHEMA_GENERATION:
+            # Anything without a known marker, including a store written by a newer Filo, is
+            # rejected before a table is created, so it is left unmodified.
+            raise MemoryError(
+                "This data store uses an unknown or newer schema. Use the Filo version that "
+                "wrote it, or a new data directory."
+            )
+        if generation < SCHEMA_GENERATION:
+            self._migrate(database, generation)
+        self._apply_schema(fresh=False)
+        # Verified and about to commit under the lock, which any migrating process would hold:
+        # a copy left now, by this or an interrupted process, has served its purpose. SQLite's
+        # journal still rolls back a commit cut short after this point.
+        self._discard_migration_backup()
+
+    def _apply_schema(self, *, fresh: bool) -> None:
         # Individual statements, unlike executescript, stay inside one transaction, so the
         # tables and the schema marker commit together or not at all.
-        with self.transaction(), self._connect() as database:
+        with self._connect() as database:
             for statement in SCHEMA_STATEMENTS.split(";"):
                 if statement.strip():
                     database.execute(statement)
-            if not tables:
+            if fresh:
                 self._write_state("schema_version", SCHEMA_VERSION)
             # Earlier filo-1 development stores indexed user messages as "message"; rounds
             # replaced them, and nothing else would ever delete those vectors.
@@ -864,50 +903,31 @@ class MemoryStore:
     def migration_backup_path(self) -> Path:
         return self.directory / MIGRATION_BACKUP
 
-    def _migrate(self) -> None:
-        """Bring an older store forward, keeping a recovery copy until the result is verified.
+    def _migrate(self, database: sqlite3.Connection, generation: int) -> None:
+        """Bring an older store forward inside the caller's write transaction.
 
-        The copy is taken with SQLite's online backup API while this connection holds the write
-        lock that then runs every step, so no other process can write between the copy and the
-        migration. SQLite refuses to back up from a connection with an open write transaction, so
-        a second, reading connection takes the copy.
-        A failing step rolls back and leaves the store as it was. A migrated store that fails
-        verification is restored from the copy. The copy holds the same encrypted payloads as the
-        store and is deleted once the migrated store is verified.
+        A recovery copy is taken first with SQLite's online backup API. SQLite refuses to back up
+        from a connection with an open write transaction, so a second, reading connection takes
+        it; the write lock already held keeps every other writer out. The steps then run, and the
+        result must pass integrity and foreign-key checks and decrypt its new marker before the
+        caller commits. Any failure rolls the whole transaction back, so the store is never
+        replaced from the copy: the copy only matters if the process dies mid-commit, and it holds
+        the same encrypted payloads as the store.
         """
-        database = sqlite3.connect(
-            self.database_path, autocommit=True, timeout=BUSY_TIMEOUT_SECONDS
-        )
         try:
-            database.execute("BEGIN IMMEDIATE")
-            row = database.execute(
-                "SELECT payload FROM state WHERE name = 'schema_version'"
-            ).fetchone()
-            generation = _schema_generation(self._decrypt(row[0]))
-            if generation == SCHEMA_GENERATION:  # another process migrated it first
-                database.execute("COMMIT")
-                return
             self._write_backup()
-            self._transaction = database
-            try:
-                database.execute("PRAGMA defer_foreign_keys = ON")
-                for step in range(generation or 0, SCHEMA_GENERATION):
-                    MIGRATIONS[step](self, database)
-                self._write_state("schema_version", SCHEMA_VERSION)
-                database.execute("COMMIT")
-            except BaseException as error:
-                if database.in_transaction:
-                    database.execute("ROLLBACK")
-                self.migration_backup_path.unlink(missing_ok=True)
-                raise MemoryError(
-                    "Updating the data store failed; it was left unchanged."
-                ) from error
-            finally:
-                self._transaction = None
-                self._clear_caches()
-        finally:
-            database.close()
-        self._settle_migration_backup()
+            database.execute("PRAGMA defer_foreign_keys = ON")
+            for step in range(generation, SCHEMA_GENERATION):
+                MIGRATIONS[step](self, database)
+            self._write_state("schema_version", SCHEMA_VERSION)
+            (integrity,) = database.execute("PRAGMA integrity_check").fetchone()
+            if integrity != "ok" or database.execute("PRAGMA foreign_key_check").fetchall():
+                raise MemoryError("The migrated store failed verification.")
+            if self._read_state("schema_version") != SCHEMA_VERSION:
+                raise MemoryError("The migrated store failed verification.")
+        except BaseException as error:
+            self._discard_migration_backup()
+            raise MemoryError("Updating the data store failed; it was left unchanged.") from error
 
     def _write_backup(self) -> None:
         backup = self.migration_backup_path
@@ -915,7 +935,7 @@ class MemoryStore:
         partial.unlink(missing_ok=True)
         # Created with owner-only permissions before SQLite writes anything into it.
         os.close(os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
-        source = sqlite3.connect(f"{self.database_path.as_uri()}?mode=ro", uri=True)
+        source = sqlite3.connect(f"{self.database_path.resolve().as_uri()}?mode=ro", uri=True)
         target = sqlite3.connect(partial)
         try:
             source.backup(target)
@@ -924,38 +944,10 @@ class MemoryStore:
             target.close()
         os.replace(partial, backup)
 
-    def _settle_migration_backup(self) -> None:
-        """Delete a verified migration's recovery copy, or restore it over a damaged store."""
+    def _discard_migration_backup(self) -> None:
         backup = self.migration_backup_path
-        if not backup.exists():
-            return
-        if not self._verified():
-            source = sqlite3.connect(backup)
-            target = sqlite3.connect(self.database_path, timeout=BUSY_TIMEOUT_SECONDS)
-            try:
-                source.backup(target)
-            finally:
-                source.close()
-                target.close()
-            backup.unlink()
-            self._clear_caches()
-            raise MemoryError(
-                "Updating the data store failed verification; the previous version was restored."
-            )
-        backup.unlink()
-
-    def _verified(self) -> bool:
-        try:
-            with self._connect() as database:
-                (result,) = database.execute("PRAGMA integrity_check").fetchone()
-                violations = database.execute("PRAGMA foreign_key_check").fetchall()
-            return (
-                result == "ok"
-                and not violations
-                and self._read_state("schema_version") == SCHEMA_VERSION
-            )
-        except (sqlite3.DatabaseError, MemoryError):
-            return False
+        for path in (backup, backup.with_name(f"{backup.name}.partial")):
+            path.unlink(missing_ok=True)
 
     def load_app_state(self) -> AppState:
         payload = self._read_state("app")
@@ -2767,7 +2759,7 @@ class MemoryStore:
     def delete_all(self) -> None:
         # A recovery copy left by an interrupted migration is a full copy of the conversations.
         if not self._ephemeral:
-            self.migration_backup_path.unlink(missing_ok=True)
+            self._discard_migration_backup()
         with self.transaction(), self._connect() as database:
             # The discard counter lives in the state table, which is wiped here;
             # it must still move forward so a view rendered before the wipe is

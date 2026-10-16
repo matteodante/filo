@@ -525,14 +525,18 @@ and until then schema additions such as the `telegram_outbox` table amend it dir
 change raises `SCHEMA_GENERATION` and registers `MIGRATIONS[n]`, the step from `filo-n` to
 `filo-(n + 1)`, with a test that migrates a store of the previous generation.
 
-Opening an older store runs every pending step in order inside one transaction that holds the
-SQLite write lock, so a concurrent process waits and then finds the store already migrated. Before
-the first step, SQLite's online backup API copies the store to an owner-only
-`filo.db.pre-migration` beside it; the copy holds the same encrypted payloads, never plaintext. A
-failing step rolls back and leaves the store unchanged. After commit the store must pass
-`integrity_check`, `foreign_key_check`, and decrypt its new marker; otherwise the copy is restored
-over it. The copy is deleted once the migrated store is verified, a copy left by an interrupted
-process is settled the same way on the next open, and `delete-data` removes any that survives. Do
+Opening a store reads its marker, runs every pending step in order, and applies the schema
+statements inside one transaction that holds the SQLite write lock from the start, so a concurrent
+process waits and then finds the store already migrated, and a process running an older release
+rejects the newer marker instead of acting on one it read earlier. A process that cannot get the
+lock in time reports that another Filo process is updating the store. Before the first step,
+SQLite's online backup API copies the store to an owner-only `filo.db.pre-migration` beside it;
+the copy holds the same encrypted payloads, never plaintext. Before commit, the migrated store must
+pass `integrity_check` and `foreign_key_check`, with foreign keys enforced during the steps, and
+decrypt its new marker. Any failure rolls the transaction back and leaves the store unchanged; the
+copy is never written back over a store. It is deleted under the lock once the result is verified,
+a copy left by an interrupted process is deleted under the lock on the next successful open, and
+`delete-data` removes any that survives, including a partial one. Do
 not add legacy aliases or schema fallbacks. Reject an unknown or newer schema version before
 creating any table, and refuse a data directory containing a Therapist `thera.db` before creating,
 chmodding, or reading anything in it. Every connection enforces SQLite foreign keys.

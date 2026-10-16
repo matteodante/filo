@@ -191,8 +191,8 @@ before consent.
 
 Filo started its own store as a clean break from Therapist, whose data directory it never reads.
 From there on, a newer Filo upgrades an older Filo store in place when it opens it. It first keeps
-an encrypted, owner-only recovery copy next to the store, restores it if the upgrade fails
-verification, and deletes it once the upgraded store checks out. A store written by a newer Filo is
+an encrypted, owner-only recovery copy next to the store and deletes it once the upgraded store
+checks out; an upgrade that fails its checks is rolled back and leaves the store unchanged. A store written by a newer Filo is
 rejected without modification.
 
 ## Development

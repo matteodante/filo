@@ -72,8 +72,9 @@ opt-in regression aids; they are not clinical validation.
 - session and date deletion propagate to messages, semantic entries, formulation, summaries,
   interventions, excerpts, and pending IDs;
 - unknown or newer schema versions fail before use without modification; an older Filo store is
-  migrated forward with a private, encrypted recovery copy that is restored when a step fails
-  verification and deleted once the result is verified, while a concurrent writer waits
+  migrated forward with a private, encrypted recovery copy; a failing step or verification rolls
+  back, the copy is deleted once the result is verified, a concurrent writer and a second opener
+  wait, and a process running the older release rejects the migrated store
   (`tests/test_migrations.py`).
 
 ## Tool coverage

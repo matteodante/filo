@@ -227,8 +227,11 @@ encryption audit, no plaintext.
 
 *Outcome:* the framework is in place with no steps yet, since `filo-1` is unreleased. Tests migrate
 a `filo-1` store to a test-only `filo-2`, covering a failing step, a migrated store that fails
-verification and is restored, a leftover recovery copy, a concurrent writer and a second process
-opening mid-migration. Plain connections now enforce foreign keys, which the old autocommit setting
+verification and is rolled back, a leftover recovery copy, a concurrent writer, a second opener,
+and a process on the older release opening mid-migration. A review found that a first design,
+which restored the copy over a store that failed verification after commit, could copy an empty
+database over a live store when two processes raced; verification now happens before commit and
+the copy is never written back. Plain connections now enforce foreign keys, which the old autocommit setting
 had silently disabled.
 
 **W0.4 Telegram turn idempotency and delivery.**
