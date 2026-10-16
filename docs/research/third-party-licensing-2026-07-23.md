@@ -189,10 +189,13 @@ confirmation from NICE remains prudent before making a stronger claim of substan
 
 ## Synthetic TUI screenshot
 
-[`docs/assets/therapist-tui.png`](../../docs/assets/therapist-tui.png) is a 1800×1184 RGBA PNG
+`docs/assets/therapist-tui.png` is a 1800×1184 RGBA PNG
 captioned in the [`README`](../../README.md) as an actual Textual-interface capture using synthetic
 data. Inspection found no embedded metadata, third-party logo, stock image, or real user content.
 It renders project UI, synthetic text, and ordinary terminal glyphs.
+
+> **Later note:** this screenshot was removed in the rename to Filo and survives only in Git
+> history; the link was dropped because its target no longer exists.
 
 The screenshot is project content under Therapist's
 [`AGPL-3.0-or-later`](../../LICENSE), is present in the sdist, and is absent from the wheel. No

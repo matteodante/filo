@@ -6,9 +6,9 @@ from urllib.error import HTTPError
 
 import pytest
 
-from therapist.chat import TurnStreamEvent, TurnStreamKind
-from therapist.memory import MemoryKind, MemoryMode, MemoryStore, UserReport
-from therapist.telegram import (
+from filo.chat import TurnStreamEvent, TurnStreamKind
+from filo.memory import MemoryKind, MemoryMode, MemoryStore, UserReport
+from filo.telegram import (
     TelegramBot,
     TelegramChannel,
     TelegramError,
@@ -29,7 +29,7 @@ class FakeBot:
         self.rich_messages: list[tuple[int, str]] = []
 
     def get_me(self) -> dict[str, str]:
-        return {"username": "test_therapist_bot"}
+        return {"username": "test_filo_bot"}
 
     def delete_webhook(self) -> None:
         self.deleted_webhook = True
@@ -130,7 +130,7 @@ def test_channel_requires_separate_consent_then_uses_shared_session(
 
     channel.process_update(private_update(1, 42, "Hello"))
     assert "/consent I UNDERSTAND" in bot.messages[-1][1]
-    assert "Therapist is experimental AI" in bot.messages[-1][1]
+    assert "Filo is experimental AI" in bot.messages[-1][1]
     assert "at least 18" in bot.messages[-1][1]
     assert "output can be wrong" in bot.messages[-1][1]
     assert "separate bounded case-data envelope" in bot.messages[-1][1]
@@ -138,7 +138,7 @@ def test_channel_requires_separate_consent_then_uses_shared_session(
     assert session.received == []
 
     channel.process_update(private_update(2, 42, "/consent I UNDERSTAND"))
-    assert store.load_app_state().telegram_consent_version == "alpha-4"
+    assert store.load_app_state().telegram_consent_version == "alpha-5"
 
     channel.process_update(private_update(3, 42, "/start"))
     assert "already recorded" in bot.messages[-1][1]
@@ -186,7 +186,7 @@ def test_run_retries_delivery_without_advancing_offset(
     bot = FailingDeliveryBot([[private_update(7, 42, "/start")]])
     store = MemoryStore(tmp_path)
     sleeps: list[int] = []
-    monkeypatch.setattr("therapist.telegram.time.sleep", sleeps.append)
+    monkeypatch.setattr("filo.telegram.time.sleep", sleeps.append)
     channel = TelegramChannel(bot, FakeSession(), store, 42)  # type: ignore[arg-type]
 
     with pytest.raises(KeyboardInterrupt):
@@ -213,7 +213,7 @@ def test_transparency_commands_show_status_memory_case_and_privacy(
     session = FakeSession()
     store = MemoryStore(tmp_path)
     state = store.load_app_state()
-    state.telegram_consent_version = "alpha-4"
+    state.telegram_consent_version = "alpha-5"
     state.embedding_model = "sentence-transformers:test"
     store.save_app_state(state)
     active = store.start_session()
@@ -258,7 +258,7 @@ def test_memory_command_is_paginated(tmp_path: Path) -> None:
     bot = FakeBot()
     store = MemoryStore(tmp_path)
     state = store.load_app_state()
-    state.telegram_consent_version = "alpha-4"
+    state.telegram_consent_version = "alpha-5"
     store.save_app_state(state)
     session = store.start_session()
     for index in range(12):
@@ -286,7 +286,7 @@ def test_normal_turn_discloses_committed_memory_change(tmp_path: Path) -> None:
     bot = FakeBot()
     store = MemoryStore(tmp_path)
     state = store.load_app_state()
-    state.telegram_consent_version = "alpha-4"
+    state.telegram_consent_version = "alpha-5"
     store.save_app_state(state)
     active = store.start_session()
 
@@ -323,7 +323,7 @@ def test_normal_turn_sends_tool_input_and_output_before_reply(tmp_path: Path) ->
     bot = FakeBot()
     store = MemoryStore(tmp_path)
     state = store.load_app_state()
-    state.telegram_consent_version = "alpha-4"
+    state.telegram_consent_version = "alpha-5"
     store.save_app_state(state)
 
     class ToolSession(FakeSession):
@@ -440,7 +440,7 @@ def test_bot_preserves_retry_after_from_telegram(
         fp=body,
     )
     monkeypatch.setattr(
-        "therapist.telegram.urlopen",
+        "filo.telegram.urlopen",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(error),
     )
 
@@ -458,7 +458,7 @@ def test_channel_throttles_streamed_drafts_with_one_id(
     bot = FakeBot()
     store = MemoryStore(tmp_path)
     state = store.load_app_state()
-    state.telegram_consent_version = "alpha-4"
+    state.telegram_consent_version = "alpha-5"
     store.save_app_state(state)
 
     class StreamingSession(FakeSession):
@@ -471,8 +471,8 @@ def test_channel_throttles_streamed_drafts_with_one_id(
             return SimpleNamespace(text="**One two three**")
 
     times = iter((1.0, 1.1, 1.3))
-    monkeypatch.setattr("therapist.telegram.time.monotonic", lambda: next(times))
-    monkeypatch.setattr("therapist.telegram.secrets.randbits", lambda _: 99)
+    monkeypatch.setattr("filo.telegram.time.monotonic", lambda: next(times))
+    monkeypatch.setattr("filo.telegram.secrets.randbits", lambda _: 99)
     channel = TelegramChannel(bot, StreamingSession(), store, 42)  # type: ignore[arg-type]
 
     channel.process_update(private_update(1, 42, "Stream this"))
@@ -488,7 +488,7 @@ def test_channel_bounds_rejected_draft_to_plain_message_limit(tmp_path: Path) ->
     bot = FakeBot()
     store = MemoryStore(tmp_path)
     state = store.load_app_state()
-    state.telegram_consent_version = "alpha-4"
+    state.telegram_consent_version = "alpha-5"
     store.save_app_state(state)
 
     class LongDraftSession(FakeSession):
@@ -526,10 +526,10 @@ def test_channel_rate_limits_draft_attempts_after_failure(
     bot = RateLimitedDraftBot()
     store = MemoryStore(tmp_path)
     state = store.load_app_state()
-    state.telegram_consent_version = "alpha-4"
+    state.telegram_consent_version = "alpha-5"
     store.save_app_state(state)
     times = iter((1.0, 1.1, 1.3, 6.1))
-    monkeypatch.setattr("therapist.telegram.time.monotonic", lambda: next(times))
+    monkeypatch.setattr("filo.telegram.time.monotonic", lambda: next(times))
     channel = TelegramChannel(bot, StreamingSession(), store, 42)  # type: ignore[arg-type]
 
     channel.process_update(private_update(1, 42, "Stream this"))
@@ -544,7 +544,7 @@ def test_channel_uses_plain_delivery_for_unsafe_markdown(tmp_path: Path) -> None
     bot = FakeBot()
     store = MemoryStore(tmp_path)
     state = store.load_app_state()
-    state.telegram_consent_version = "alpha-4"
+    state.telegram_consent_version = "alpha-5"
     store.save_app_state(state)
 
     class UnsafeSession(FakeSession):
@@ -574,7 +574,7 @@ def test_channel_falls_back_to_plain_only_for_rejected_rich_format(
     bot = RejectedRichBot()
     store = MemoryStore(tmp_path)
     state = store.load_app_state()
-    state.telegram_consent_version = "alpha-4"
+    state.telegram_consent_version = "alpha-5"
     store.save_app_state(state)
     channel = TelegramChannel(bot, FakeSession(), store, 42)  # type: ignore[arg-type]
 
@@ -593,7 +593,7 @@ def test_channel_does_not_plain_fallback_after_transient_rich_error(
     bot = UnavailableRichBot()
     store = MemoryStore(tmp_path)
     state = store.load_app_state()
-    state.telegram_consent_version = "alpha-4"
+    state.telegram_consent_version = "alpha-5"
     store.save_app_state(state)
     channel = TelegramChannel(bot, FakeSession(), store, 42)  # type: ignore[arg-type]
 
@@ -618,7 +618,7 @@ def test_channel_retries_missing_tool_events_separately_without_duplicates(
     bot = FirstToolFailureBot()
     store = MemoryStore(tmp_path)
     state = store.load_app_state()
-    state.telegram_consent_version = "alpha-4"
+    state.telegram_consent_version = "alpha-5"
     store.save_app_state(state)
 
     class ToolSession(FakeSession):

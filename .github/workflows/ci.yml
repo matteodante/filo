@@ -35,13 +35,13 @@ jobs:
       - name: Check formatting
         run: uv run ruff format --check src tests
       - name: Type check
-        run: uv run ty check src/therapist
+        run: uv run ty check src/filo
       - name: Test with branch coverage
         run: |
           uv run coverage run -m pytest -q
           uv run coverage report
       - name: Validate protocol packs
-        run: uv run thera protocol validate
+        run: uv run filo protocol validate
       - name: Validate installer syntax
         run: |
           sh -n install.sh
@@ -52,8 +52,8 @@ jobs:
         run: |
           wheel="$(find dist -name '*.whl' -print -quit)"
           uv tool install --python 3.12 "$wheel"
-          "$(uv tool dir --bin)/thera" protocol validate
-          "$(uv tool dir --bin)/thera" doctor
+          "$(uv tool dir --bin)/filo" protocol validate
+          "$(uv tool dir --bin)/filo" doctor
 
   installer-smoke:
     name: Installer smoke (${{ matrix.os }})
@@ -86,15 +86,15 @@ jobs:
         run: |
           wheel="$(find dist -name '*.whl' -print -quit)"
           uv tool install --python 3.12 "$wheel"
-          thera="$(uv tool dir --bin)/thera"
-          if [ -f "$thera.exe" ]; then thera="$thera.exe"; fi
-          "$thera" protocol validate
-          "$thera" doctor
+          filo="$(uv tool dir --bin)/filo"
+          if [ -f "$filo.exe" ]; then filo="$filo.exe"; fi
+          "$filo" protocol validate
+          "$filo" doctor
       - name: Validate piped macOS prompt
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          tool_python="$(uv tool dir)/therapist-cli/bin/python"
+          tool_python="$(uv tool dir)/filo-cli/bin/python"
           # A fixed short write races prompt_toolkit's terminal setup on a
           # loaded runner. A real user types seconds later, so that race is an
           # artifact of the harness: wait longer and retry instead of reporting

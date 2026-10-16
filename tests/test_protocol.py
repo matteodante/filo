@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from therapist.cli import main
-from therapist.protocol import ProtocolError, ProtocolPack
+from filo.cli import main
+from filo.protocol import ProtocolError, ProtocolPack
 
 ROOT = Path("protocols/transdiagnostic")
 

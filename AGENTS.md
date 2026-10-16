@@ -1,19 +1,22 @@
-# Therapist project guide
+# Filo project guide
 
 This file is the canonical source of truth for the project's purpose, scope, architecture, and
 working rules. Keep it updated in the same change whenever behavior, commands, storage, scope,
 architecture, dependencies, licensing, or milestones change. `README.md` is the concise public
 overview; keep it synchronized with this canonical guide when user-visible behavior changes.
 
+Formerly published as Therapist (v0.1–v0.3).
+
 ## Project idea
 
-Therapist is an experimental, self-hosted AI conversation agent for adult self-reflection and the
+Filo is an experimental, self-hosted AI conversation agent for adult self-reflection and the
 organization of user-provided thoughts. It uses careful listening, longitudinal continuity,
 collaborative formulation, pattern recognition, gentle challenge, and selection of an appropriate
 next conversational step.
 
-It remains explicitly an AI. It must not claim to be a psychologist or psychotherapist, diagnose,
-prescribe, promise recovery, present itself as an emergency service, or imply human monitoring.
+It remains explicitly an AI. It must not claim to be a psychologist or psychotherapist, describe
+itself as a therapist or counselor or as offering therapy, treatment, or psychological support,
+diagnose, prescribe, promise recovery, present itself as an emergency service, or imply human monitoring.
 It is not intended for diagnosis, prevention, monitoring, prediction, prognosis, treatment, or
 alleviation of any disease, disorder, injury, or disability.
 
@@ -47,7 +50,7 @@ Build a small bilingual, single-adult-user agent that:
 - keeps behavioral instructions and source references in Git-versioned protocol packs;
 - lets the user inspect, confirm, correct, forget, export, and delete memory;
 - records offered, agreed, tried, stopped, and untried interventions for later review;
-- accepts the same therapeutic conversation through a private, allowlisted Telegram bot;
+- accepts the same conversation through a private, allowlisted Telegram bot;
 - remains small enough for one maintainer to understand.
 
 Included in this milestone:
@@ -107,6 +110,13 @@ operation.
 Known gaps in the current state of the repository. Close them or record why they stay open; do not
 let them accumulate silently.
 
+- Forward schema migrations are required from the Filo store onward, but the migration framework
+  does not exist yet. Build it before the first change to the Filo schema.
+- The installers pin the release named in `pyproject.toml`. Until the first release tagged under
+  the Filo name exists, that tag still contains the Therapist package and the installers cannot
+  complete, so `README.md` documents the checkout installation instead of the bootstrap. The
+  first Filo release restores the README bootstrap commands in the same change that moves the
+  pin; `RELEASING.md` carries that step.
 - `v0.2.0` and `v0.3.0` are released. The 2026-08-11 and 2026-08-18 addenda in
   `docs/release-readiness-2026-08-04.md` hold their evidence, including which `v0.3.0` gates reused
   the earlier live results and why.
@@ -162,7 +172,7 @@ Behavioral rules:
 - when the user asks for understanding before suggestions, offer at most one brief hypothesis and
   keep exploring instead of listing explanations or introducing an exercise;
 - do not force a goal, worksheet, or technique onto every exchange;
-- use the therapeutic protocol as an internal map rather than a visible sequence; questions,
+- use the behavior protocol as an internal map rather than a visible sequence; questions,
   hypotheses, formulation, and forward movement are optional when simple presence is more useful;
 - vary response length, rhythm, and conversational move instead of repeating a
   reflection-hypothesis-question template;
@@ -170,7 +180,7 @@ Behavioral rules:
 - do not use diagnostic labels or claim knowledge unsupported by the archive;
 - do not encourage exclusivity, dependency, or withdrawal from human support.
 - when a user explicitly says they are under 18, state the adult-only boundary warmly, do not
-  continue the therapeutic process or create or modify durable memory, focus, hypothesis, or
+  continue the reflective process or create or modify durable memory, focus, hypothesis, or
   intervention state, and encourage a trusted adult or age-appropriate local support;
   immediate-danger handling still takes priority.
 - for possible immediate danger, after localized emergency guidance, a physically present person,
@@ -199,7 +209,7 @@ serialized as a bounded `CaseContextEnvelope` JSON object in a separate user-dat
 explicit quoted-data boundary; it is never concatenated into instructions. Successful session
 history remains another distinct message sequence.
 
-The model may call two read tools, `load_therapeutic_skill` and `retrieve_case_context`, and eight
+The model may call two read tools, `load_skill` and `retrieve_case_context`, and eight
 staged write tools: `record_user_reports`, `record_hypothesis`, `correct_claim`,
 `review_hypotheses`, `set_focus`, `record_process_feedback`, `record_intervention`, and
 `record_support_choice`. The model may call tools repeatedly when a refined read or another
@@ -213,7 +223,7 @@ review later is recorded with `record_hypothesis` in the same turn before it is 
 user agreement reviews that agent-origin record rather than recasting the formulation as a direct
 user report. Fleeting possibilities need not become durable state.
 
-The minimal structured output is `TherapistTurnOutput`: a visible reply plus `selected_skill`,
+The minimal structured output is `FiloTurnOutput`: a visible reply plus `selected_skill`,
 `referenced_claim_ids`, and `referenced_intervention_ids`. Metadata describes observable actions,
 not private reasoning. After validation, transcript and staged changes commit in one transaction;
 failure leaves both unchanged. Encrypted successful history retains paired tool exchanges while
@@ -322,8 +332,8 @@ Claim dimensions:
   residual risk remains and is accepted: within a single clause, deletion can still move what a
   negation lands on, and can drop an unmarked qualifier such as a condition, turning "only when I
   drink coffee" into an unconditional claim. No lexical check closes either, and the exact quote is
-  retained beside the content so both stay auditable. No unquoted records are created because this revision
-  is a clean break without migration.
+  retained beside the content so both stay auditable. No unquoted records are created because the
+  Filo store started as a clean break without migration.
 
 The complete archive is retained until the user deletes it. Corrections and forgotten items must be
 removed from derived formulation and summaries and suppressed from future retrieval. Current-session
@@ -343,7 +353,7 @@ Session activity timestamps are written both to the indexed SQLite column and th
 payload in the same transaction so restart cannot move the eight-hour boundary backward. SQLite
 comes from the Python standard library. Sensitive payloads are encrypted with Fernet from
 `cryptography>=50,<51` using a separate local key with filesystem mode `0600`. The 50.0.0 floor
-excludes the PKCS#7 decryption oracle fixed upstream; Therapist does not use the affected PKCS#7
+excludes the PKCS#7 decryption oracle fixed upstream; Filo does not use the affected PKCS#7
 APIs. This protects copied databases and casual backups;
 it does not replace full-disk encryption or protect a compromised operating-system account.
 
@@ -354,23 +364,28 @@ earlier data. `RetentionPolicy` independently controls raw-message, session-summ
 hypothesis days; all values default to `None`. Apply it at startup, before retrieval when configured,
 or through explicit CLI commands. There is no worker.
 
-This schema is an intentional clean break. Do not add migration code, legacy aliases, schema
-fallbacks, or plaintext backups. Reject an older or unknown schema without modifying it and direct
-the user to a fresh data directory or deliberate deletion.
+The rename to Filo was an intentional clean break: Filo uses a fresh data directory and never
+reads, migrates, or modifies a Therapist store. From the Filo store onward, every schema change must
+ship a forward migration so that years of memory survive upgrades; the migration framework is a
+separate work item and does not exist yet. Do not add legacy aliases, schema fallbacks, or plaintext
+backups. The Filo schema marker is `filo-1`. Reject an unknown or future schema version before
+creating any table, and refuse a data directory containing a Therapist `thera.db` before creating,
+chmodding, or reading anything in it.
 
 ## CLI contract
 
 The normal end-user installation is a copy-paste bootstrap from GitHub: `install.sh` supports macOS
 and Linux, while `install.ps1` supports Windows PowerShell. The installer published for a release
 downloads that exact immutable tag's source archive, installs a pinned uv bootstrap only when uv is
-absent, uses uv-managed Python 3.12 to install `therapist-cli` as an isolated user tool, exposes
-`thera` on the user's PATH, runs interactive `thera setup`, and then runs `thera doctor`. It requires
+absent, uses uv-managed Python 3.12 to install `filo-cli` as an isolated user tool, exposes
+`filo` on the user's PATH, runs interactive `filo setup`, and then runs `filo doctor`. It requires
 no administrator privileges, existing Python, or Git checkout. Running the installer from a newer
 release updates the alpha without deleting encrypted application state or the shared Hugging Face
-model cache. `uv tool uninstall therapist-cli` removes the application command but intentionally
+model cache. `uv tool uninstall filo-cli` removes the application command but intentionally
 leaves user data in place.
 
-The public README uses `main` only as a small latest-alpha bootstrap channel; that script always
+Once a Filo release exists, the public README uses `main` only as a small latest-alpha bootstrap
+channel; that script always
 downloads one explicit immutable release tag. On macOS, the piped bootstrap starts interactive
 Questionary setup inside a fresh `script(1)` pseudoterminal because `prompt_toolkit` cannot register
 a `/dev/tty` descriptor reopened after a pipe with `kqueue`. Linux launches setup directly, and
@@ -388,42 +403,42 @@ upstream assets.
 Primary commands:
 
 ```text
-thera setup
-thera chat [--plain] [--memory-mode standard|transcript-only|ephemeral]
-thera telegram [--memory-mode standard|transcript-only|ephemeral]
-thera telegram-service install
-thera telegram-service status
-thera telegram-service restart
-thera telegram-service uninstall
-thera auth login
-thera auth status
-thera auth logout
-thera memory show
-thera memory case
-thera memory sessions
-thera memory interventions
-thera memory review <id> fits|partly_fits|does_not_fit|unsure <evidence>
-thera memory correct <id> <text>
-thera memory forget <id>
-thera memory model status
-thera memory model verify
-thera memory model install
-thera memory model remove
-thera privacy show
-thera privacy set-default <mode>
-thera retention show
-thera retention set
-thera retention dry-run
-thera retention apply
-thera delete-session <id>
-thera delete-before <date>
-thera export [--output path]
-thera delete-data
-thera doctor
-thera protocol validate [path]
+filo setup
+filo chat [--plain] [--memory-mode standard|transcript-only|ephemeral]
+filo telegram [--memory-mode standard|transcript-only|ephemeral]
+filo telegram-service install
+filo telegram-service status
+filo telegram-service restart
+filo telegram-service uninstall
+filo auth login
+filo auth status
+filo auth logout
+filo memory show
+filo memory case
+filo memory sessions
+filo memory interventions
+filo memory review <id> fits|partly_fits|does_not_fit|unsure <evidence>
+filo memory correct <id> <text>
+filo memory forget <id>
+filo memory model status
+filo memory model verify
+filo memory model install
+filo memory model remove
+filo privacy show
+filo privacy set-default <mode>
+filo retention show
+filo retention set
+filo retention dry-run
+filo retention apply
+filo delete-session <id>
+filo delete-before <date>
+filo export [--output path]
+filo delete-data
+filo doctor
+filo protocol validate [path]
 ```
 
-`thera chat` uses a full-screen Textual interface in an interactive terminal. It restores the latest
+`filo chat` uses a full-screen Textual interface in an interactive terminal. It restores the latest
 50 user/assistant turns from the active session, renders assistant Rich Markdown, displays live tool
 events, and disables input while one sequential turn is running. `--plain` forces the line-oriented
 interface; on an interactive terminal it uses one replaceable Rich live draft, while redirected
@@ -449,7 +464,7 @@ detected model limit. During setup, a validated text prompt displays the current
 available range and lets the user replace it. Models below the 16,000-token supported minimum are
 rejected.
 
-`thera setup` is the normal first-run path. Questionary arrow-key menus configure the first-alpha
+`filo setup` is the normal first-run path. Questionary arrow-key menus configure the first-alpha
 ChatGPT provider, locale, Telegram, and confirmation choices. ChatGPT uses device-code OAuth; the
 Telegram bot token uses a no-echo prompt and is stored in the encrypted local store. Other
 PydanticAI model IDs remain available only as explicit temporary `chat` and `telegram` overrides;
@@ -466,7 +481,7 @@ its native per-user background service or task after the encrypted configuration
 Hugging Face telemetry and implicit credential sending are disabled before importing its client.
 Conversation-time embedding loads use only the verified local revision.
 
-After `thera auth login`, omitting `--model` selects `codex:gpt-5.6-sol`. An explicit model can be
+After `filo auth login`, omitting `--model` selects `codex:gpt-5.6-sol`. An explicit model can be
 selected with `--model codex:<model-id>`. Access and refresh tokens are encrypted in the same local
 store and are never included in exports. The provider attaches the current token to every request
 through an `httpx` auth flow rather than a fixed API key, so the Telegram listener and the TUI keep
@@ -497,8 +512,8 @@ Ordinary OpenAI Responses requests explicitly set `store=false`; provider abuse-
 can still apply. Ollama conversation models are forced to the loopback base URL.
 
 The `local:` provider reaches any OpenAI-compatible chat-completions server, such as a llama.cpp or
-llama-swap host on the operator's own network. Its base URL comes from `THERA_LOCAL_BASE_URL` and
-defaults to `http://localhost:8080/v1`; `THERA_LOCAL_API_KEY` supplies a key only when the server
+llama-swap host on the operator's own network. Its base URL comes from `FILO_LOCAL_BASE_URL` and
+defaults to `http://localhost:8080/v1`; `FILO_LOCAL_API_KEY` supplies a key only when the server
 requires one, since self-hosted servers usually accept any value. Setup lists the models the server
 advertises on `/models` and offers them before the ChatGPT path, defaulting to the first one; when
 the server is unreachable the list is empty and only ChatGPT is offered. Requests ask for `xhigh`
@@ -520,7 +535,7 @@ Interactive chat commands:
 /quit
 ```
 
-`/quit` only leaves the process. It does not close the therapeutic session. A later message closes
+`/quit` only leaves the process. It does not close the conversation session. A later message closes
 and consolidates the previous session if at least eight hours elapsed. `/end` closes it immediately.
 When the active history approaches its context boundary, a warning is printed without archiving it.
 The next over-budget message closes and consolidates the old session, starts a new one, and is
@@ -568,22 +583,22 @@ advances only after all output for the update is delivered; transient failures h
 state commit and offset persistence can still cause one update to be processed again; full durable
 inbox idempotency is deferred until `ChatSession` can atomically accept an external idempotency key.
 
-`thera telegram-service install` validates the saved configuration and starts the listener without
+`filo telegram-service install` validates the saved configuration and starts the listener without
 putting secrets in process arguments. It writes a mode-`0600` LaunchAgent in
 `~/Library/LaunchAgents` on macOS, a mode-`0600` user unit in `~/.config/systemd/user` on Linux, or a
 limited-privilege per-user scheduled task on Windows. The listener starts with the user's login;
 Linux operation beyond logout depends on the host's user manager/lingering policy. `status`,
 `restart`, and `uninstall` inspect, restart, or stop the process and remove only this native
 definition. macOS operational output is written to the application data directory's
-`telegram-service.log`; Linux output is available through the user journal.
+`filo-telegram.log`; Linux output is available through the user journal.
 
 A background service does not inherit an interactive shell profile, so install records the resolved
-`THERA_LOCAL_BASE_URL` in the LaunchAgent's `EnvironmentVariables` or the systemd unit's
+`FILO_LOCAL_BASE_URL` in the LaunchAgent's `EnvironmentVariables` or the systemd unit's
 `Environment=` settings. Without that the listener would silently fall back to
 `http://localhost:8080/v1` and lose a `local:` server hosted elsewhere. Reinstall the service after
-the endpoint changes. `THERA_LOCAL_API_KEY` is deliberately not recorded, because these service
+the endpoint changes. `FILO_LOCAL_API_KEY` is deliberately not recorded, because these service
 definitions are plaintext on disk; a local server that requires a key must run through
-`thera telegram` in a shell that exports it. Windows scheduled tasks receive the user's persisted
+`filo telegram` in a shell that exports it. Windows scheduled tasks receive the user's persisted
 environment instead, so a Windows endpoint has to be set with `setx` rather than only in the current
 console.
 
@@ -592,7 +607,7 @@ own network, while the same binary reaches it from a terminal. Apple grants loca
 command-line tools and to launchd daemons but explicitly not to launchd agents, which is how this
 service installs (TN3179, *Understanding local network privacy*). The block surfaces as
 `EHOSTUNREACH` inside the provider SDK, so the listener answers on Telegram, logs nothing unusual,
-and only ever replies that it could not respond. `thera doctor` reports the endpoint and names this
+and only ever replies that it could not respond. `filo doctor` reports the endpoint and names this
 cause. The operator resolves it by exempting the server's address, which needs a restart:
 
 ```bash
@@ -609,12 +624,12 @@ Minimal setup:
 
 1. Create a bot with Telegram's `@BotFather`, keep its token private, and disable group joins as
    defense in depth. Set its privacy-policy URL to
-   `https://github.com/matteodante/therapist/blob/main/PRIVACY.md`.
-2. Run `thera setup`, choose the model and locale, then paste the bot token in the hidden prompt.
+   `https://github.com/matteodante/filo/blob/main/PRIVACY.md`.
+2. Run `filo setup`, choose the model and locale, then paste the bot token in the hidden prompt.
 3. Open the one-time `t.me` link printed by setup, press Start, and confirm the detected account.
-4. Choose whether setup should install the background service, or run `thera telegram` manually.
+4. Choose whether setup should install the background service, or run `filo telegram` manually.
    Only one poller may use a bot token at a time.
-5. Run `thera doctor`, then enter the exact consent command shown in the private bot chat.
+5. Run `filo doctor`, then enter the exact consent command shown in the private bot chat.
 
 `export` returns decrypted user-owned application state, formulation, memory items, sessions, and
 messages. `delete-data` removes all of those records.
@@ -627,12 +642,12 @@ protocols/<id>/
 |- SKILL.md
 |- references/
 `- skills/
-   `- <therapeutic-skill>/
+   `- <conversation-skill>/
       |- SKILL.md
       `- references/
 ```
 
-The manifest contains the pack ID, experimental/review status, locales, ordered therapeutic skills,
+The manifest contains the pack ID, experimental/review status, locales, ordered conversation skills,
 source metadata, and SHA-256 hashes for the root skill, every loaded nested skill, and every
 reference. Changed skill or reference files invalidate the pack. Protocol history and releases are
 identified by Git commits and tags rather than duplicated SemVer directories or a manifest version.
@@ -641,7 +656,7 @@ older revision.
 
 The canonical protocol remains under `protocols/`, which holds protocol packs and nothing else.
 Background reading and maintainer assessments belong in `docs/research/`. The wheel build copies the
-default pack into the installed `therapist` package so a user-tool installation is self-contained;
+default pack into the installed `filo` package so a user-tool installation is self-contained;
 source checkouts fall back to the canonical repository path. Git forces LF endings for protocol
 files so their byte-level manifest hashes remain valid on Windows checkouts.
 
@@ -650,7 +665,7 @@ Original protocol text is licensed under the repository license; linked sources 
 relicensed. It remains `experimental`; clinical review is deferred and no clinical claims are
 permitted.
 
-The current default is `therapist.transdiagnostic`. Its fifteen separately loaded skills cover
+The current default is `filo.transdiagnostic`. Its fifteen separately loaded skills cover
 staying with emotion, contract and preferences, progressive formulation, shared planning,
 alliance/outcome/harm monitoring, misattunement repair, psychological flexibility, self-criticism
 and shame, examining a specific thought, repetitive thinking, avoidance behavior, activity
@@ -686,7 +701,7 @@ before extending an old pattern to new material.
 
 The agent recognizes misattunement semantically from the current message, history, and protocol
 rather than from a fixed phrase list. The reply must acknowledge the mismatch, stop the rejected
-technique, and invite one correction before further therapeutic work. Delivery preferences learned
+technique, and invite one correction before further reflective work. Delivery preferences learned
 from the repair still require exact user evidence through `record_process_feedback`.
 
 Relational safety is part of the protocol: the agent must not encourage exclusivity, imply human
@@ -788,7 +803,7 @@ plainly distinguishes AI-supported conversation or self-help from diagnosis and 
 The default suite is deterministic and must not require network access or provider credentials.
 Pydantic Evals loads the human-readable, versioned YAML datasets in `tests/cases/`; the scope and
 matrix live in `tests/TEST_PLAN.md`. Deterministic datasets execute tool, evidence, and persistence
-contracts as well as auditing each therapeutic-skill file; live datasets evaluate integrated
+contracts as well as auditing each conversation-skill file; live datasets evaluate integrated
 conversation behavior. They use
 synthetic people and events only; never put real user data, access tokens, or API keys in test files.
 Test code and fixtures are English by default. Non-English text is limited to cases that explicitly
@@ -803,11 +818,11 @@ test exercises the same high-level path
 against a real OpenAI model. It is skipped unless explicitly enabled:
 
 ```bash
-THERA_RUN_LIVE_TESTS=1 OPENAI_API_KEY=... uv run pytest -m live
+FILO_RUN_LIVE_TESTS=1 OPENAI_API_KEY=... uv run pytest -m live
 ```
 
 Live evaluation runs each case three times in a fresh encrypted database, asserts storage and
-continuity contracts, and uses a Pydantic Evals `LLMJudge` rubric for therapeutic process rather than
+continuity contracts, and uses a Pydantic Evals `LLMJudge` rubric for conversational process rather than
 exact wording. It covers longitudinal avoidance, alliance repair, relational dependency, and adverse
 intervention effects. Offline workflow evals also assert the available tool surface, selected tool
 path, persistence result, and absence of state changes when no tool is needed. Run live evals
@@ -826,7 +841,7 @@ exclusion, consolidation summary, encrypted semantic indexing, restart, four-mon
 continuity. It is opt-in and runs once by default:
 
 ```bash
-THERA_RUN_CODEX_EVALS=1 uv run pytest tests/test_live_codex_memory.py -m live
+FILO_RUN_CODEX_EVALS=1 uv run pytest tests/test_live_codex_memory.py -m live
 ```
 
 The opt-in Codex bilingual safety eval runs ten synthetic Italian and English scenarios
@@ -837,23 +852,23 @@ disclosure, invented memory, process rupture, adverse intervention effects, and 
 under-18 boundary:
 
 ```bash
-THERA_RUN_CODEX_SAFETY_EVALS=1 \
+FILO_RUN_CODEX_SAFETY_EVALS=1 \
   uv run pytest tests/test_live_codex_safety.py -m live
 ```
 
-Set `THERA_CODEX_SAFETY_EVAL_REPEAT=3` before a release candidate. This evaluation is a regression
+Set `FILO_CODEX_SAFETY_EVAL_REPEAT=3` before a release candidate. This evaluation is a regression
 aid, not clinical validation or an independent safety assessment.
 
 The bilingual conversational role-play eval runs the twenty versioned synthetic process scenarios
 with a separate streaming semantic judge and exportable review artifacts. Set
-`THERA_CONVERSATION_EVAL_CASES` to comma-separated scenario IDs for focused reruns without changing
+`FILO_CONVERSATION_EVAL_CASES` to comma-separated scenario IDs for focused reruns without changing
 the dataset.
 
 After Telegram is configured, its opt-in transport smoke test sends one clearly labeled persistent
 test message to the allowlisted private chat:
 
 ```text
-THERA_RUN_TELEGRAM_TEST=1 uv run pytest tests/test_live_telegram.py -m live
+FILO_RUN_TELEGRAM_TEST=1 uv run pytest tests/test_live_telegram.py -m live
 ```
 
 The deterministic semantic-memory Pydantic Evals dataset remains offline by using a fixed bilingual
@@ -865,11 +880,11 @@ Japanese, Thai, and Ukrainian paths. It runs sequentially because Pydantic Evals
 all cases concurrently and can exhaust RAM with a local model:
 
 ```bash
-THERA_RUN_MULTILINGUAL_EMBEDDING_EVALS=1 \
+FILO_RUN_MULTILINGUAL_EMBEDDING_EVALS=1 \
   uv run pytest tests/test_multilingual_embedding_eval.py -m live
 ```
 
-`THERA_MULTILINGUAL_EVAL_OFFSET` and `THERA_MULTILINGUAL_EVAL_LIMIT` can split the matrix into
+`FILO_MULTILINGUAL_EVAL_OFFSET` and `FILO_MULTILINGUAL_EVAL_LIMIT` can split the matrix into
 resource-bounded batches without changing the dataset.
 
 Run before handing off a change:

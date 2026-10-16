@@ -12,11 +12,11 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from therapist.chat import ChatSession, TurnStreamEvent, TurnStreamKind
-from therapist.memory import MemoryStore
+from filo.chat import ChatSession, TurnStreamEvent, TurnStreamKind
+from filo.memory import MemoryStore
 
 API_ROOT = "https://api.telegram.org"
-CONSENT_VERSION = "alpha-4"
+CONSENT_VERSION = "alpha-5"
 MESSAGE_LIMIT = 4_000
 MEMORY_PAGE_SIZE = 10
 SESSION_PAGE_SIZE = 5
@@ -84,7 +84,7 @@ class TelegramBot:
             {
                 "description": "Experimental AI for adult self-reflection with encrypted local "
                 "memory. Not therapy, diagnosis, medical advice, monitoring, or emergency care. "
-                "Privacy: https://github.com/matteodante/therapist/blob/main/PRIVACY.md"
+                "Privacy: https://github.com/matteodante/filo/blob/main/PRIVACY.md"
             },
         )
 
@@ -135,7 +135,7 @@ class TelegramBot:
             data=json.dumps(payload).encode("utf-8"),
             headers={
                 "Content-Type": "application/json",
-                "User-Agent": "therapist-cli/0.1",
+                "User-Agent": "filo-cli/0.1",
             },
             method="POST",
         )
@@ -647,7 +647,7 @@ class TelegramChannel:
 
     def _consent_notice(self, consented: bool) -> str:
         notice = (
-            "Therapist is experimental AI for adults using it privately for self-reflection. "
+            "Filo is experimental AI for adults using it privately for self-reflection. "
             "It is not therapy, diagnosis, medical advice, emergency care, or human monitoring, "
             "and its output can be wrong. "
             "Telegram receives messages, replies, and data you choose to view here; "

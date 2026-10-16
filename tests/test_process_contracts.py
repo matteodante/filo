@@ -8,9 +8,9 @@ from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 from pydantic_evals import Dataset
 from pydantic_evals.evaluators import EqualsExpected
 
-from therapist.chat import ChatSession
-from therapist.memory import MemoryStore
-from therapist.protocol import ProtocolPack
+from filo.chat import ChatSession
+from filo.memory import MemoryStore
+from filo.protocol import ProtocolPack
 
 CASES_PATH = Path(__file__).parent / "cases" / "process_contracts.yaml"
 PACK_PATH = Path("protocols/transdiagnostic")

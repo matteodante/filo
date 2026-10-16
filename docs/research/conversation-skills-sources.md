@@ -1,4 +1,4 @@
-# Therapeutic skills: primary source register
+# Conversation skills: primary source register
 
 Current-source check: 22 July 2026. This register maps official sources to independently authored
 skills. It does not reproduce protocol text and does not establish clinical validation.

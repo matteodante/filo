@@ -6,19 +6,19 @@ UV_RELEASE_URL="https://github.com/astral-sh/uv/releases/download/${UV_VERSION}"
 UV_CHECKSUMS_SHA256="cae3a06391dd65895dc22246115fd998250fa43ab3aa8ffd0d6ab71ae301b4e1"
 UV_LICENSE_URL="https://raw.githubusercontent.com/astral-sh/uv/b7fdec626cdafcfb0d0db54d39d3d5f114aefb5c/LICENSE-MIT"
 UV_LICENSE_SHA256="860e3d7a86b84e6a7012c7a635fc64df475cebc6cce34dfeb73a5982ec58176c"
-THERAPIST_VERSION="v0.3.1"
-SOURCE_URL="https://github.com/matteodante/therapist/archive/refs/tags/${THERAPIST_VERSION}.tar.gz"
+FILO_VERSION="v0.3.1"
+SOURCE_URL="https://github.com/matteodante/filo/archive/refs/tags/${FILO_VERSION}.tar.gz"
 
 case "$(uname -s)" in
     Darwin|Linux) ;;
     *)
-        echo "Therapist installation supports macOS, Linux, and Windows." >&2
+        echo "Filo installation supports macOS, Linux, and Windows." >&2
         exit 1
         ;;
 esac
 
 if ! { : </dev/tty; } 2>/dev/null; then
-    echo "Therapist setup requires an interactive terminal." >&2
+    echo "Filo setup requires an interactive terminal." >&2
     exit 1
 fi
 
@@ -33,7 +33,7 @@ if [ "$(uname -s)" = "Darwin" ] && ! command -v script >/dev/null 2>&1; then
     exit 1
 fi
 
-TEMP_DIRECTORY="$(mktemp -d 2>/dev/null || mktemp -d -t therapist-install)"
+TEMP_DIRECTORY="$(mktemp -d 2>/dev/null || mktemp -d -t filo-install)"
 trap 'rm -rf "$TEMP_DIRECTORY"' EXIT HUP INT TERM
 
 sha256_file() {
@@ -131,30 +131,30 @@ else
     fi
 fi
 
-echo "Downloading Therapist ${THERAPIST_VERSION}..."
+echo "Downloading Filo ${FILO_VERSION}..."
 curl -LsSf "$SOURCE_URL" | tar -xz -C "$TEMP_DIRECTORY" --strip-components=1
 if [ ! -f "$TEMP_DIRECTORY/pyproject.toml" ]; then
-    echo "The downloaded Therapist source is incomplete." >&2
+    echo "The downloaded Filo source is incomplete." >&2
     exit 1
 fi
 
-echo "Installing Therapist..."
+echo "Installing Filo..."
 "$UV" tool install --force --python 3.12 "$TEMP_DIRECTORY"
 "$UV" tool update-shell
 
 TOOL_BIN="$("$UV" tool dir --bin)"
-THERA="$TOOL_BIN/thera"
-if [ ! -x "$THERA" ]; then
-    echo "Therapist was installed but $THERA is unavailable." >&2
+FILO="$TOOL_BIN/filo"
+if [ ! -x "$FILO" ]; then
+    echo "Filo was installed but $FILO is unavailable." >&2
     exit 1
 fi
 
 case "$(uname -s)" in
-    Darwin) script -q -e /dev/null "$THERA" setup </dev/tty ;;
-    Linux) "$THERA" setup </dev/tty ;;
+    Darwin) script -q -e /dev/null "$FILO" setup </dev/tty ;;
+    Linux) "$FILO" setup </dev/tty ;;
 esac
-"$THERA" doctor
+"$FILO" doctor
 
 echo
-echo "Therapist is ready. Start it with: thera chat"
-echo "If thera is not found in a new command, restart your shell."
+echo "Filo is ready. Start it with: filo chat"
+echo "If filo is not found in a new command, restart your shell."

@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 from pydantic_ai.providers.openai import OpenAIProvider
 
-from therapist.memory import MemoryStore
+from filo.memory import MemoryStore
 
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 AUTH_BASE_URL = "https://auth.openai.com"
@@ -63,7 +63,7 @@ class _HTTPError(AuthError):
         super().__init__(
             f"OpenAI authentication failed (HTTP {status}"
             + (f", {code})" if code else ")")
-            + ". Run `thera auth login` if this persists."
+            + ". Run `filo auth login` if this persists."
         )
         self.status = status
         self.body = body
@@ -174,7 +174,7 @@ class CodexTokenSource:
         # another process takes effect on the next turn.
         stored = load_credential(self._store)
         if stored is None:
-            raise AuthError("Not logged in. Run `thera auth login` first.")
+            raise AuthError("Not logged in. Run `filo auth login` first.")
         if not self._expiring(stored):
             return stored
         return self._refreshed(stored)
@@ -199,7 +199,7 @@ class CodexTokenSource:
         with self._thread_lock, _exclusive_lock(self._lock_path):
             stored = load_credential(self._store)
             if stored is None:
-                raise AuthError("Not logged in. Run `thera auth login` first.")
+                raise AuthError("Not logged in. Run `filo auth login` first.")
             if stored != stale and not self._expiring(stored):
                 return stored
             credential = self._refresh(stored.refresh_token)
@@ -291,7 +291,7 @@ def codex_model(store: MemoryStore, model_name: str) -> OpenAIResponsesModel:
         openai_text_verbosity="low",
         extra_headers={
             "OpenAI-Beta": "responses=experimental",
-            "originator": "therapist-cli",
+            "originator": "filo-cli",
         },
     )
     return OpenAIResponsesModel(
@@ -380,7 +380,7 @@ def _request_json(url: str, payload: dict[str, object], *, form: bool = False) -
     request = Request(
         url,
         data=data,
-        headers={"Content-Type": content_type, "User-Agent": "therapist-cli/0.1"},
+        headers={"Content-Type": content_type, "User-Agent": "filo-cli/0.1"},
         method="POST",
     )
     try:
