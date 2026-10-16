@@ -28,8 +28,16 @@ from pydantic_ai import Embedder, ModelMessage, ModelMessagesTypeAdapter
 
 SESSION_GAP = timedelta(hours=8)
 LOCAL_OLLAMA_EMBEDDINGS_URL = "http://localhost:11434/v1"
-# Filo stores start their own schema lineage; future forward migrations build on this marker.
-SCHEMA_VERSION = b"filo-1"
+# Filo stores start their own schema lineage at filo-1. Every later schema change raises the
+# generation and adds the step that brings a store from the previous one to it.
+SCHEMA_GENERATION = 1
+SCHEMA_VERSION = f"filo-{SCHEMA_GENERATION}".encode()
+SCHEMA_MARKER = re.compile(rb"filo-([1-9][0-9]*)")
+# Ordered forward steps: MIGRATIONS[n] brings a filo-n store to filo-(n + 1). Each step receives
+# the store, so it can decrypt and re-encrypt payloads, and the connection holding the exclusive
+# migration transaction; it must not commit.
+MIGRATIONS: dict[int, Callable[[MemoryStore, sqlite3.Connection], None]] = {}
+MIGRATION_BACKUP = "filo.db.pre-migration"
 LEGACY_THERAPIST_DATABASE = "thera.db"
 SCHEMA_STATEMENTS = """
 CREATE TABLE IF NOT EXISTS state (
@@ -826,13 +834,20 @@ class MemoryStore:
                 for row in database.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
             }
         existing_version = self._read_state("schema_version") if "state" in tables else None
-        if tables and existing_version != SCHEMA_VERSION:
-            # Only an empty database may be initialized. Anything else without the current marker
-            # is rejected before a table is created, so an unknown store is left unmodified.
-            raise MemoryError(
-                "This data store uses an incompatible schema. Use a new data directory or delete "
-                "the old store; migration is not supported."
-            )
+        if tables:
+            generation = _schema_generation(existing_version)
+            if generation is None or generation > SCHEMA_GENERATION:
+                # Only an empty database may be initialized. Anything else without a known marker,
+                # including a store written by a newer Filo, is rejected before a table is
+                # created, so it is left unmodified.
+                raise MemoryError(
+                    "This data store uses an unknown or newer schema. Use the Filo version that "
+                    "wrote it, or a new data directory."
+                )
+            if generation < SCHEMA_GENERATION:
+                self._migrate()
+            else:
+                self._settle_migration_backup()
         # Individual statements, unlike executescript, stay inside one transaction, so the
         # tables and the schema marker commit together or not at all.
         with self.transaction(), self._connect() as database:
@@ -844,6 +859,103 @@ class MemoryStore:
             # Earlier filo-1 development stores indexed user messages as "message"; rounds
             # replaced them, and nothing else would ever delete those vectors.
             database.execute("DELETE FROM semantic_index WHERE entity_type = 'message'")
+
+    @property
+    def migration_backup_path(self) -> Path:
+        return self.directory / MIGRATION_BACKUP
+
+    def _migrate(self) -> None:
+        """Bring an older store forward, keeping a recovery copy until the result is verified.
+
+        The copy is taken with SQLite's online backup API while this connection holds the write
+        lock that then runs every step, so no other process can write between the copy and the
+        migration. SQLite refuses to back up from a connection with an open write transaction, so
+        a second, reading connection takes the copy.
+        A failing step rolls back and leaves the store as it was. A migrated store that fails
+        verification is restored from the copy. The copy holds the same encrypted payloads as the
+        store and is deleted once the migrated store is verified.
+        """
+        database = sqlite3.connect(
+            self.database_path, autocommit=True, timeout=BUSY_TIMEOUT_SECONDS
+        )
+        try:
+            database.execute("BEGIN IMMEDIATE")
+            row = database.execute(
+                "SELECT payload FROM state WHERE name = 'schema_version'"
+            ).fetchone()
+            generation = _schema_generation(self._decrypt(row[0]))
+            if generation == SCHEMA_GENERATION:  # another process migrated it first
+                database.execute("COMMIT")
+                return
+            self._write_backup()
+            self._transaction = database
+            try:
+                database.execute("PRAGMA defer_foreign_keys = ON")
+                for step in range(generation or 0, SCHEMA_GENERATION):
+                    MIGRATIONS[step](self, database)
+                self._write_state("schema_version", SCHEMA_VERSION)
+                database.execute("COMMIT")
+            except BaseException as error:
+                if database.in_transaction:
+                    database.execute("ROLLBACK")
+                self.migration_backup_path.unlink(missing_ok=True)
+                raise MemoryError(
+                    "Updating the data store failed; it was left unchanged."
+                ) from error
+            finally:
+                self._transaction = None
+                self._clear_caches()
+        finally:
+            database.close()
+        self._settle_migration_backup()
+
+    def _write_backup(self) -> None:
+        backup = self.migration_backup_path
+        partial = backup.with_name(f"{backup.name}.partial")
+        partial.unlink(missing_ok=True)
+        # Created with owner-only permissions before SQLite writes anything into it.
+        os.close(os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+        source = sqlite3.connect(f"{self.database_path.as_uri()}?mode=ro", uri=True)
+        target = sqlite3.connect(partial)
+        try:
+            source.backup(target)
+        finally:
+            source.close()
+            target.close()
+        os.replace(partial, backup)
+
+    def _settle_migration_backup(self) -> None:
+        """Delete a verified migration's recovery copy, or restore it over a damaged store."""
+        backup = self.migration_backup_path
+        if not backup.exists():
+            return
+        if not self._verified():
+            source = sqlite3.connect(backup)
+            target = sqlite3.connect(self.database_path, timeout=BUSY_TIMEOUT_SECONDS)
+            try:
+                source.backup(target)
+            finally:
+                source.close()
+                target.close()
+            backup.unlink()
+            self._clear_caches()
+            raise MemoryError(
+                "Updating the data store failed verification; the previous version was restored."
+            )
+        backup.unlink()
+
+    def _verified(self) -> bool:
+        try:
+            with self._connect() as database:
+                (result,) = database.execute("PRAGMA integrity_check").fetchone()
+                violations = database.execute("PRAGMA foreign_key_check").fetchall()
+            return (
+                result == "ok"
+                and not violations
+                and self._read_state("schema_version") == SCHEMA_VERSION
+            )
+        except (sqlite3.DatabaseError, MemoryError):
+            return False
 
     def load_app_state(self) -> AppState:
         payload = self._read_state("app")
@@ -2653,6 +2765,9 @@ class MemoryStore:
             database.execute("DELETE FROM state WHERE name = ?", (f"secret:{name}",))
 
     def delete_all(self) -> None:
+        # A recovery copy left by an interrupted migration is a full copy of the conversations.
+        if not self._ephemeral:
+            self.migration_backup_path.unlink(missing_ok=True)
         with self.transaction(), self._connect() as database:
             # The discard counter lives in the state table, which is wiped here;
             # it must still move forward so a view rendered before the wipe is
@@ -3344,9 +3459,11 @@ class MemoryStore:
 
     def _open_connection(self) -> sqlite3.Connection:
         database = sqlite3.connect(
-            self.database_path, autocommit=False, timeout=BUSY_TIMEOUT_SECONDS
+            self.database_path, autocommit=True, timeout=BUSY_TIMEOUT_SECONDS
         )
+        # The pragma is a no-op inside a transaction, so it is set before leaving autocommit.
         database.execute("PRAGMA foreign_keys = ON")
+        database.autocommit = False
         return database
 
     def _read_state(self, name: str) -> bytes | None:
@@ -3914,3 +4031,8 @@ def _require_quoted_time(expression: TimeExpression, evidence: str, message_time
     problem = time_expression_problem(expression, evidence, message_time)
     if problem:
         raise ValueError(problem)
+
+
+def _schema_generation(marker: bytes | None) -> int | None:
+    match = SCHEMA_MARKER.fullmatch(marker or b"")
+    return int(match.group(1)) if match else None

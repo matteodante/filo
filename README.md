@@ -187,12 +187,13 @@ in your locale. It is static text with no model call, so it works when the provi
 is not archived. The same text appears at the consent prompt, and in Telegram `/crisis` works
 before consent.
 
-## Clean-break storage
+## Storage upgrades
 
-This revision intentionally has no data migration or runtime compatibility layer. An existing store
-from an older schema is rejected without modification. Start with a new data directory, or export
-and separately retain the old installation before deleting its local store. The application never
-creates a plaintext migration backup.
+Filo started its own store as a clean break from Therapist, whose data directory it never reads.
+From there on, a newer Filo upgrades an older Filo store in place when it opens it. It first keeps
+an encrypted, owner-only recovery copy next to the store, restores it if the upgrade fails
+verification, and deletes it once the upgraded store checks out. A store written by a newer Filo is
+rejected without modification.
 
 ## Development
 

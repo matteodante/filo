@@ -444,13 +444,13 @@ def test_privacy_mode_and_retention_commands_persist_configuration(
     assert "Changing mode does not delete" in capsys.readouterr().out  # type: ignore[attr-defined]
 
 
-def test_incompatible_store_reports_clean_break_without_migrating(
+def test_unknown_store_schema_is_reported_without_modification(
     tmp_path: Path, capsys: object
 ) -> None:
     store = MemoryStore(tmp_path)
     store._write_state("schema_version", b"2")
     assert main(["--data-dir", str(tmp_path), "memory", "show"]) == 2
-    assert "migration is not supported" in capsys.readouterr().out  # type: ignore[attr-defined]
+    assert "unknown or newer schema" in capsys.readouterr().out  # type: ignore[attr-defined]
 
 
 def test_interactive_command_and_output_stay_out_of_transcript(

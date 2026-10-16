@@ -225,6 +225,12 @@ Parallel PRs then touch different documents instead of one file.
 *Check:* migration tests on generated v3 stores, including interrupted-migration recovery;
 encryption audit, no plaintext.
 
+*Outcome:* the framework is in place with no steps yet, since `filo-1` is unreleased. Tests migrate
+a `filo-1` store to a test-only `filo-2`, covering a failing step, a migrated store that fails
+verification and is restored, a leftover recovery copy, a concurrent writer and a second process
+opening mid-migration. Plain connections now enforce foreign keys, which the old autocommit setting
+had silently disabled.
+
 **W0.4 Telegram turn idempotency and delivery.**
 - Commit the turn together with an outbox (reply, notices, tool trace, change summary taken from the
   staged actions) in one transaction keyed by `update_id`. Advance the offset after commit, and let

@@ -71,8 +71,10 @@ opt-in regression aids; they are not clinical validation.
 - configured retention dry-run is non-mutating; apply propagates to derived state;
 - session and date deletion propagate to messages, semantic entries, formulation, summaries,
   interventions, excerpts, and pending IDs;
-- incompatible schema versions fail before use. No migration, legacy alias, or plaintext backup is
-  implemented.
+- unknown or newer schema versions fail before use without modification; an older Filo store is
+  migrated forward with a private, encrypted recovery copy that is restored when a step fails
+  verification and deleted once the result is verified, while a concurrent writer waits
+  (`tests/test_migrations.py`).
 
 ## Tool coverage
 
