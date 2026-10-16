@@ -86,7 +86,6 @@ class TelegramBot:
             ("memory", "Structured memory"),
             ("sessions", "Sessions and summaries"),
             ("interventions", "Recorded interventions"),
-            ("safety", "Safety records you agreed to keep"),
             ("privacy", "Data, providers and limits"),
             ("end", "Close the session"),
         ]
@@ -641,7 +640,6 @@ class TelegramChannel:
                 "/memory [page] — active facts and hypotheses\n"
                 "/sessions [page|ID] — session summaries\n"
                 "/interventions [page] — interventions and outcomes\n"
-                "/safety — safety records you agreed to keep\n"
                 "/privacy — data flow and limits\n\n"
                 "Correction, forgetting, export, deletion, and authentication "
                 "remain on the local CLI for safety."
@@ -656,8 +654,6 @@ class TelegramChannel:
             return self._sessions(argument)
         if command == "/interventions":
             return self._interventions(argument)
-        if command == "/safety":
-            return self._safety()
         if command == "/privacy":
             return self._privacy()
         if command == "/end":
@@ -862,33 +858,6 @@ class TelegramChannel:
         lines.append("\nUse /interventions N to change page.")
         return "\n".join(lines)
 
-    def _safety(self) -> str:
-        items = self.store.list_safety_episodes()
-        lines = ["SAFETY RECORDS"]
-        if not items:
-            lines.append("None kept.")
-        for item in items:
-            details = [
-                f"\n{item.id} · {_date(item.occurred_at)}",
-                f"Protective step: {item.protective_action}",
-            ]
-            if item.people_named:
-                details.append("People named: " + ", ".join(item.people_named))
-            details.append(
-                "Check-in: "
-                + (
-                    "next session"
-                    if item.check_in_pending
-                    else f"done {_date(item.checked_in_at or item.updated_at)}"
-                )
-            )
-            lines.extend(details)
-        lines.append(
-            "\nKept only with your agreement, for one check-in next time. Correct or forget a "
-            "record with the local CLI; forgetting also cancels its check-in."
-        )
-        return "\n".join(lines)
-
     def _privacy(self) -> str:
         state = self.config_store.load_app_state()
         policy = state.retention_policy
@@ -917,20 +886,17 @@ class TelegramChannel:
             "Telegram, plaintext export, backup, or terminal-capture copies."
         )
 
-    def _durable_snapshot(
-        self,
-    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], set[str]]:
+    def _durable_snapshot(self) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
         return (
             {item.id: item for item in self.store.list_claims()},
             {item.id: item for item in self.store.list_interventions()},
             self.store.load_formulation().model_dump(),
-            {item.id for item in self.store.list_safety_episodes()},
         )
 
     def _durable_changes(
-        self, before: tuple[dict[str, Any], dict[str, Any], dict[str, Any], set[str]]
+        self, before: tuple[dict[str, Any], dict[str, Any], dict[str, Any]]
     ) -> str | None:
-        old_memory, old_interventions, old_formulation, old_safety = before
+        old_memory, old_interventions, old_formulation = before
         changes: list[str] = []
         every = {item.id: item for item in self.store.list_claims(include_inactive=True)}
         current = [item for item in every.values() if item.lifecycle.value == "active"]
@@ -956,9 +922,6 @@ class TelegramChannel:
             if old_formulation.get(field) != formulation.get(field) and formulation.get(field):
                 label = "Accepted focus" if field == "accepted_focus" else "Proposed focus"
                 changes.append(f"{label}: {formulation[field]}")
-        for item in self.store.list_safety_episodes():
-            if item.id not in old_safety:
-                changes.append(f"Safety record kept: {item.protective_action} [{item.id}]")
         if not changes:
             return None
         return "THIS TURN'S RECORD\n" + "\n".join(f"• {change}" for change in changes)

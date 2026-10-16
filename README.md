@@ -96,16 +96,11 @@ choices, and a derived semantic index.
 - Asking in the conversation to forget something you said, in any memory mode, stops it coming back
   through claims, past conversations, and session summaries, even if it never became a claim. The
   archive keeps it until you delete it locally.
-- After a moment of danger, Filo may ask whether to keep a brief safety record: the date, the
-  protective step you chose, and the people you named. It is kept only if you agree (never for
-  anyone under 18), prompts one short check-in at the start of a later conversation, and is shown by
-  `filo memory safety` and `/safety`, corrected with `memory correct`, deleted with `memory forget`,
-  exported, and removed by deletion and retention.
 
 Retrieval combines lexical overlap, local multilingual embeddings, recency, focus, pending
-interventions, process preferences ranked by relevance (safety always comes first), conflicts,
-relevant sessions, the parts of the formulation that bear on the message, hypotheses you rejected,
-and excerpts from every past exchange, not only recent ones. The most recent session and today's date are always in context.
+interventions, process preferences ranked by relevance, conflicts, relevant sessions, the parts of
+the formulation that bear on the message, hypotheses you rejected, and excerpts from every past
+exchange, not only recent ones. The most recent session and today's date are always in context.
 Results are bounded as complete JSON records. Missing embeddings fail closed.
 
 `--memory-writing split` is an experimental alternative under evaluation: instead of the
@@ -152,7 +147,7 @@ filo chat [--plain] [--memory-mode standard|transcript-only|ephemeral] [--memory
 filo telegram [--memory-mode standard|transcript-only|ephemeral] [--memory-writing inline|split]
 filo telegram-service install|status|restart|uninstall
 filo auth login|status|logout
-filo memory show|case|sessions|interventions|safety
+filo memory show|case|sessions|interventions
 filo memory review <id> fits|partly_fits|does_not_fit|unsure <evidence>
 filo memory correct <id> <exact-replacement>
 filo memory forget <id>
