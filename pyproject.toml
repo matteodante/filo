@@ -18,6 +18,7 @@ dependencies = [
   "cryptography>=50,<51",
   "httpx2>=2.13,<3",
   "huggingface-hub>=1,<2",
+  "numpy>=2,<3",
   "pydantic-ai-slim[anthropic,google,openai,sentence-transformers]>=2.57.0,<3",
   "pyyaml>=6,<7",
   "questionary>=2.1,<3",

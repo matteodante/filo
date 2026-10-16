@@ -795,6 +795,7 @@ class TelegramChannel:
             "Process feedback",
             "Support choices",
             "Open questions",
+            "Risk and safety notes",
         )
         lines = [
             f"SESSION {session.id}",
@@ -813,6 +814,7 @@ class TelegramChannel:
             session.process_feedback,
             session.support_choices,
             session.open_questions,
+            session.risk_notes,
         )
         for label, value in zip(labels, values, strict=True):
             if value:
@@ -877,6 +879,8 @@ class TelegramChannel:
             "• Agent tool inputs and outputs are shown and retained in encrypted history.\n"
             "• Any durable changes are disclosed after each reply.\n"
             "• Internal prompts, tokens, and private reasoning are not shown.\n\n"
+            "Asking in the chat to forget something you said stops it coming back in retrieval "
+            "and summaries; the archive keeps it until local deletion. "
             "Use the local CLI for export, correction, forgetting, and local deletion. "
             "Changing mode does not erase existing data. Local deletion cannot remove provider, "
             "Telegram, plaintext export, backup, or terminal-capture copies."
@@ -894,7 +898,14 @@ class TelegramChannel:
     ) -> str | None:
         old_memory, old_interventions, old_formulation = before
         changes: list[str] = []
-        for item in self.store.list_claims():
+        every = {item.id: item for item in self.store.list_claims(include_inactive=True)}
+        current = [item for item in every.values() if item.lifecycle.value == "active"]
+        for item_id in old_memory.keys() - {item.id for item in current}:
+            # Named by ID only: repeating forgotten content would defeat the request.
+            ended = every.get(item_id)
+            state = "superseded" if ended and ended.lifecycle.value == "superseded" else "forgotten"
+            changes.append(f"Memory {state} [{item_id}]")
+        for item in current:
             old = old_memory.get(item.id)
             if old is None:
                 label = _memory_label(item.kind.value)

@@ -8,7 +8,7 @@ import re
 import threading
 from collections.abc import AsyncIterable, Callable
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Annotated, Any
 
@@ -42,6 +42,7 @@ from pydantic_ai.models import Model
 
 from filo.memory import (
     FORMULATION_FIELDS,
+    MIN_FORGET_QUOTE_WORDS,
     PARAPHRASABLE_KINDS,
     CaseContextResult,
     ClaimCorrection,
@@ -60,11 +61,18 @@ from filo.memory import (
     UserReport,
     is_grounded_paraphrase,
     quote_keeps_clause_polarity,
+    time_expression_problem,
     valid_intervention_transition,
 )
 from filo.protocol import ProtocolPack
 
 MAX_CONTEXT_CHARS = 16_000
+# The envelope's retrieval query: the current message plus this many earlier user messages of the
+# session, so "and what about her?" still retrieves what "her" referred to.
+RETRIEVAL_QUERY_PRIOR_TURNS = 2
+RETRIEVAL_QUERY_MAX_CHARS = 2_000
+CONSOLIDATION_CHUNK_CHARS = 20_000
+CONSOLIDATION_MAX_CHUNKS = 8
 MAX_LOOKUP_CHARS = 6_000
 MAX_REPLY_CHARS = 4_000
 MAX_CONTEXT_WINDOW_TOKENS = 128_000
@@ -199,6 +207,8 @@ class TurnActions:
     process_feedback: list[ProcessFeedbackAction] = field(default_factory=list)
     intervention: InterventionAction | None = None
     support_choices: list[SupportChoiceAction] = field(default_factory=list)
+    forget_quotes: list[str] = field(default_factory=list)
+    forget_request_quote: str | None = None
     user_under_18: bool = False
     called_tools: set[str] = field(default_factory=set)
     tool_call_counts: dict[str, int] = field(default_factory=dict)
@@ -214,6 +224,7 @@ class TurnContext:
     user_text: str
     available_claims: dict[str, ContextClaim]
     active_interventions: dict[str, InterventionRecord]
+    message_time: datetime = field(default_factory=lambda: datetime.now(UTC))
     actions: TurnActions = field(default_factory=TurnActions)
 
 
@@ -229,6 +240,14 @@ class SessionReflection(StrictModel):
     process_feedback: list[ShortText] = Field(default_factory=list, max_length=10)
     support_choices: list[ShortText] = Field(default_factory=list, max_length=10)
     open_questions: list[ShortText] = Field(default_factory=list, max_length=10)
+    risk_notes: list[ShortText] = Field(
+        default_factory=list,
+        max_length=5,
+        description=(
+            "Any danger to the user or others discussed in the episode, and the protective step "
+            "the user chose, so the next session can follow up. Empty when none came up."
+        ),
+    )
     formulation_links: dict[str, list[str]] = Field(default_factory=dict)
     formulation_unlinks: dict[str, list[str]] = Field(default_factory=dict)
 
@@ -390,8 +409,9 @@ class ChatSession:
         self.extract_pending()
         session = self._current_session(now)
         context = self.memory.retrieve_case_context(
-            text,
+            self._retrieval_query(session, text),
             allow_index_write=self.memory_mode is MemoryMode.STANDARD,
+            now=now,
         )
         history = self.memory.load_session_history(session.id)
         instructions = self._instructions(context, session, history)
@@ -406,6 +426,7 @@ class ChatSession:
             context = self.memory.retrieve_case_context(
                 text,
                 allow_index_write=self.memory_mode is MemoryMode.STANDARD,
+                now=now,
             )
             history = []
             instructions = self._instructions(context, session, history)
@@ -428,6 +449,7 @@ class ChatSession:
             user_text=text,
             available_claims=available_claims,
             active_interventions=active_interventions,
+            message_time=now or datetime.now(UTC),
         )
 
         def build_output(ctx: RunContext[TurnContext], reply: str) -> FiloTurnOutput:
@@ -486,6 +508,7 @@ class ChatSession:
             found = ctx.deps.memory.retrieve_case_context(
                 query,
                 allow_index_write=ctx.deps.memory_mode is MemoryMode.STANDARD,
+                now=now,
             )
             claims = _context_claims(found)
             ctx.deps.available_claims.update(claims)
@@ -495,6 +518,46 @@ class ChatSession:
             )
             _record_tool_call(ctx.deps.actions, "retrieve_case_context")
             return _bounded_lookup(found.model_dump(mode="json"))
+
+        @agent.tool(sequential=True)
+        def forget_content(
+            ctx: RunContext[TurnContext],
+            request_quote: ShortText,
+            content_quotes: Annotated[list[ShortText], Field(min_length=1, max_length=3)],
+        ) -> dict[str, int]:
+            """Forget earlier conversation content the user explicitly asks you to forget.
+
+            Use only when the current message asks to forget, drop, or stop bringing up something
+            said before. request_quote is the exact current-message wording of that request.
+            Each content quote is exact wording, at least three words, from an earlier user
+            message (retrieve case context to find it). Every round repeating it is suppressed
+            from retrieval, claims built on it are archived, and summaries of sessions carrying
+            it are cleared. The archive is kept until the user deletes it locally.
+            """
+            if not _quote_in_text(request_quote, ctx.deps.user_text):
+                raise ModelRetry("The forget request must be an exact current-message quote.")
+            if not quote_keeps_clause_polarity(request_quote, ctx.deps.user_text):
+                raise ModelRetry(
+                    "The request quotes across the negation that qualified it; a refusal to "
+                    "forget is not a request."
+                )
+            for quote in content_quotes:
+                if len(re.findall(r"\w+", quote)) < MIN_FORGET_QUOTE_WORDS:
+                    raise ModelRetry(
+                        f"Quote at least {MIN_FORGET_QUOTE_WORDS} words of what the user said."
+                    )
+                if not ctx.deps.memory.has_user_quote(quote):
+                    raise ModelRetry(
+                        "Each content quote must be exact wording from an earlier user message. "
+                        "Retrieve case context to find it."
+                    )
+            staged = list(dict.fromkeys([*ctx.deps.actions.forget_quotes, *content_quotes]))
+            if len(staged) > 3:
+                raise ModelRetry("Forget at most three quotes in one turn.")
+            ctx.deps.actions.forget_quotes = staged
+            ctx.deps.actions.forget_request_quote = request_quote
+            _record_tool_call(ctx.deps.actions, "forget_content")
+            return {"staged": len(staged)}
 
         if self.memory_mode is MemoryMode.STANDARD:
             self._register_write_tools(agent)
@@ -552,10 +615,16 @@ class ChatSession:
             )
             if self.memory_mode is MemoryMode.STANDARD:
                 self._commit_actions(actions, evidence_id, text, now)
+                # A forget request is not mined for reports: its round is about to be suppressed.
                 if self.memory_writing is MemoryWriting.SPLIT:
                     if actions.user_under_18:
                         self.memory.withhold_user_reports(session.id)
-                    self.memory.add_pending_extraction(evidence_id, now)
+                    if not actions.forget_quotes:
+                        self.memory.add_pending_extraction(evidence_id, now)
+            if actions.forget_quotes and actions.forget_request_quote:
+                self.memory.forget_content(
+                    actions.forget_quotes, actions.forget_request_quote, evidence_id, text, now
+                )
             turn = ChatTurn(output.reply, notice, tool_trace, output)
             if on_commit is not None:
                 on_commit(turn)
@@ -598,9 +667,14 @@ class ChatSession:
         corrected = self.memory.corrected_wording(message_id)
         extracted = ExtractedReports()
         if not session.user_reports_withheld:
-            extracted = self._run_extractor(user_text, previous_reply, corrected)
+            extracted = self._run_extractor(
+                user_text, previous_reply, corrected, datetime.fromisoformat(created_at)
+            )
         with self.memory.transaction():
             if not self.memory.claim_pending_extraction(message_id):
+                return
+            # Forgotten while the extraction ran: record nothing from it.
+            if self.memory.round_suppressed(message_id):
                 return
             if extracted.under_18:
                 self.memory.withhold_user_reports(session.id)
@@ -619,7 +693,11 @@ class ChatSession:
             )
 
     def _run_extractor(
-        self, user_text: str, previous_reply: str | None, corrected: list[str]
+        self,
+        user_text: str,
+        previous_reply: str | None,
+        corrected: list[str],
+        message_time: datetime,
     ) -> ExtractedReports:
         agent = Agent[None, ExtractedReports](
             self.model,
@@ -631,7 +709,7 @@ class ChatSession:
         @agent.output_validator
         def validate(output: ExtractedReports) -> ExtractedReports:
             if not (output.under_18 or output.risk):
-                _validate_user_reports(output.reports, user_text, {})
+                _validate_user_reports(output.reports, user_text, {}, message_time)
             return output
 
         context = {"previous_assistant_reply": previous_reply, "corrected_this_turn": corrected}
@@ -680,7 +758,9 @@ class ChatSession:
             Each report needs an exact quote from the current user message; the argument fields
             say how content may relate to that quote. A rejected call says what to change.
             """
-            _validate_user_reports(reports, ctx.deps.user_text, ctx.deps.available_claims)
+            _validate_user_reports(
+                reports, ctx.deps.user_text, ctx.deps.available_claims, ctx.deps.message_time
+            )
             staged = list(ctx.deps.actions.user_reports)
             staged.extend(report for report in reports if report not in staged)
             if len(staged) > 2:
@@ -1128,8 +1208,9 @@ class ChatSession:
                 "offered, agreed, tried, or stopped. Each write tool states its own evidence rules."
             )
         long_gap = ""
-        if not history and context.relevant_sessions:
-            ended = context.relevant_sessions[0].ended_at
+        # The most recent session, not the most relevant one, decides whether time has passed.
+        if not history and context.latest_session:
+            ended = context.latest_session.ended_at
             if ended and datetime.fromisoformat(session.started_at) - datetime.fromisoformat(
                 ended
             ) >= timedelta(days=7):
@@ -1198,46 +1279,72 @@ class ChatSession:
             with self.memory.transaction():
                 return self.memory.close_session(session, end_reason=end_reason, now=now)
         formulation.proposed_focus = None
-        transcript = self.memory.session_transcript(session.id, limit_chars=20_000)
-        if not transcript:
+        chunks = _transcript_chunks(self.memory.consolidation_rounds(session.id))
+        # A session in which something was forgotten gets no reflection, as a closed one would
+        # lose it: a summary can paraphrase the story from rounds that never repeat its words.
+        if not chunks or self.memory.reflection_withheld(session.id):
             with self.memory.transaction():
                 self.memory.save_formulation(formulation, now)
                 return self.memory.close_session(session, end_reason=end_reason, now=now)
-        claims = self.memory.list_claims()[:50]
+        claims = self.memory.consolidation_claims(session.id)
         instructions = (
             "Consolidate one conversation episode using only the separate transcript and case-data "
             "message. Preserve uncertainty. Do not create user statements, accept a hypothesis or "
             "focus, invent evidence, or write independent formulation prose. Link only existing "
             "active claim IDs. User statements may support descriptive fields. Agent hypotheses "
             "may appear only in open_hypotheses or shared_hypotheses according to their fit. "
-            "Omission preserves existing links; remove a link only through formulation_unlinks."
+            "Omission preserves existing links; remove a link only through formulation_unlinks. "
+            "Each round is dated in UTC. When the summary says when something happened, give the "
+            "absolute date of the round in which it was said, and keep the user's own wording "
+            "for any time they mention; never turn a vague phrase into a date. A long episode "
+            "arrives in parts: when the case data holds reflection_so_far, return it updated "
+            "with this part, keeping what earlier parts established."
         )
-        case_data = {
-            "existing_formulation": formulation.model_dump(mode="json"),
-            "available_claims": [item.model_dump(mode="json") for item in claims],
-        }
         agent = Agent[None, SessionReflection](
             self.model,
             output_type=SessionReflection,
             instructions=instructions,
             retries={"output": 2},
         )
+        reflection: SessionReflection | None = None
+        # Each part returns the reflection updated, but its links are merged rather than
+        # replaced, so a part cannot drop what an earlier part linked by omission.
+        links: dict[str, list[str]] = {}
+        unlinks: dict[str, list[str]] = {}
         try:
-            reflection = agent.run_sync(
-                transcript,
-                message_history=[
-                    ModelRequest(
-                        parts=[
-                            UserPromptPart(
-                                content=f"{CASE_CONTEXT_PREAMBLE}\n"
-                                f"{json.dumps(case_data, ensure_ascii=False)}"
-                            )
-                        ]
-                    )
-                ],
-                usage_limits=CONSOLIDATION_LIMITS,
-                event_stream_handler=_consume_model_events,
-            ).output
+            for index, chunk in enumerate(chunks):
+                case_data: dict[str, object] = {
+                    "existing_formulation": formulation.model_dump(mode="json"),
+                    "available_claims": [item.model_dump(mode="json") for item in claims],
+                    "part": f"{index + 1} of {len(chunks)}",
+                }
+                if reflection is not None:
+                    case_data["reflection_so_far"] = reflection.model_dump(mode="json")
+                reflection = agent.run_sync(
+                    chunk,
+                    message_history=[
+                        ModelRequest(
+                            parts=[
+                                UserPromptPart(
+                                    content=f"{CASE_CONTEXT_PREAMBLE}\n"
+                                    f"{json.dumps(case_data, ensure_ascii=False)}"
+                                )
+                            ]
+                        )
+                    ],
+                    usage_limits=CONSOLIDATION_LIMITS,
+                    event_stream_handler=_consume_model_events,
+                ).output
+                for field_name, ids in reflection.formulation_unlinks.items():
+                    unlinks[field_name] = list(dict.fromkeys([*unlinks.get(field_name, []), *ids]))
+                    links[field_name] = [
+                        item for item in links.get(field_name, []) if item not in ids
+                    ]
+                for field_name, ids in reflection.formulation_links.items():
+                    links[field_name] = list(dict.fromkeys([*links.get(field_name, []), *ids]))
+                    unlinks[field_name] = [
+                        item for item in unlinks.get(field_name, []) if item not in ids
+                    ]
         except AgentRunError as error:
             with self.memory.transaction():
                 self.memory.save_formulation(formulation, now)
@@ -1247,12 +1354,13 @@ class ChatSession:
                     end_reason=end_reason,
                     now=now,
                 )
+        assert reflection is not None
         with self.memory.transaction():
             self.memory.save_formulation_links(
-                reflection.formulation_links,
+                links,
                 proposed_focus=None,
                 merge_existing=True,
-                remove_links=reflection.formulation_unlinks,
+                remove_links=unlinks,
                 now=now,
             )
             return self.memory.close_session(
@@ -1268,9 +1376,24 @@ class ChatSession:
                 process_feedback=reflection.process_feedback,
                 support_choices=reflection.support_choices,
                 open_questions=reflection.open_questions,
+                risk_notes=reflection.risk_notes,
                 end_reason=end_reason,
                 now=now,
             )
+
+    def _retrieval_query(self, session: SessionRecord, text: str) -> str:
+        """Build the envelope query from the recent user turns, not the last message alone."""
+        earlier = [
+            content
+            for role, content in self.memory.session_messages(
+                session.id, turn_limit=RETRIEVAL_QUERY_PRIOR_TURNS
+            )
+            if role == "user"
+        ]
+        if len(text) >= RETRIEVAL_QUERY_MAX_CHARS:
+            return text
+        # Keep the end, which holds the current message, when earlier turns are long.
+        return "\n".join([*earlier, text])[-RETRIEVAL_QUERY_MAX_CHARS:]
 
     def _context_warning_notice(self) -> str:
         if self.locale == "it-IT":
@@ -1293,6 +1416,43 @@ class ChatSession:
             "The previous session reached its context limit and was closed. "
             "This message starts a new session."
         )
+
+
+def _transcript_chunks(rounds: list[tuple[str, str, str]]) -> list[str]:
+    """Split a session into dated parts made of complete rounds.
+
+    The chunk size grows with the session so a long one costs at most a fixed number of model
+    calls; a session is bounded by its context window, so a part stays within what the
+    conversation model already accepted.
+    """
+    lines = [
+        f"[{_round_time(created_at)}]\nuser: {user}\nassistant: {assistant}"
+        for created_at, user, assistant in rounds
+    ]
+    if not lines:
+        return []
+    total = sum(len(line) + 1 for line in lines)
+    # Every part but the last then holds more than total / CONSOLIDATION_MAX_CHUNKS characters.
+    size = max(
+        CONSOLIDATION_CHUNK_CHARS,
+        math.ceil(total / CONSOLIDATION_MAX_CHUNKS) + max(len(line) + 1 for line in lines),
+    )
+    chunks: list[list[str]] = []
+    used = 0
+    for line in lines:
+        if not chunks or (chunks[-1] and used + len(line) + 1 > size):
+            chunks.append([])
+            used = 0
+        chunks[-1].append(line)
+        used += len(line) + 1
+    return ["\n".join(chunk) for chunk in chunks]
+
+
+def _round_time(created_at: str) -> str:
+    moment = datetime.fromisoformat(created_at)
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(UTC)
+    return moment.strftime("%Y-%m-%d %H:%M UTC")
 
 
 def _find_intervention(memory: MemoryStore, record_id: str) -> InterventionRecord | None:
@@ -1398,7 +1558,10 @@ def _quote_in_text(quote: str | None, text: str) -> bool:
 
 
 def _validate_user_reports(
-    reports: list[UserReport], user_text: str, available_claims: dict[str, ContextClaim]
+    reports: list[UserReport],
+    user_text: str,
+    available_claims: dict[str, ContextClaim],
+    message_time: datetime,
 ) -> None:
     """Apply the store's report gates where a rejection can still be retried."""
     if len(reports) > 2:
@@ -1417,6 +1580,10 @@ def _validate_user_reports(
             subject="A user report",
         )
         _check_aliases(report.aliases, user_text, "a user report")
+        if report.valid_from is not None and (
+            problem := time_expression_problem(report.valid_from, user_text, message_time)
+        ):
+            raise ModelRetry(problem)
         if report.merge_into_id:
             target = available_claims.get(report.merge_into_id)
             if (
@@ -1519,7 +1686,9 @@ def _bounded_context_json(context: CaseContextResult) -> str:
                 values.pop()
                 break
         else:
-            if bounded.proposed_focus:
+            if bounded.latest_session is not None:
+                bounded.latest_session = None
+            elif bounded.proposed_focus:
                 bounded.proposed_focus = None
             elif bounded.accepted_focus:
                 bounded.accepted_focus = None

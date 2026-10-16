@@ -211,8 +211,17 @@ def test_relevant_closed_session_is_retrieved_after_long_gap(tmp_path) -> None:
         themes=["phone calls"],
         now=old,
     )
+    recent_time = datetime.now(UTC) - timedelta(days=1)
+    recent = store.start_session(recent_time)
+    store.save_turn(recent, "I baked bread", "How did it turn out?", [], recent_time)
+    store.close_session(recent, summary="The user baked bread.", now=recent_time)
     context = store.retrieve_case_context("I have another call")
     assert context.relevant_sessions[0].id == session.id
+    # The most recent session is always present, whatever the message is about.
+    assert context.latest_session is not None
+    assert context.latest_session.id == recent.id
+    assert context.elapsed_since_latest_session == "1 day"
+    assert context.today == datetime.now(UTC).date().isoformat()
 
 
 def test_bounded_result_is_valid_json_with_complete_records(tmp_path) -> None:
