@@ -10,6 +10,7 @@ from urllib.error import URLError
 import pytest
 from pydantic_ai import Embedder, ModelRequest, ModelResponse, UserPromptPart
 from pydantic_ai.embeddings import TestEmbeddingModel
+from pydantic_ai.embeddings.sentence_transformers import SentenceTransformerEmbeddingModel
 from pydantic_ai.messages import TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models import infer_model
 from pydantic_ai.models.anthropic import AnthropicModel
@@ -34,6 +35,7 @@ from filo.cli import (
     _ensure_chat_consent,
     _local_endpoint_report,
     _local_model_names,
+    _LocalEmbeddingModel,
     _model_context_window,
     _select_model,
     _setup,
@@ -1007,6 +1009,11 @@ def test_telegram_listener_starts_despite_missing_setup_and_reports_it_per_turn(
     state = store.load_app_state()
     state.embedding_model = DEFAULT_EMBEDDING_MODEL
     store.save_app_state(state)
+
+    def missing_model(**_: object) -> Embedder:
+        raise OSError("model files are not in the local cache")
+
+    monkeypatch.setattr("filo.cli._default_embedder", missing_model)
     with pytest.raises(SetupProblem, match="filo memory model install"):
         channel.store._embedder.embed_query_sync("work calls")
     monkeypatch.setattr(
@@ -1014,6 +1021,25 @@ def test_telegram_listener_starts_despite_missing_setup_and_reports_it_per_turn(
         lambda **_: Embedder(TestEmbeddingModel(dimensions=8)),
     )
     assert len(channel.store._embedder.embed_query_sync("work calls").embeddings[0]) == 8
+
+
+def test_telegram_listener_resolves_the_installed_model_from_its_spec(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The real embedder names its model by a `sentence-transformers:` spec string, which it only
+    # turns into a model on first use; the listener must resolve it rather than assume a model.
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.embedding_model = DEFAULT_EMBEDDING_MODEL
+    store.save_app_state(state)
+    monkeypatch.setattr(
+        "filo.cli._default_embedder",
+        lambda **_: Embedder("sentence-transformers:/not-loaded-by-this-test"),
+    )
+
+    model = _LocalEmbeddingModel(store)._resolve()
+
+    assert isinstance(model, SentenceTransformerEmbeddingModel)
 
 
 def test_setup_stops_when_semantic_memory_cannot_be_prepared(

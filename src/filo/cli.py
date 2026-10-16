@@ -21,7 +21,12 @@ import questionary
 from huggingface_hub import HfApi, scan_cache_dir, snapshot_download
 from huggingface_hub.errors import CacheNotFound
 from pydantic_ai import Embedder
-from pydantic_ai.embeddings import EmbeddingModel, EmbeddingResult, EmbeddingSettings
+from pydantic_ai.embeddings import (
+    EmbeddingModel,
+    EmbeddingResult,
+    EmbeddingSettings,
+    infer_embedding_model,
+)
 from pydantic_ai.embeddings.result import EmbedInputType
 from pydantic_ai.models import Model
 from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
@@ -1051,13 +1056,13 @@ class _LocalEmbeddingModel(EmbeddingModel):
                         "Run `filo setup` on the computer that runs Filo."
                     )
                 try:
-                    model = _default_embedder(local_files_only=True).model
+                    # Embedder defers model inference, so its `model` is still the spec string.
+                    model = infer_embedding_model(_default_embedder(local_files_only=True).model)
                 except Exception as error:
                     raise SetupProblem(
                         "Semantic memory is unavailable. "
                         "Run `filo memory model install` on the computer that runs Filo."
                     ) from error
-                assert isinstance(model, EmbeddingModel)
                 self._model = model
             return self._model
 
