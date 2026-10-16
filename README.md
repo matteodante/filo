@@ -85,8 +85,10 @@ choices, and a derived semantic index.
 - No quote is taken out of the clause that qualified it, so a refusal cannot be recorded as
   agreement to an exercise.
 - A hypothesis remains an agent hypothesis even when the user says it fits.
-- Corrections preserve superseded history in export while preventing old wording from returning in
-  active context.
+- Corrections preserve superseded history, with the time each claim stopped holding, in export
+  while preventing old wording from returning in active context.
+- What you say about another person, or about being watched or followed, is kept as your account,
+  never as established fact about them.
 - Conflicts remain explicit; semantic similarity never establishes truth.
 
 - Claims record when you said something, and when it started only if you named a time; "last
@@ -96,7 +98,8 @@ choices, and a derived semantic index.
   archive keeps it until you delete it locally.
 
 Retrieval combines lexical overlap, local multilingual embeddings, recency, focus, pending
-interventions, process preferences, conflicts, relevant sessions, and excerpts from every past
+interventions, process preferences ranked by relevance, conflicts, relevant sessions, the parts of
+the formulation that bear on the message, hypotheses you rejected, and excerpts from every past
 exchange, not only recent ones. The most recent session and today's date are always in context.
 Results are bounded as complete JSON records. Missing embeddings fail closed.
 

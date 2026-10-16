@@ -400,7 +400,13 @@ model on every turn.
   onset. The conversation tool and the split extractor apply the same check, so a bad expression
   is retried instead of rolling back the turn; the store repeats it as the backstop. A correction
   with a replacement resets `observed_at` to the correction and clears `valid_from`; forgetting
-  archives both with the claim.
+  archives both with the claim. A second time axis, `superseded_at`, records when a correction
+  replaced the claim's wording or superseded it outright, so `claims_as_of(moment)` answers what
+  the store held as true at a given time without reconstructing superseded wording. `about_others`
+  is a tag the model sets on a report of what another person did, intends, or is, or of being
+  watched, followed, or targeted. Such a claim stays in the formulation fields it belongs to
+  (concerns, relationships), shown as "User's account: …", so continuity around danger is kept
+  without presenting it as established fact about that person. The tag adds no prompt rule.
 - `CaseFormulation`: an evidence map that derives concerns, triggers, thoughts, behavior, coping,
   relationships, course, functioning, explanatory model, preferences, maintaining factors,
   strengths, hypotheses, and focus from active memory claim IDs.
@@ -409,10 +415,15 @@ model on every turn.
 - `CaseContextEnvelope`: today's date, the most recent closed session with the time elapsed since
   it (always present, whatever the message is about), bounded user reports, hypotheses, conflicts,
   relevant earlier sessions, active interventions, process preferences, support choices, round
-  excerpts, and accepted/proposed focus. Every item carries an absolute date.
+  excerpts, and accepted/proposed focus. Every item carries an absolute date. Process preferences
+  are ranked by hybrid relevance to the turn, newest first among equals, rather than by recency;
+  the root protocol already puts risk handling above them. The formulation reaches the model only
+  through relevant claims: each carries the formulation fields it supports. Relevant hypotheses
+  the user said do not fit arrive as `rejected_hypotheses`, still reviewable, so they are not
+  proposed again.
 - `SemanticIndex`: encrypted packed float32 vectors for active memory items, active interventions,
-  session reflections, support choices, and archived rounds. It is derived, excluded from export,
-  safe to discard, and never establishes truth or provenance.
+  session reflections, process preferences, support choices, and archived rounds. It is derived,
+  excluded from export, safe to discard, and never establishes truth or provenance.
 
 Claim dimensions:
 
@@ -1028,7 +1039,9 @@ forgetting, semantic reindexing and fail-closed behavior, forgetting that reache
 summary that carried the content, time fields and most-recent-session continuity, complete
 active-session history beyond ten turns, warning and automatic rollover at hard context bounds,
 and command/output separation. `tests/test_retrieval_and_time.py` asks for forgotten content
-through every retrieval path and expects nothing back. A
+through every retrieval path and expects nothing back. `tests/test_memory_guards.py` covers
+relevance-ranked preferences, third-party attribution, relevant formulation and rejected
+hypotheses, and `superseded_at`. A
 separate `live`
 test exercises the same high-level path
 against a real OpenAI model. It is skipped unless explicitly enabled:

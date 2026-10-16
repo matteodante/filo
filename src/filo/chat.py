@@ -1465,6 +1465,7 @@ def _context_claims(context: CaseContextResult) -> dict[str, ContextClaim]:
         for item in [
             *context.user_reports,
             *context.hypotheses,
+            *context.rejected_hypotheses,
             *(claim for conflict in context.conflicts for claim in conflict.claims),
         ]
     }
@@ -1650,6 +1651,7 @@ def _bounded_lookup(payload: dict[str, object]) -> dict[str, object]:
         "relevant_excerpts",
         "relevant_sessions",
         "user_reports",
+        "rejected_hypotheses",
         "hypotheses",
         "active_interventions",
         "support_choices",
@@ -1673,6 +1675,7 @@ def _bounded_context_json(context: CaseContextResult) -> str:
         "relevant_excerpts",
         "relevant_sessions",
         "user_reports",
+        "rejected_hypotheses",
         "hypotheses",
         "active_interventions",
         "support_choices",

@@ -347,6 +347,12 @@ class UserReport(StrictModel):
         default=None,
         description="Only when the current message dates the situation; never inferred.",
     )
+    about_others: bool = Field(
+        default=False,
+        description="True when the report says what another person did, intends, thinks, or is, "
+        "or that the user is being watched, followed, or targeted. It is then kept as the user's "
+        "account, never as established fact about that person.",
+    )
 
 
 class ClaimCorrection(StrictModel):
@@ -379,6 +385,11 @@ class MemoryItem(StrictModel):
     last_reviewed_at: str | None = None
     observed_at: str | None = None
     valid_from: TimeExpression | None = None
+    # When a correction replaced this claim's wording or superseded it outright; with observed_at
+    # it says what the store held as true at a given time.
+    superseded_at: str | None = None
+    # The user's account of another person or of being targeted, never fact about that person.
+    about_others: bool = False
 
 
 class SessionRecord(StrictModel):
@@ -536,6 +547,10 @@ class ContextClaim(StrictModel):
     last_reviewed_at: str | None
     observed_at: str | None = None
     valid_from: TimeExpression | None = None
+    about_others: bool = False
+    # The formulation fields this claim supports: the formulation reaches the model only through
+    # claims relevant to the turn.
+    formulation_fields: list[str] = Field(default_factory=list)
     conflict_ids: list[str]
     semantic_relevance: float | None = None
     lexical_relevance: float = 0.0
@@ -583,6 +598,7 @@ class ContextPreference(StrictModel):
     content: str
     evidence: EvidenceRef
     updated_at: str
+    semantic_relevance: float | None = None
 
 
 class ContextSupportChoice(StrictModel):
@@ -606,7 +622,7 @@ class ContextExcerpt(StrictModel):
 
 
 class CaseContextEnvelope(StrictModel):
-    schema_version: int = 2
+    schema_version: int = 3
     today: str | None = None
     latest_session: ContextSession | None = None
     elapsed_since_latest_session: str | None = None
@@ -614,6 +630,8 @@ class CaseContextEnvelope(StrictModel):
     proposed_focus: str | None = None
     user_reports: list[ContextClaim] = Field(default_factory=list)
     hypotheses: list[ContextClaim] = Field(default_factory=list)
+    # Hypotheses the user said do not fit, so they are not proposed again.
+    rejected_hypotheses: list[ContextClaim] = Field(default_factory=list)
     conflicts: list[ClaimConflict] = Field(default_factory=list)
     relevant_sessions: list[ContextSession] = Field(default_factory=list)
     active_interventions: list[ContextIntervention] = Field(default_factory=list)
@@ -904,7 +922,9 @@ class MemoryStore:
                     continue
                 ids.append(item_id)
             if ids:
-                setattr(formulation, field_name, [active[item_id].content for item_id in ids])
+                setattr(
+                    formulation, field_name, [_formulation_text(active[item_id]) for item_id in ids]
+                )
                 formulation.evidence[field_name] = ids
         self.save_formulation(formulation, now)
         return formulation
@@ -1271,6 +1291,7 @@ class MemoryStore:
                     )
                 duplicate.aliases = list(dict.fromkeys([*duplicate.aliases, *report.aliases]))[:5]
                 duplicate.valid_from = duplicate.valid_from or report.valid_from
+                duplicate.about_others = duplicate.about_others or report.about_others
                 self._save_claim(duplicate)
                 saved.append(duplicate)
                 continue
@@ -1287,6 +1308,7 @@ class MemoryStore:
                 last_seen_at=timestamp,
                 observed_at=self._message_time(evidence_message_id) or timestamp,
                 valid_from=report.valid_from,
+                about_others=report.about_others,
             )
             for other in existing:
                 if (
@@ -1460,6 +1482,7 @@ class MemoryStore:
             item.aliases = []
             item.last_seen_at = timestamp
             item.last_reviewed_at = timestamp
+            item.superseded_at = timestamp
             if correction.replacement_quote:
                 item.content = _normalized(correction.replacement_quote)
                 item.origin = ClaimOrigin.USER_STATEMENT
@@ -1691,6 +1714,27 @@ class MemoryStore:
         with self._connect() as database:
             rows = database.execute(sql, parameters).fetchall()
         return [self._decrypt_model(row[0], MemoryItem) for row in rows]
+
+    def claims_as_of(self, moment: datetime) -> list[MemoryItem]:
+        """Claims the store held as true at ``moment``: observed by then, not yet superseded.
+
+        A corrected claim's current wording counts from the correction, which resets
+        ``observed_at``; its earlier wording is not reconstructed. Forgotten claims never count.
+        An inspection query only: retrieval never returns superseded wording.
+        """
+        return [
+            item
+            for item in self.list_claims(include_inactive=True)
+            if item.lifecycle is not ClaimLifecycle.ARCHIVED
+            and datetime.fromisoformat(item.observed_at or item.first_seen_at) <= moment
+            and (
+                item.lifecycle is ClaimLifecycle.ACTIVE
+                or (
+                    item.superseded_at is not None
+                    and moment < datetime.fromisoformat(item.superseded_at)
+                )
+            )
+        ]
 
     def record_process_preference(
         self,
@@ -1944,6 +1988,11 @@ class MemoryStore:
         )
         app_state = self.load_app_state()
         pending_hypothesis_id = app_state.pending_hypothesis_id
+        formulation = self.load_formulation()
+        formulation_fields: dict[str, list[str]] = {}
+        for field_name, ids in formulation.evidence.items():
+            for item_id in ids:
+                formulation_fields.setdefault(item_id, []).append(field_name)
         ranked: list[ContextClaim] = []
         for index, item in enumerate(claims):
             semantic = semantic_scores.get(item.id)
@@ -1958,8 +2007,6 @@ class MemoryStore:
                 or (semantic is not None and semantic >= MIN_SEMANTIC_RELEVANCE)
             )
             if not relevant:
-                continue
-            if item.origin is ClaimOrigin.AGENT_HYPOTHESIS and item.fit is ClaimFit.DOES_NOT_FIT:
                 continue
             ranked.append(
                 ContextClaim(
@@ -1979,6 +2026,8 @@ class MemoryStore:
                     last_reviewed_at=item.last_reviewed_at,
                     observed_at=item.observed_at,
                     valid_from=item.valid_from,
+                    about_others=item.about_others,
+                    formulation_fields=formulation_fields.get(item.id, []),
                     conflict_ids=item.conflict_ids,
                     semantic_relevance=semantic,
                     lexical_relevance=lexical,
@@ -1995,6 +2044,12 @@ class MemoryStore:
             ),
             reverse=True,
         )
+        rejected = [
+            item
+            for item in ranked
+            if item.origin is ClaimOrigin.AGENT_HYPOTHESIS and item.fit is ClaimFit.DOES_NOT_FIT
+        ]
+        ranked = [item for item in ranked if item not in rejected]
         user_reports = [item for item in ranked if item.origin is ClaimOrigin.USER_STATEMENT][:15]
         hypotheses = [
             item
@@ -2056,7 +2111,21 @@ class MemoryStore:
         support_choices = self._relevant_support_choices(
             query, query_vector, allow_index_write=allow_index_write
         )
-        formulation = self.load_formulation()
+        preferences = self.list_process_preferences()
+        preference_scores = self._semantic_text_scores(
+            query_vector,
+            "preference",
+            {item.id: item.content for item in preferences},
+            allow_index_write=allow_index_write,
+        )
+        # Ranked by relevance to the turn, newest first among equals, rather than by recency alone.
+        preferences.sort(
+            key=lambda item: (
+                _hybrid_text_score(query, item.content, preference_scores.get(item.id)),
+                item.updated_at,
+            ),
+            reverse=True,
+        )
         return CaseContextResult(
             today=current.date().isoformat(),
             latest_session=latest,
@@ -2069,6 +2138,7 @@ class MemoryStore:
             proposed_focus=formulation.proposed_focus,
             user_reports=user_reports[:20],
             hypotheses=hypotheses[:10],
+            rejected_hypotheses=rejected[:5],
             conflicts=conflicts[:5],
             relevant_sessions=sessions[:3],
             active_interventions=interventions[:5],
@@ -2078,8 +2148,9 @@ class MemoryStore:
                     content=item.content,
                     evidence=item.evidence,
                     updated_at=item.updated_at,
+                    semantic_relevance=preference_scores.get(item.id),
                 )
-                for item in self.list_process_preferences()[:10]
+                for item in preferences[:10]
             ],
             support_choices=support_choices[:10],
             relevant_excerpts=excerpts[:5],
@@ -2891,10 +2962,12 @@ class MemoryStore:
             if item.evidence.message_id in message_set:
                 with self._connect() as database:
                     database.execute("DELETE FROM process_preferences WHERE id = ?", (item.id,))
+                self._delete_semantic_entities("preference", [item.id])
         for item in self.list_support_choices():
             if item.evidence.message_id in message_set:
                 with self._connect() as database:
                     database.execute("DELETE FROM support_choices WHERE id = ?", (item.id,))
+                self._delete_semantic_entities("support", [item.id])
         for session in self.list_sessions():
             if session.id in session_ids:
                 _clear_session_reflection(session)
@@ -3203,6 +3276,11 @@ def _claim_allowed_in_formulation(item: MemoryItem, field_name: str) -> bool:
     if field_name == "shared_hypotheses":
         return item.fit in {ClaimFit.FITS, ClaimFit.PARTLY_FITS}
     return False
+
+
+def _formulation_text(item: MemoryItem) -> str:
+    # A claim about another person stays in the formulation, attributed to the user who told it.
+    return f"User's account: {item.content}" if item.about_others else item.content
 
 
 def _is_stale_hypothesis(item: MemoryItem, now: datetime | None = None) -> bool:
