@@ -241,6 +241,29 @@ class TurnContext:
     actions: TurnActions = field(default_factory=TurnActions)
 
 
+class FormulationLink(StrictModel):
+    # A list of these rather than a mapping: strict structured output (Anthropic, and OpenAI
+    # strict schemas) cannot express a free-keyed object and silently returns it empty.
+    field: str = Field(description="One case-formulation field name.")
+    claim_ids: list[str] = Field(min_length=1, max_length=5)
+
+    @field_validator("field")
+    @classmethod
+    def validate_field(cls, value: str) -> str:
+        if value not in FORMULATION_FIELDS:
+            raise ValueError(f"Unknown formulation field; use one of {list(FORMULATION_FIELDS)}.")
+        return value
+
+
+def _links_by_field(entries: list[FormulationLink]) -> dict[str, list[str]]:
+    grouped: dict[str, list[str]] = {}
+    for entry in entries:
+        grouped[entry.field] = list(
+            dict.fromkeys([*grouped.get(entry.field, []), *entry.claim_ids])
+        )
+    return grouped
+
+
 class SessionReflection(StrictModel):
     summary: str = Field(min_length=1, max_length=2_000)
     themes: list[ShortText] = Field(default_factory=list, max_length=10)
@@ -261,15 +284,13 @@ class SessionReflection(StrictModel):
             "the user chose, so the next session can follow up. Empty when none came up."
         ),
     )
-    formulation_links: dict[str, list[str]] = Field(default_factory=dict)
-    formulation_unlinks: dict[str, list[str]] = Field(default_factory=dict)
+    formulation_links: list[FormulationLink] = Field(default_factory=list)
+    formulation_unlinks: list[FormulationLink] = Field(default_factory=list)
 
     @field_validator("formulation_links", "formulation_unlinks")
     @classmethod
-    def validate_formulation_links(cls, value: dict[str, list[str]]) -> dict[str, list[str]]:
-        if set(value) - set(FORMULATION_FIELDS):
-            raise ValueError("Unknown formulation field.")
-        if any(len(ids) > 5 for ids in value.values()):
+    def validate_formulation_links(cls, value: list[FormulationLink]) -> list[FormulationLink]:
+        if any(len(ids) > 5 for ids in _links_by_field(value).values()):
             raise ValueError("At most five claims may support each formulation field.")
         return value
 
@@ -1413,12 +1434,12 @@ class ChatSession:
                     usage_limits=CONSOLIDATION_LIMITS,
                     event_stream_handler=_consume_model_events,
                 ).output
-                for field_name, ids in reflection.formulation_unlinks.items():
+                for field_name, ids in _links_by_field(reflection.formulation_unlinks).items():
                     unlinks[field_name] = list(dict.fromkeys([*unlinks.get(field_name, []), *ids]))
                     links[field_name] = [
                         item for item in links.get(field_name, []) if item not in ids
                     ]
-                for field_name, ids in reflection.formulation_links.items():
+                for field_name, ids in _links_by_field(reflection.formulation_links).items():
                     links[field_name] = list(dict.fromkeys([*links.get(field_name, []), *ids]))
                     unlinks[field_name] = [
                         item for item in unlinks.get(field_name, []) if item not in ids
