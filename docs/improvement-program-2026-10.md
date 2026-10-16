@@ -193,6 +193,9 @@ Parallel PRs then touch different documents instead of one file.
 - Before migrating, write a one-step encrypted backup (an encrypted copy of the database file), so
   an interrupted migration can be recovered.
 - Reject unknown future versions without modification, as today.
+- Delete the backup once the migrated store has been verified, and make `delete-data` and later
+  migrations remove any recovery copy that survives, so no full copy of the conversations outlives
+  its purpose.
 
 *Check:* migration tests on generated v3 stores, including interrupted-migration recovery;
 encryption audit, no plaintext.
@@ -214,7 +217,8 @@ encryption audit, no plaintext.
 
 *Check:*
 - fault-injection tests with a real `ChatSession` and `TestModel`: 429, 5xx and connection reset at
-  every send point produce exactly one archived turn;
+  every send point produce exactly one archived turn, and after the sender or a restart runs, the
+  queued final reply is delivered exactly once without another model turn;
 - manual macOS smoke by the maintainer.
 
 **W0.5 Long-running process safety.**
@@ -273,8 +277,10 @@ manual smoke on macOS.
   - false-premise abstention, a preference applied months later, intervention follow-up, crisis
     follow-up.
 - **Store-level scoring** from `export`: extraction precision and recall against the timeline,
-  claims without supporting evidence, whether updates took effect, whether forgotten items are
-  absent.
+  claims without supporting evidence, whether updates took effect. Forgetting is scored where it must
+  hold, not by absence from the export (which keeps the archive by design): a forgotten claim is
+  inactive and its content is absent from the formulation, session summaries, semantic index and
+  retrieval results.
 - **Arms:** `ephemeral` (floor), `transcript_only`, `standard`, raw recency window (upper-bound
   comparator), raw retrieval over all messages. Later arms are added by Wave 2. The floor must hold no
   longitudinal memory: each probe of the `ephemeral` arm runs on a fresh empty store, because within
@@ -329,6 +335,9 @@ manual smoke on macOS.
 *Output:* a ranked failure taxonomy with counts. Waves 2 and 3 pick their items from it.
 
 ### Wave 2 — memory v2 (sequential PRs; each measured against W1.4)
+
+Each item is measured against its immediate predecessor as well as the W1.4 baseline, so a later PR
+cannot hide a regression behind an earlier gain.
 
 **W2.1 Retrieval engine.**
 - Index every round (user message plus assistant reply), not only the last 1,000 user messages, and
@@ -425,7 +434,9 @@ recall does not fall.
 These are measured on held-out personas, `standard` against `transcript_only` with `ephemeral` as
 the floor, paired by persona, with intervals clustered by persona.
 
-- **H1:** probe accuracy improves by at least 10 points, and the 95% interval excludes zero.
+- **H1:** probe accuracy improves by at least 10 points, and the 95% interval excludes zero. This is
+  a point estimate of at least 10 points plus evidence of a positive effect, as preregistered; it
+  does not claim that the lower bound clears 10 points, and reports say so.
 - **H2:** the false-memory rate (asserting content that was never stated, was superseded, or was
   forgotten) is not worse; the upper bound of the difference is at most +5 points.
 - **H3:** the improvement is larger after four or more intervening sessions, or after gaps longer
@@ -453,11 +464,14 @@ remediation passes a rerun.
 | Each later re-measurement | about $100–250 |
 | Whole program | about $600–1,500 |
 
-A per-run cost limit is enforced in code (`UsageLimits.cost_limit` after the upgrade). Work stops at
-the cap the maintainer sets.
+Spend is enforced across the whole program, not per run: every model call is recorded in one
+persistent, locked ledger outside the repository, a run whose estimate does not fit the remaining
+budget minus a reserve is refused before it starts, and a running study stops at the first call that
+would cross the cap (implemented in `evals/costs.py`, PR #50).
 
 **Fitted to the approved cap.** The $45 cap set on 2026-10-16 is far below these full-size figures, so
-the baseline runs in the reduced form recorded in `docs/evidence/preregistration-2026-10.md`: Haiku
+the baseline runs in the reduced form preregistered in `docs/evidence/preregistration-2026-10.md`
+(added by PR #50 together with the measurement code, before any live run): Haiku
 5.5 as the system under test, eight test personas, three arms, the 16-scenario safety suite with
 three repeats, and the two raw-message comparators deferred. Re-measurements after a fix use the
 tuning split first and a reduced test-split check. Larger runs wait for a budget decision.
