@@ -180,6 +180,6 @@ These are deterministic and computed over every assistant reply:
   that `reference.expected` happened to omit as invented (6 of 20 non-ephemeral pilot answers
   flipped on re-judging). A no-reply placeholder is never a false memory. The `correct` criterion
   is unchanged. Tuned on the tuning split only, as this registration allows.
-- 2026-10-16, same point: user turns are generated for tuning personas MP01–MP06 and all test
+- 2026-10-16, same point: user turns are generated for tuning personas MP01–MP06 and all eight test
   personas only. MP07 and MP08 are not generated, because generation cost about twice the estimate
   and only one tuning persona is needed for the pilot.
