@@ -48,7 +48,7 @@ def _report(store: MemoryStore, text: str, when: datetime):
     session = store.active_session() or store.start_session(when)
     message_id = store.save_turn(session, text, "Noted.", [], when)
     return store.add_user_reports(
-        [UserReport(kind=MemoryKind.EVENT, content=text, evidence_quote=text)],
+        [UserReport(kind=MemoryKind.PATTERN, content=text, evidence_quote=text)],
         message_id,
         text,
         when,

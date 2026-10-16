@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from contextlib import suppress
 from typing import ClassVar
 
 from textual import on, work
@@ -174,11 +173,6 @@ class FiloApp(App[None]):
         except Exception as error:  # Provider SDKs expose different error types.
             self.post_message(self.Finished(error=error, notice=self.report_failure(error)))
             return
-        # The reply is already on screen; input stays disabled until its reports are recorded,
-        # so no command can run on the store while the extraction does. A failure keeps the
-        # marker for the next turn and must not be shown as a failed reply.
-        with suppress(Exception):
-            self.session.extract_pending()
         self.post_message(self.Finished(turn=turn))
 
     def _post_command_output(self, output: str) -> None:

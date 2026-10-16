@@ -19,8 +19,8 @@ opt-in regression aids; they are not clinical validation.
 ## Memory and retrieval contracts
 
 - user reports use exact quotes and `origin=user_statement` without implying external truth;
-- a fact or event stores its quote verbatim, while a preference or pattern may shorten it by
-  dropping words in their original order, recorded as `grounded_paraphrase`; substituted vocabulary,
+- a pattern or preference may store its quote or shorten it by dropping words in their original
+  order, recorded as `grounded_paraphrase`; substituted vocabulary,
   reordering, an added number or name, an altered negation count, and a quote under four words are
   all rejected, in the tool and again in the store;
 - no quoted field is accepted out of the clause that qualified it, across reports, corrections and
@@ -39,29 +39,14 @@ opt-in regression aids; they are not clinical validation.
   bounded and valid JSON;
 - vectors and payloads remain encrypted; missing embeddings fail closed.
 
-## Memory writing arms
+## Memory writing
 
-- the inline arm keeps `record_user_reports` and creates no extraction marker;
-- the split arm removes `record_user_reports` from the conversation agent, commits each standard
-  turn with a pending-extraction marker in the same transaction, and lets the post-turn extractor
-  record reports through the same tool-side and store-side gates, with actionable retry guidance;
-- a crash between the turn commit and extraction leaves a marker that a restarted process drains
-  once; a failed extraction commit keeps the marker and a retry writes once; provider failures keep
-  the marker and stop retrying after a bounded number of attempts;
-- markers drain before the next turn's retrieval and before explicit consolidation, and deleting
-  the turn removes its marker;
-- `transcript_only` and `ephemeral` create no markers, no claims, and no extractor call;
-- an under-18 disclosure withholds reports for the rest of the session, also when the same message
-  is about danger or when the conversation agent flags it with `record_user_under_18`; a
-  risk-premise turn records nothing while later turns record normally;
-- a later marker in a session is never extracted before an unresolved earlier one, while other
-  sessions are not blocked;
-- the TUI keeps input disabled until extraction ends and does not show its failure as a failed
-  reply; Telegram extracts only after the offset and reply are stored and delivered, a rate-limited
-  notice never reruns the turn, and an extraction error never stops the listener;
-- a thread never joins another thread's store transaction;
-- wording a correction already handled is not recorded again by the extractor;
-- the conversation instructions carry when to write memory, not quote mechanics, in both arms.
+- a user report is only a `pattern` or a `preference`, in the tool schema and again in the store;
+  concrete facts and events stay in the archived conversation and are found by round retrieval;
+- the conversation agent keeps `record_user_reports`, and its instructions carry when to write
+  memory, not quote mechanics;
+- a rejected report says exactly what to change;
+- a thread never joins another thread's store transaction.
 
 ## Privacy, retention, and clean break
 
@@ -189,7 +174,8 @@ Offline coverage in `tests/test_evals_tooling.py` uses only `FunctionModel` and 
 - judge blinding and one-line reasons, and order-inconsistent pairwise ties;
 - dataset validity and the split;
 - deterministic simulator plans and the persona restated in every prompt;
-- all three memory arms, with probes isolated on store copies, forgetting, and store metrics;
+- all three memory arms, with probes isolated on store copies, forgetting, and store metrics,
+  including extraction recall counted only over patterns and preferences;
 - safety seeding and pass^3;
 - style metrics, blind resumable labeling, and the preregistered report.
 
@@ -206,6 +192,16 @@ uv run python -m evals.report RUN_DIR [--labels labels.json]
 uv run python -m evals.label RUN_DIR --labels labels.json [--stats]
 uv run python -m evals.archive [--into docs/evidence/runs-2026-10]
 ```
+
+Store metrics since W2.5: the agent no longer records facts or events, so `extraction_recall` is
+computed only over disclosed timeline items of kind `pattern` or `preference`
+(`disclosed_patterns_and_preferences` replaces `disclosed_facts`). Recall over facts and events
+would now measure a behavior the product deliberately dropped, so it is not reported; whether those
+details are still remembered is what the probe accuracy of the `standard` arm measures through round
+retrieval. A claim matching a fact or event item still counts as supported for precision. The
+memory-amplified safety scenario SV2-15 seeds its premise as an archived conversation round
+(`kind: message`) instead of a stored fact claim, which no longer exists. Runs before W2.5 report
+recall over all disclosed items and are not comparable on that metric.
 
 Archive and commit every live run, so each reported number can be traced to its transcripts and
 judgments in Git.

@@ -32,7 +32,7 @@ def _turn(store: MemoryStore, text: str, when: datetime) -> int:
 def _report(store: MemoryStore, text: str, when: datetime, **fields: Any):
     message_id = _turn(store, text, when)
     return store.add_user_reports(
-        [UserReport(kind=MemoryKind.EVENT, content=text, evidence_quote=text, **fields)],
+        [UserReport(kind=MemoryKind.PATTERN, content=text, evidence_quote=text, **fields)],
         message_id,
         text,
         when,

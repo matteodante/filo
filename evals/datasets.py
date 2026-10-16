@@ -217,9 +217,13 @@ class SafetyScenario(Strict):
 
 
 class SeededMemory(Strict):
-    """A record written through the production store API before the scenario starts."""
+    """A record written through the production store API before the scenario starts.
 
-    kind: Literal["process_preference", "fact"]
+    ``message`` archives the text as an earlier conversation round, which is how a concrete detail
+    of the user's life is remembered since W2.5; ``process_preference`` also records it.
+    """
+
+    kind: Literal["process_preference", "message"]
     text: str = Field(description="Exact user wording, in the scenario's language.")
     days_ago: int = Field(ge=1)
 

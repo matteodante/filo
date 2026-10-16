@@ -49,7 +49,6 @@ from filo.chat import (
     MAX_REQUEST_OUTPUT_TOKENS,
     MIN_CONTEXT_WINDOW_TOKENS,
     ChatSession,
-    MemoryWriting,
     TurnStreamEvent,
     TurnStreamKind,
     crisis_resources,
@@ -119,13 +118,6 @@ def build_parser() -> argparse.ArgumentParser:
     chat.add_argument("--context-window-tokens", type=_context_window_tokens)
     chat.add_argument("--memory-mode", type=_memory_mode_arg, choices=tuple(MemoryMode))
     chat.add_argument(
-        "--memory-writing",
-        type=MemoryWriting,
-        choices=tuple(MemoryWriting),
-        default=MemoryWriting.INLINE,
-        help="Experimental: who records direct user reports (default: inline)",
-    )
-    chat.add_argument(
         "--plain",
         action="store_true",
         help="Use the line-oriented interface instead of the full-screen TUI",
@@ -137,13 +129,6 @@ def build_parser() -> argparse.ArgumentParser:
     telegram.add_argument("--allowed-user-id", type=int)
     telegram.add_argument("--context-window-tokens", type=_context_window_tokens)
     telegram.add_argument("--memory-mode", type=_memory_mode_arg, choices=tuple(MemoryMode))
-    telegram.add_argument(
-        "--memory-writing",
-        type=MemoryWriting,
-        choices=tuple(MemoryWriting),
-        default=MemoryWriting.INLINE,
-        help="Experimental: who records direct user reports (default: inline)",
-    )
 
     service = commands.add_parser(
         "telegram-service",
@@ -461,7 +446,6 @@ def _conversation(args: argparse.Namespace, store: MemoryStore, pack: ProtocolPa
             locale,
             context_window_tokens=context_window_tokens,
             memory_mode=memory_mode,
-            memory_writing=args.memory_writing,
             deletion_epoch=store.telegram_output_epoch,
         )
     except ValueError as error:
@@ -1247,7 +1231,6 @@ def _memory(args: argparse.Namespace, store: MemoryStore) -> int:
 def _chat(session: ChatSession, store: MemoryStore) -> int:
     if not _ensure_chat_consent(store, session.locale):
         return 1
-    _extract_reports(session)
 
     print("Commands: /case, /memory, /sessions [id], /interventions,")
     print("          /correct <id> <text>,")
@@ -1314,7 +1297,6 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
         print(f"filo> {turn.text}")
         if turn.notice:
             print(f"notice> {turn.notice}")
-        _extract_reports(session)
 
 
 def _report_failure(error: Exception, session: ChatSession, store: MemoryStore) -> str:
@@ -1327,18 +1309,9 @@ def _report_failure(error: Exception, session: ChatSession, store: MemoryStore) 
     return failure.notice()
 
 
-def _extract_reports(session: ChatSession) -> None:
-    """Record split-arm reports; a failure keeps its marker and never ends the chat."""
-    try:
-        session.extract_pending()
-    except Exception as error:  # Extraction is best effort; its marker is retried later.
-        print(f"Memory extraction error: {type(error).__name__}")
-
-
 def _chat_tui(session: ChatSession, store: MemoryStore) -> int:
     if not _ensure_chat_consent(store, session.locale):
         return 1
-    _extract_reports(session)
     from filo.tui import FiloApp
 
     app = FiloApp(

@@ -165,7 +165,7 @@ def test_query_is_embedded_once_and_vectors_are_packed_and_cached(tmp_path) -> N
     store.add_user_reports(
         [
             UserReport(
-                kind=MemoryKind.EVENT,
+                kind=MemoryKind.PATTERN,
                 content="I sleep badly at night",
                 evidence_quote="I sleep badly at night",
             )
@@ -234,7 +234,7 @@ def test_forgetting_a_claim_reaches_every_round_and_summary_that_carried_it(tmp_
     first = store.list_sessions()[0]
     message_id = store.export()["messages"][0]["id"]
     claim = store.add_user_reports(
-        [UserReport(kind=MemoryKind.EVENT, content=STORY, evidence_quote=STORY)],
+        [UserReport(kind=MemoryKind.PATTERN, content=STORY, evidence_quote=STORY)],
         message_id,
         f"Last summer {STORY} and nobody was hurt",
         when,
@@ -258,7 +258,7 @@ def test_correction_suppresses_later_rounds_repeating_the_superseded_wording(tmp
     old = "I drink coffee at midnight every day"
     first = store.save_turn(session, old, "Noted.", [])
     claim = store.add_user_reports(
-        [UserReport(kind=MemoryKind.FACT, content=old, evidence_quote=old)], first, old
+        [UserReport(kind=MemoryKind.PATTERN, content=old, evidence_quote=old)], first, old
     )[0]
     store.save_turn(session, "Anyway", f"You said: {old}.", [])
     correction = "No, I only drink tea"
@@ -315,7 +315,7 @@ def test_forget_content_archives_claims_built_on_the_quote(tmp_path) -> None:
     store, _ = _story_store(tmp_path, when)
     message_id = store.export()["messages"][0]["id"]
     claim = store.add_user_reports(
-        [UserReport(kind=MemoryKind.EVENT, content=STORY, evidence_quote=STORY)],
+        [UserReport(kind=MemoryKind.PATTERN, content=STORY, evidence_quote=STORY)],
         message_id,
         f"Last summer {STORY} and nobody was hurt",
     )[0]
@@ -447,7 +447,7 @@ def _risk_session(store: MemoryStore, when: datetime) -> str:
     session = store.start_session(when)
     message_id = store.save_turn(session, text, "I am glad you told me.", [], when)
     store.add_user_reports(
-        [UserReport(kind=MemoryKind.EVENT, content=text, evidence_quote=text)],
+        [UserReport(kind=MemoryKind.PATTERN, content=text, evidence_quote=text)],
         message_id,
         text,
         when,
@@ -645,7 +645,7 @@ def test_correction_clears_the_reflection_of_sessions_holding_the_old_wording(tm
     first_session = store.start_session(datetime.now(UTC) - timedelta(days=2))
     first = store.save_turn(first_session, old, "Noted.", [])
     claim = store.add_user_reports(
-        [UserReport(kind=MemoryKind.FACT, content=old, evidence_quote=old)], first, old
+        [UserReport(kind=MemoryKind.PATTERN, content=old, evidence_quote=old)], first, old
     )[0]
     store.close_session(first_session, summary="Late caffeine is a habit.", themes=["caffeine"])
     correction = "No, I only drink tea"

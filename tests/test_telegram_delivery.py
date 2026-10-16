@@ -141,7 +141,7 @@ def _counting_model(calls: list[str], *, use_tool: bool = True) -> FunctionModel
                         {
                             "reports": [
                                 {
-                                    "kind": "fact",
+                                    "kind": "pattern",
                                     "content": USER_TEXT,
                                     "evidence_quote": USER_TEXT,
                                 }
@@ -552,7 +552,7 @@ def test_a_model_correction_in_another_conversation_keeps_the_queue_discarded(
     store = MemoryStore(tmp_path)
     message_id = store.save_turn(store.start_session(), USER_TEXT, "Noted.", [])
     store.add_user_reports(
-        [UserReport(kind=MemoryKind.FACT, content=USER_TEXT, evidence_quote=USER_TEXT)],
+        [UserReport(kind=MemoryKind.PATTERN, content=USER_TEXT, evidence_quote=USER_TEXT)],
         message_id,
         USER_TEXT,
     )
@@ -691,7 +691,7 @@ def test_a_view_rendered_before_a_local_deletion_is_never_queued(tmp_path: Path)
     channel, store = _channel(tmp_path, [])
     message_id = store.save_turn(store.start_session(), USER_TEXT, "Noted.", [])
     store.add_user_reports(
-        [UserReport(kind=MemoryKind.FACT, content=USER_TEXT, evidence_quote=USER_TEXT)],
+        [UserReport(kind=MemoryKind.PATTERN, content=USER_TEXT, evidence_quote=USER_TEXT)],
         message_id,
         USER_TEXT,
     )
@@ -859,7 +859,11 @@ def test_a_reply_written_while_memory_was_deleted_is_replaced_by_a_notice(
     store = MemoryStore(tmp_path)
     message_id = store.save_turn(store.start_session(), "I live alone", "Noted.", [])
     store.add_user_reports(
-        [UserReport(kind=MemoryKind.FACT, content="I live alone", evidence_quote="I live alone")],
+        [
+            UserReport(
+                kind=MemoryKind.PATTERN, content="I live alone", evidence_quote="I live alone"
+            )
+        ],
         message_id,
         "I live alone",
     )

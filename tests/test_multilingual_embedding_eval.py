@@ -11,7 +11,7 @@ def test_multilingual_meaning_equivalent_retrieval(tmp_path) -> None:
     text = "Le chiamate di lavoro mi mettono in difficoltà"
     message_id = store.save_turn(session, text, "Ti ascolto.", [])
     claim = store.add_user_reports(
-        [UserReport(kind=MemoryKind.EVENT, content=text, evidence_quote=text)],
+        [UserReport(kind=MemoryKind.PATTERN, content=text, evidence_quote=text)],
         message_id,
         text,
     )[0]
