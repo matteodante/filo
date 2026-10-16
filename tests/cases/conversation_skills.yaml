@@ -30,6 +30,8 @@ cases:
         - one small, concrete step
         - Ask before starting an exercise
         - before suggesting anything new
+        - follow_up_due
+        - adapt to the answer
         - If it caused harm, stop it
         - Hope that helps is specific and realistic
         - Loss is not a problem to solve

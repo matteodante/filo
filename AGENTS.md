@@ -439,8 +439,8 @@ model on every turn.
   the user said do not fit arrive as `rejected_hypotheses`, still reviewable, so they are not
   proposed again. On the first turn of a session, `follow_up_due` lists up to three agreed
   experiments from before the session with no reported outcome; they are kept among the active
-  interventions, and one sentence of the case-data preamble asks the model to ask how each went and
-  adapt. This is data and envelope code only; the root protocol text is unchanged.
+  interventions, and the root protocol's "Following up" section asks the model to ask how each went
+  before moving on and adapt; the case-data preamble only marks the data boundary.
 - `WellbeingCheck`: one optional WHO-5 self-report, five answers from 0 to 5, stored encrypted in
   `wellbeing_checks` with its time. The score is shown as the raw total out of 25 and the
   percentage out of 100 with the change from the previous check, never with a cutoff or label.

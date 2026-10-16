@@ -113,7 +113,7 @@ def test_first_turn_of_a_later_session_lists_the_experiment_to_follow_up(tmp_pat
     assert first["follow_up_due"] == [record.id]
     assert first["active_interventions"][0]["planned_for"] == "Monday before the team call"
     assert second["follow_up_due"] == []
-    assert "follow_up_due" in CASE_CONTEXT_PREAMBLE
+    assert "follow_up_due" in PACK.root_instructions
 
 
 def test_reported_or_new_experiments_are_not_followed_up(tmp_path: Path) -> None:
