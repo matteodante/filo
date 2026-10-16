@@ -10,8 +10,8 @@ from pydantic_ai.models import Model
 from evals.costs import Ledger, MeteredModel
 
 ANTHROPIC_API_URL = "https://api.anthropic.com"
-# Cloud sessions reserve ANTHROPIC_API_KEY for Claude Code itself, so a dedicated name comes first.
-KEY_VARIABLE = "FILO_EVAL_ANTHROPIC_API_KEY"
+# Cloud sessions reserve ANTHROPIC_API_KEY for Claude Code itself, so dedicated names come first.
+KEY_VARIABLES = ("FILO_EVAL_ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "ANTHROPIC_API_KEY")
 
 
 @dataclass(frozen=True)
@@ -47,9 +47,9 @@ def anthropic_model(name: str, role: str, ledger: Ledger, max_tokens: int | None
     from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
     from pydantic_ai.providers.anthropic import AnthropicProvider
 
-    api_key = os.environ.get(KEY_VARIABLE) or os.environ.get("ANTHROPIC_API_KEY")
+    api_key = next((os.environ[name] for name in KEY_VARIABLES if os.environ.get(name)), None)
     if not api_key:
-        raise RuntimeError(f"Set {KEY_VARIABLE} (or ANTHROPIC_API_KEY) for live evaluation.")
+        raise RuntimeError(f"Set one of {', '.join(KEY_VARIABLES)} for live evaluation.")
     limit = max_tokens or MAX_TOKENS.get(role, 1_000)
     settings = AnthropicModelSettings(
         max_tokens=limit,

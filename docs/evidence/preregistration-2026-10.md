@@ -168,6 +168,6 @@ These are deterministic and computed over every assistant reply:
 - 2026-10-16, before any live run: evaluation environment variables use the `FILO_EVAL_` prefix
   (`FILO_EVAL_LEDGER`, `FILO_EVAL_BUDGET_USD`, `FILO_EVAL_RESERVE_USD`, `FILO_EVAL_RUNS`,
   `FILO_EVAL_<ROLE>_MODEL`) to match the maintainer's planned rename to Filo. No design change.
-- 2026-10-16, before any live run: the Anthropic key is read from `FILO_EVAL_ANTHROPIC_API_KEY`
-  first, falling back to `ANTHROPIC_API_KEY`, because cloud sessions do not pass the latter through.
-  No design change.
+- 2026-10-16, before any live run: the Anthropic key is read from the first set of
+  `FILO_EVAL_ANTHROPIC_API_KEY`, `CLAUDE_API_KEY`, `ANTHROPIC_API_KEY`, because cloud sessions do not pass the last one through. No design
+  change.
