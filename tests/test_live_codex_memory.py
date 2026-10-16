@@ -12,11 +12,11 @@ from pydantic_ai.messages import RetryPromptPart, ToolReturnPart
 from pydantic_evals import Dataset
 from pydantic_evals.evaluators import Evaluator, EvaluatorContext
 
-from therapist.auth import codex_model, load_credential
-from therapist.chat import ChatSession
-from therapist.cli import DEFAULT_EMBEDDING_MODEL, _default_embedder
-from therapist.memory import ClaimFit, ClaimOrigin, MemoryKind, MemoryStore
-from therapist.protocol import ProtocolPack
+from filo.auth import codex_model, load_credential
+from filo.chat import ChatSession
+from filo.cli import DEFAULT_EMBEDDING_MODEL, _default_embedder
+from filo.memory import ClaimFit, ClaimOrigin, MemoryKind, MemoryStore
+from filo.protocol import ProtocolPack
 
 CASES_PATH = Path(__file__).parent / "cases" / "live_codex_memory.yaml"
 
@@ -104,13 +104,13 @@ def test_memory_contract_accepts_sparse_memory_and_semantic_paraphrase() -> None
 
 @pytest.mark.live
 @pytest.mark.skipif(
-    os.getenv("THERA_RUN_CODEX_EVALS") != "1",
-    reason="Set THERA_RUN_CODEX_EVALS=1 after `thera auth login`.",
+    os.getenv("FILO_RUN_CODEX_EVALS") != "1",
+    reason="Set FILO_RUN_CODEX_EVALS=1 after `filo auth login`.",
 )
 def test_configured_codex_longitudinal_memory(tmp_path: Path) -> None:
-    credential_store = MemoryStore(Path(os.getenv("THERA_DATA_DIR", Path.home() / ".therapist")))
+    credential_store = MemoryStore(Path(os.getenv("FILO_DATA_DIR", Path.home() / ".filo")))
     if load_credential(credential_store) is None:
-        pytest.skip("Run `thera auth login` before the Codex memory eval.")
+        pytest.skip("Run `filo auth login` before the Codex memory eval.")
     model = codex_model(credential_store, "gpt-5.6-sol")
     pack = ProtocolPack.load(Path("protocols/transdiagnostic"))
     loaded = Dataset[dict[str, Any], dict[str, Any], dict[str, Any]].from_file(CASES_PATH)
@@ -234,7 +234,7 @@ def test_configured_codex_longitudinal_memory(tmp_path: Path) -> None:
     with models.override_allow_model_requests(True):
         report = dataset.evaluate_sync(
             run_case,
-            repeat=int(os.getenv("THERA_CODEX_EVAL_REPEAT", "1")),
+            repeat=int(os.getenv("FILO_CODEX_EVAL_REPEAT", "1")),
             progress=False,
         )
 

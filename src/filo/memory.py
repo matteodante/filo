@@ -25,7 +25,46 @@ from pydantic_ai import Embedder, ModelMessage, ModelMessagesTypeAdapter
 
 SESSION_GAP = timedelta(hours=8)
 LOCAL_OLLAMA_EMBEDDINGS_URL = "http://localhost:11434/v1"
-SCHEMA_VERSION = b"3"
+# Filo stores start their own schema lineage; future forward migrations build on this marker.
+SCHEMA_VERSION = b"filo-1"
+LEGACY_THERAPIST_DATABASE = "thera.db"
+SCHEMA_STATEMENTS = """
+CREATE TABLE IF NOT EXISTS state (
+    name TEXT PRIMARY KEY, payload BLOB NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY, started_at TEXT NOT NULL,
+    last_activity_at TEXT NOT NULL, ended_at TEXT, payload BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
+    role TEXT NOT NULL, created_at TEXT NOT NULL, payload BLOB NOT NULL,
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS memory_items (
+    id TEXT PRIMARY KEY, kind TEXT NOT NULL, origin TEXT NOT NULL,
+    fit TEXT NOT NULL, lifecycle TEXT NOT NULL,
+    first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL,
+    payload BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS interventions (
+    id TEXT PRIMARY KEY, state TEXT NOT NULL,
+    updated_at TEXT NOT NULL, payload BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS process_preferences (
+    id TEXT PRIMARY KEY, updated_at TEXT NOT NULL, payload BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS support_choices (
+    id TEXT PRIMARY KEY, updated_at TEXT NOT NULL, payload BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS semantic_index (
+    entity_type TEXT NOT NULL, entity_id TEXT NOT NULL,
+    model TEXT NOT NULL, content_hash TEXT NOT NULL,
+    dimensions INTEGER NOT NULL, payload BLOB NOT NULL,
+    PRIMARY KEY(entity_type, entity_id)
+);
+"""
 DEFAULT_STALE_HYPOTHESIS_DAYS = 180
 MIN_SEMANTIC_RELEVANCE = 0.2
 
@@ -474,10 +513,16 @@ class MemoryStore:
             self._ephemeral_database = sqlite3.connect(":memory:", autocommit=False)
             self._ephemeral_database.execute("PRAGMA foreign_keys = ON")
         else:
-            self.directory = directory or Path.home() / ".therapist"
+            self.directory = directory or Path.home() / ".filo"
+            if (self.directory / LEGACY_THERAPIST_DATABASE).exists():
+                # Checked before mkdir, chmod, or key access so a Therapist store stays untouched.
+                raise MemoryError(
+                    "This directory holds a Therapist store, which Filo never reads or modifies. "
+                    "Use a new data directory."
+                )
             self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
             os.chmod(self.directory, 0o700)
-            self.database_path = self.directory / "thera.db"
+            self.database_path = self.directory / "filo.db"
             encryption_key = self._load_or_create_key()
         self._cipher = Fernet(encryption_key)
         self._hash_key = encryption_key
@@ -485,72 +530,26 @@ class MemoryStore:
 
     def _initialize_schema(self) -> None:
         with self._connect() as database:
-            database.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS state (
-                    name TEXT PRIMARY KEY, payload BLOB NOT NULL,
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                );
-                CREATE TABLE IF NOT EXISTS sessions (
-                    id TEXT PRIMARY KEY, started_at TEXT NOT NULL,
-                    last_activity_at TEXT NOT NULL, ended_at TEXT, payload BLOB NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS messages (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
-                    role TEXT NOT NULL, created_at TEXT NOT NULL, payload BLOB NOT NULL,
-                    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
-                );
-                CREATE TABLE IF NOT EXISTS memory_items (
-                    id TEXT PRIMARY KEY, kind TEXT NOT NULL, origin TEXT NOT NULL,
-                    fit TEXT NOT NULL, lifecycle TEXT NOT NULL,
-                    first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL,
-                    payload BLOB NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS interventions (
-                    id TEXT PRIMARY KEY, state TEXT NOT NULL,
-                    updated_at TEXT NOT NULL, payload BLOB NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS process_preferences (
-                    id TEXT PRIMARY KEY, updated_at TEXT NOT NULL, payload BLOB NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS support_choices (
-                    id TEXT PRIMARY KEY, updated_at TEXT NOT NULL, payload BLOB NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS semantic_index (
-                    entity_type TEXT NOT NULL, entity_id TEXT NOT NULL,
-                    model TEXT NOT NULL, content_hash TEXT NOT NULL,
-                    dimensions INTEGER NOT NULL, payload BLOB NOT NULL,
-                    PRIMARY KEY(entity_type, entity_id)
-                );
-                """
-            )
-        version = self._read_state("schema_version")
-        if version is None:
-            if self._database_has_user_data():
-                raise MemoryError(
-                    "This data store predates the current clean-break schema. "
-                    "Use a new data directory or delete the old store; migration is not supported."
-                )
-            self._write_state("schema_version", SCHEMA_VERSION)
-        elif version != SCHEMA_VERSION:
+            tables = {
+                row[0]
+                for row in database.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            }
+        existing_version = self._read_state("schema_version") if "state" in tables else None
+        if tables and existing_version != SCHEMA_VERSION:
+            # Only an empty database may be initialized. Anything else without the current marker
+            # is rejected before a table is created, so an unknown store is left unmodified.
             raise MemoryError(
                 "This data store uses an incompatible schema. Use a new data directory or delete "
                 "the old store; migration is not supported."
             )
-
-    def _database_has_user_data(self) -> bool:
-        with self._connect() as database:
-            return any(
-                database.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone() is not None
-                for table in (
-                    "sessions",
-                    "messages",
-                    "memory_items",
-                    "interventions",
-                    "process_preferences",
-                    "support_choices",
-                )
-            )
+        # Individual statements, unlike executescript, stay inside one transaction, so the
+        # tables and the schema marker commit together or not at all.
+        with self.transaction(), self._connect() as database:
+            for statement in SCHEMA_STATEMENTS.split(";"):
+                if statement.strip():
+                    database.execute(statement)
+            if not tables:
+                self._write_state("schema_version", SCHEMA_VERSION)
 
     def load_app_state(self) -> AppState:
         payload = self._read_state("app")
@@ -2072,7 +2071,7 @@ class MemoryStore:
             }
         except Exception as error:
             raise MemoryError(
-                "Semantic memory is unavailable. Run `thera setup` and try again."
+                "Semantic memory is unavailable. Run `filo setup` and try again."
             ) from error
 
     def _delete_semantic_entities(self, entity_type: str, entity_ids: list[str]) -> None:

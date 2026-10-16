@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
-from therapist.memory import (
+from filo.memory import (
     ClaimCorrection,
     ClaimFit,
     HypothesisReview,

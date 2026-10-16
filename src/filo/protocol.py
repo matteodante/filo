@@ -115,13 +115,13 @@ class ProtocolPack:
         try:
             return self.skills[skill_id]
         except KeyError as error:
-            raise KeyError(f"Unknown therapeutic skill: {skill_id}") from error
+            raise KeyError(f"Unknown conversation skill: {skill_id}") from error
 
     def get_skill_metadata(self, skill_id: str) -> PackSkill:
         try:
             return self._skill_metadata[skill_id]
         except KeyError as error:
-            raise KeyError(f"Unknown therapeutic skill: {skill_id}") from error
+            raise KeyError(f"Unknown conversation skill: {skill_id}") from error
 
     def catalog(self) -> list[dict[str, object]]:
         return [

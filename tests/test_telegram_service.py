@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from therapist.telegram_service import (
+from filo.telegram_service import (
     SERVICE_LABEL,
     SYSTEMD_UNIT,
     WINDOWS_TASK,
@@ -44,7 +44,7 @@ def test_macos_service_install_status_and_uninstall(tmp_path: Path) -> None:
     home = tmp_path / "home"
     data_dir = tmp_path / "data"
     data_dir.mkdir()
-    command = ["/opt/thera", "--data-dir", str(data_dir), "telegram"]
+    command = ["/opt/filo", "--data-dir", str(data_dir), "telegram"]
 
     path = install(command, data_dir, platform="darwin", home=home, runner=runner)
 
@@ -64,13 +64,13 @@ def test_linux_service_uses_user_systemd_and_quotes_arguments(tmp_path: Path) ->
     home = tmp_path / "home"
     data_dir = tmp_path / "data with spaces"
     data_dir.mkdir()
-    command = ["/opt/thera app/thera", "--data-dir", str(data_dir), "telegram"]
+    command = ["/opt/filo app/filo", "--data-dir", str(data_dir), "telegram"]
 
     path = install(command, data_dir, platform="linux", home=home, runner=runner)
 
     unit = path.read_text()
     assert path.name == SYSTEMD_UNIT
-    assert 'ExecStart="/opt/thera app/thera" "--data-dir"' in unit
+    assert 'ExecStart="/opt/filo app/filo" "--data-dir"' in unit
     assert ["systemctl", "--user", "enable", "--now", SYSTEMD_UNIT] in runner.commands
     assert uninstall(platform="linux", home=home, runner=runner) is True
     assert runner.commands[-1] == ["systemctl", "--user", "daemon-reload"]
@@ -85,16 +85,16 @@ def test_macos_service_carries_the_local_endpoint_into_the_background_agent(
     data_dir.mkdir()
 
     path = install(
-        ["/opt/thera", "telegram"],
+        ["/opt/filo", "telegram"],
         data_dir,
-        environment={"THERA_LOCAL_BASE_URL": "http://rig.invalid:8080/v1", "EMPTY": ""},
+        environment={"FILO_LOCAL_BASE_URL": "http://rig.invalid:8080/v1", "EMPTY": ""},
         platform="darwin",
         home=home,
         runner=runner,
     )
 
     payload = plistlib.loads(path.read_bytes())
-    assert payload["EnvironmentVariables"] == {"THERA_LOCAL_BASE_URL": "http://rig.invalid:8080/v1"}
+    assert payload["EnvironmentVariables"] == {"FILO_LOCAL_BASE_URL": "http://rig.invalid:8080/v1"}
 
 
 def test_linux_service_carries_the_local_endpoint_into_the_background_unit(
@@ -104,16 +104,16 @@ def test_linux_service_carries_the_local_endpoint_into_the_background_unit(
     home = tmp_path / "home"
 
     path = install(
-        ["/opt/thera", "telegram"],
+        ["/opt/filo", "telegram"],
         tmp_path,
-        environment={"THERA_LOCAL_BASE_URL": 'http://rig.invalid:8080/v1"'},
+        environment={"FILO_LOCAL_BASE_URL": 'http://rig.invalid:8080/v1"'},
         platform="linux",
         home=home,
         runner=runner,
     )
 
     unit = path.read_text()
-    assert 'Environment="THERA_LOCAL_BASE_URL=http://rig.invalid:8080/v1\\""\n' in unit
+    assert 'Environment="FILO_LOCAL_BASE_URL=http://rig.invalid:8080/v1\\""\n' in unit
     assert unit.index("Environment=") < unit.index("Restart=on-failure")
 
 
@@ -121,7 +121,7 @@ def test_service_without_environment_writes_no_settings(tmp_path: Path) -> None:
     runner = FakeRunner()
 
     path = install(
-        ["/opt/thera", "telegram"],
+        ["/opt/filo", "telegram"],
         tmp_path,
         platform="linux",
         home=tmp_path / "home",
@@ -134,9 +134,9 @@ def test_service_without_environment_writes_no_settings(tmp_path: Path) -> None:
 def test_service_rejects_control_characters_in_the_environment(tmp_path: Path) -> None:
     with pytest.raises(TelegramServiceError, match="control characters"):
         install(
-            ["/opt/thera", "telegram"],
+            ["/opt/filo", "telegram"],
             tmp_path,
-            environment={"THERA_LOCAL_BASE_URL": "http://rig.invalid/v1\nRestart=always"},
+            environment={"FILO_LOCAL_BASE_URL": "http://rig.invalid/v1\nRestart=always"},
             platform="linux",
             home=tmp_path / "home",
             runner=FakeRunner(),
@@ -149,7 +149,7 @@ def test_macos_reinstall_waits_for_launchd_to_release_the_label(tmp_path: Path) 
     data_dir = tmp_path / "data"
     data_dir.mkdir()
 
-    install(["/opt/thera", "telegram"], data_dir, platform="darwin", home=home, runner=runner)
+    install(["/opt/filo", "telegram"], data_dir, platform="darwin", home=home, runner=runner)
 
     verbs = [command[1] for command in runner.commands if command[0] == "launchctl"]
     assert verbs == ["print", "bootout", "print", "bootstrap"]
@@ -161,7 +161,7 @@ def test_service_reports_native_manager_failure(tmp_path: Path) -> None:
 
     with pytest.raises(TelegramServiceError, match="systemctl failed"):
         install(
-            ["/opt/thera", "telegram"],
+            ["/opt/filo", "telegram"],
             tmp_path,
             platform="linux",
             home=tmp_path,
@@ -172,7 +172,7 @@ def test_service_reports_native_manager_failure(tmp_path: Path) -> None:
 def test_linux_service_rejects_control_characters_in_command(tmp_path: Path) -> None:
     with pytest.raises(TelegramServiceError, match="control characters"):
         install(
-            ["/opt/thera", "--data-dir", "/tmp/data\n[Install]"],
+            ["/opt/filo", "--data-dir", "/tmp/data\n[Install]"],
             tmp_path,
             platform="linux",
             home=tmp_path,
@@ -183,9 +183,9 @@ def test_linux_service_rejects_control_characters_in_command(tmp_path: Path) -> 
 def test_windows_task_install_status_restart_and_uninstall(tmp_path: Path) -> None:
     runner = FakeRunner()
     command = [
-        r"C:\Program Files\Therapist\thera.exe",
+        r"C:\Program Files\Filo\filo.exe",
         "--data-dir",
-        r"C:\Users\Test User\Therapist",
+        r"C:\Users\Test User\Filo",
         "telegram",
     ]
 
@@ -196,7 +196,7 @@ def test_windows_task_install_status_restart_and_uninstall(tmp_path: Path) -> No
     assert create[:4] == ["schtasks.exe", "/Create", "/TN", WINDOWS_TASK]
     assert create[create.index("/SC") + 1] == "ONLOGON"
     assert create[create.index("/RL") + 1] == "LIMITED"
-    assert '"C:\\Program Files\\Therapist\\thera.exe"' in create[create.index("/TR") + 1]
+    assert '"C:\\Program Files\\Filo\\filo.exe"' in create[create.index("/TR") + 1]
     assert runner.commands[1] == ["schtasks.exe", "/Run", "/TN", WINDOWS_TASK]
     assert status(platform="win32", runner=runner).running is True
 

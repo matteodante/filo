@@ -15,4 +15,4 @@ achieve, and a qualified move from abstract to concrete processing. The public r
 concern worry or generalized anxiety, while the Phase II trial concerns guided training for adults
 with major depression and did not outperform its active control on depressive symptoms. They do not
 validate a single AI conversational move. Consent, prediction, review, and stop-on-worsening are
-Therapist safeguards; no exercise protocol is copied.
+Filo safeguards; no exercise protocol is copied.

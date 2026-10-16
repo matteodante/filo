@@ -4,15 +4,15 @@ import time
 
 import pytest
 
-from therapist.cli import TELEGRAM_SECRET
-from therapist.memory import MemoryStore
-from therapist.telegram import TelegramBot
+from filo.cli import TELEGRAM_SECRET
+from filo.memory import MemoryStore
+from filo.telegram import TelegramBot
 
 pytestmark = [
     pytest.mark.live,
     pytest.mark.skipif(
-        os.getenv("THERA_RUN_TELEGRAM_TEST") != "1",
-        reason="Set THERA_RUN_TELEGRAM_TEST=1 after configuring Telegram.",
+        os.getenv("FILO_RUN_TELEGRAM_TEST") != "1",
+        reason="Set FILO_RUN_TELEGRAM_TEST=1 after configuring Telegram.",
     ),
 ]
 
@@ -22,7 +22,7 @@ def test_configured_telegram_rich_stream() -> None:
     token = store.load_secret(TELEGRAM_SECRET)
     chat_id = store.load_app_state().telegram_allowed_user_id
     if token is None or chat_id is None:
-        pytest.skip("Run `thera setup` and configure Telegram first.")
+        pytest.skip("Run `filo setup` and configure Telegram first.")
 
     bot = TelegramBot(token.decode())
     draft_id = secrets.randbits(31) or 1

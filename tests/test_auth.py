@@ -12,10 +12,10 @@ from urllib.error import HTTPError
 import httpx
 import pytest
 
-import therapist.auth as auth
-from therapist.auth import CodexCredential
-from therapist.cli import main
-from therapist.memory import MemoryStore
+import filo.auth as auth
+from filo.auth import CodexCredential
+from filo.cli import main
+from filo.memory import MemoryStore
 
 
 def _token(account_id: str) -> str:
@@ -52,7 +52,7 @@ def test_device_login_saves_encrypted_tokens(tmp_path: Path, monkeypatch: object
     assert credential.account_id == "account-123"
     assert auth.load_credential(store) == credential
     assert "ABCD" in messages[0]
-    database = (tmp_path / "thera.db").read_bytes()
+    database = (tmp_path / "filo.db").read_bytes()
     assert b"refresh-secret" not in database
     assert access.encode() not in database
 
@@ -256,9 +256,9 @@ def test_codex_model_sends_current_token_through_auth_flow(tmp_path: Path) -> No
 _RACE = """
 import sys, time
 from pathlib import Path
-import therapist.auth as auth
-from therapist.cli import main
-from therapist.memory import MemoryStore
+import filo.auth as auth
+from filo.cli import main
+from filo.memory import MemoryStore
 
 directory, counter, go, access = sys.argv[1:5]
 

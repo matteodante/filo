@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from test_longitudinal_memory import _store
 
-from therapist.memory import MemoryKind, UserReport
+from filo.memory import MemoryKind, UserReport
 
 
 def test_multilingual_meaning_equivalent_retrieval(tmp_path) -> None:

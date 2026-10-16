@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 from test_longitudinal_memory import _store
 
-from therapist.memory import MemoryKind, UserReport
+from filo.memory import MemoryKind, UserReport
 
 
 def test_semantic_index_is_encrypted_reused_and_reindexed_after_correction(tmp_path) -> None:

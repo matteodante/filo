@@ -4,7 +4,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from therapist.evaluation import HumanReviewArtifact, SyntheticTurn
+from filo.evaluation import HumanReviewArtifact, SyntheticTurn
 
 
 def test_human_review_artifact_is_exportable_and_has_no_reasoning_field(tmp_path) -> None:

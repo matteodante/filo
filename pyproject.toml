@@ -1,5 +1,5 @@
 [project]
-name = "therapist-cli"
+name = "filo-cli"
 version = "0.3.1"
 description = "Open-source AI agent for reflection with encrypted longitudinal memory"
 authors = [{ name = "Matteo Dante" }]
@@ -33,23 +33,23 @@ dev = [
 ]
 
 [project.scripts]
-thera = "therapist.cli:main"
+filo = "filo.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/matteodante/therapist"
-Repository = "https://github.com/matteodante/therapist.git"
-Issues = "https://github.com/matteodante/therapist/issues"
-Documentation = "https://github.com/matteodante/therapist#readme"
+Homepage = "https://github.com/matteodante/filo"
+Repository = "https://github.com/matteodante/filo.git"
+Issues = "https://github.com/matteodante/filo/issues"
+Documentation = "https://github.com/matteodante/filo#readme"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/therapist"]
+packages = ["src/filo"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"protocols/transdiagnostic" = "therapist/protocols/transdiagnostic"
+"protocols/transdiagnostic" = "filo/protocols/transdiagnostic"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -57,7 +57,7 @@ markers = ["live: requires real provider credentials and network access"]
 
 [tool.coverage.run]
 branch = true
-source = ["therapist"]
+source = ["filo"]
 
 [tool.coverage.report]
 fail_under = 75

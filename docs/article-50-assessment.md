@@ -9,14 +9,14 @@ not legal advice or a compliance determination.
 
 ## Facts that are already clear
 
-Therapist is an AI system designed for a direct two-way exchange with natural persons. It produces
-textual conversation through a terminal or Telegram and is distributed under the Therapist name.
+Filo is an AI system designed for a direct two-way exchange with natural persons. It produces
+textual conversation through a terminal or Telegram and is distributed under the Filo name.
 It uses third-party or local models but adds its own instructions, memory, tools, validation, storage,
 and user interface.
 
 The current product already tells a user clearly, before conversation, that:
 
-- Therapist is an AI;
+- Filo is an AI;
 - it is not therapy, diagnosis, medical advice, emergency care, or human monitoring;
 - output can be wrong;
 - the selected remote provider and Telegram receive required content.
@@ -33,14 +33,14 @@ increase factual transparency; they are not a compliance determination.
 
 The Commission defines a provider as a person or body that develops or has an AI system developed
 and places it on the EU market or puts it into service under its own name or trademark. For release
-planning, Therapist conservatively assumes that its publisher may be the provider of the composed
+planning, Filo conservatively assumes that its publisher may be the provider of the composed
 system rather than only a distributor of upstream models.
 
 Article 2(12) does not create a general Article 50 safe harbor for free and open-source AI: its
 exclusion expressly does not cover systems that fall under Article 50. Free distribution and an
 open-source license therefore do not, by themselves, close this assessment.
 
-If Therapist is a provider:
+If Filo is a provider:
 
 - Article 50(1) interaction disclosure applies unless the AI nature is obvious; relying on that
   exception is unnecessary because explicit disclosure already exists.
@@ -60,7 +60,7 @@ rely on the “obvious” exception. For a source alpha released before the obli
 unresolved Article 50(2) marking method is tracked against the official transition dates rather than
 treated as a reason to withhold the repository or prerelease.
 
-Before a release on or after the applicable deadline, recheck whether Therapist is the relevant
+Before a release on or after the applicable deadline, recheck whether Filo is the relevant
 provider, whether a transition rule applies to that exact version, and which interoperable marking
 method is then required. Implement it where required or stop that release. Record the source, date,
 scope, rationale, and next review date.

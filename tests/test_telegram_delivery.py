@@ -19,8 +19,8 @@ import pytest
 from pydantic_ai import models
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 
-from therapist.chat import ChatSession
-from therapist.memory import (
+from filo.chat import ChatSession
+from filo.memory import (
     MemoryKind,
     MemoryMode,
     MemoryStore,
@@ -28,8 +28,8 @@ from therapist.memory import (
     TelegramDelivery,
     UserReport,
 )
-from therapist.protocol import ProtocolPack
-from therapist.telegram import CONSENT_VERSION, TelegramBot, TelegramChannel, TelegramError
+from filo.protocol import ProtocolPack
+from filo.telegram import CONSENT_VERSION, TelegramBot, TelegramChannel, TelegramError
 
 models.ALLOW_MODEL_REQUESTS = False
 USER_TEXT = "I work from home"
@@ -159,8 +159,8 @@ def _channel(path: Path, model_calls: list[str]) -> tuple[TelegramChannel, Memor
 def _run(
     path: Path, monkeypatch: pytest.MonkeyPatch, api: FakeBotApi
 ) -> tuple[list[str], MemoryStore]:
-    monkeypatch.setattr("therapist.telegram.urlopen", api)
-    monkeypatch.setattr("therapist.telegram.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("filo.telegram.urlopen", api)
+    monkeypatch.setattr("filo.telegram.time.sleep", lambda _seconds: None)
     model_calls: list[str] = []
     channel, store = _channel(path, model_calls)
     with pytest.raises(KeyboardInterrupt):
@@ -227,9 +227,9 @@ def test_crash_after_commit_does_not_rerun_model_after_restart(
                 raise SystemExit("process killed after the turn was committed")
             return super().__call__(request, timeout)
 
-    monkeypatch.setattr("therapist.telegram.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("filo.telegram.time.sleep", lambda _seconds: None)
     crashing = CrashingApi(_update())
-    monkeypatch.setattr("therapist.telegram.urlopen", crashing)
+    monkeypatch.setattr("filo.telegram.urlopen", crashing)
     first_calls: list[str] = []
     channel, store = _channel(tmp_path, first_calls)
     with pytest.raises(SystemExit):
@@ -252,7 +252,7 @@ def test_failed_outbox_write_rolls_back_turn_and_reports_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     api = FakeBotApi(_update())
-    monkeypatch.setattr("therapist.telegram.urlopen", api)
+    monkeypatch.setattr("filo.telegram.urlopen", api)
     model_calls: list[str] = []
     channel, store = _channel(tmp_path, model_calls)
     save = store.save_app_state
@@ -283,7 +283,7 @@ def test_rejected_updates_never_reach_the_model(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, variant: str
 ) -> None:
     api = FakeBotApi(_update())
-    monkeypatch.setattr("therapist.telegram.urlopen", api)
+    monkeypatch.setattr("filo.telegram.urlopen", api)
     model_calls: list[str] = []
     channel, store = _channel(tmp_path, model_calls)
     update = _update()
@@ -315,8 +315,8 @@ def _crash_after_commit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Memo
                 raise SystemExit("process killed after the turn was committed")
             return super().__call__(request, timeout)
 
-    monkeypatch.setattr("therapist.telegram.time.sleep", lambda _seconds: None)
-    monkeypatch.setattr("therapist.telegram.urlopen", CrashingApi(_update()))
+    monkeypatch.setattr("filo.telegram.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("filo.telegram.urlopen", CrashingApi(_update()))
     channel, store = _channel(tmp_path, [])
     with pytest.raises(SystemExit):
         channel.run()
@@ -376,8 +376,8 @@ def test_ephemeral_mode_keeps_queued_replies_off_disk(
     api = ObservingApi(_update(), polls=5)
     api.fail_at = ("sendRichMessage", 1)
     api.error = ERRORS["rate_limit"]
-    monkeypatch.setattr("therapist.telegram.urlopen", api)
-    monkeypatch.setattr("therapist.telegram.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("filo.telegram.urlopen", api)
+    monkeypatch.setattr("filo.telegram.time.sleep", lambda _seconds: None)
 
     with pytest.raises(KeyboardInterrupt):
         channel.run()
@@ -415,7 +415,7 @@ def test_ephemeral_restart_delivers_replies_queued_by_a_durable_run(
 ) -> None:
     _crash_after_commit(tmp_path, monkeypatch)
     restarted = FakeBotApi(_update())
-    monkeypatch.setattr("therapist.telegram.urlopen", restarted)
+    monkeypatch.setattr("filo.telegram.urlopen", restarted)
     model_calls: list[str] = []
     channel = _ephemeral_channel(tmp_path, model_calls)
 
@@ -435,7 +435,7 @@ def test_queued_replies_are_never_sent_to_an_unpaired_chat(
     state.telegram_allowed_user_id = 43  # setup paired a different account
     store.save_app_state(state)
     restarted = FakeBotApi(_update())
-    monkeypatch.setattr("therapist.telegram.urlopen", restarted)
+    monkeypatch.setattr("filo.telegram.urlopen", restarted)
     channel, store = _channel(tmp_path, [])
     channel.allowed_user_id = 43
 
@@ -524,7 +524,7 @@ def test_unchanged_pairing_still_honors_an_explicit_listener_override(tmp_path: 
 
     channel, _store = _channel(tmp_path, [])
     channel.bot = RecordingBot()  # type: ignore[assignment]
-    channel.allowed_user_id = 50  # thera telegram --allowed-user-id 50
+    channel.allowed_user_id = 50  # filo telegram --allowed-user-id 50
 
     channel.deliver_pending()
 

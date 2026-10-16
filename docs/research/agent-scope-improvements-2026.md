@@ -2,7 +2,7 @@
 
 > Historical design review. The evidence-bound memory, intervention lifecycle, semantic repair,
 > progressive formulation, and behavioral-eval recommendations below have since been implemented
-> or superseded. Consult `AGENTS.md`, `README.md`, and `src/therapist/chat.py` for the current
+> or superseded. Consult `AGENTS.md`, `README.md`, and `src/filo/chat.py` for the current
 > contract.
 > In particular, the clean-break runtime now uses independent origin, fit, lifecycle, and exact
 > evidence; `user_confirmed` and `WorkingContext` below are historical terms.
@@ -10,7 +10,7 @@
 ## Scope and conclusion
 
 This review covers the current bilingual, single-user CLI/Telegram agent, its longitudinal memory,
-and the transdiagnostic process in `AGENTS.md` and `src/therapist/chat.py`. It does not propose SaaS,
+and the transdiagnostic process in `AGENTS.md` and `src/filo/chat.py`. It does not propose SaaS,
 new channels, specialist treatment packs, diagnosis, or a larger agent architecture.
 
 The protocol already has a good conversational shape. The main weakness is that important clinical
@@ -26,7 +26,7 @@ observable behaviours and delivery principles; they do **not** validate autonomo
 
 ### 1. Make every durable formulation claim evidence-bound
 
-`TherapistReply.observations` currently becomes durable memory after the model call. Facts,
+`FiloReply.observations` currently becomes durable memory after the model call. Facts,
 preferences, and events are marked `user_confirmed` solely from their model-selected kind.
 Consolidation can then replace the entire `CaseFormulation`, whose fields are unreferenced strings.
 `proposed_focus` is also saved directly even though the protocol says the focus is negotiated.
