@@ -1,12 +1,12 @@
 # Maintainer AI literacy baseline
 
-This document records the minimum knowledge expected of anyone operating Therapist on behalf of the
+This document records the minimum knowledge expected of anyone operating Filo on behalf of the
 project or making release, protocol, provider, privacy, safety, or moderation decisions. It is a
 practical project control, not a certification or legal opinion.
 
 ## Product boundary
 
-Therapist is an experimental AI agent for adult self-reflection and organization of user-provided
+Filo is an experimental AI agent for adult self-reflection and organization of user-provided
 thoughts. It is not therapy, diagnosis, medical advice, clinical monitoring, or emergency care. It
 has not been clinically validated, and passing engineering evaluations does not establish safety or
 effectiveness.

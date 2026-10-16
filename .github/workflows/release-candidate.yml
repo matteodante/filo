@@ -32,10 +32,10 @@ jobs:
         run: |
           uv run ruff check .
           uv run ruff format --check .
-          uv run ty check src/therapist
+          uv run ty check src/filo
           uv run coverage run -m pytest -m "not live" -q
           uv run coverage report
-          uv run thera protocol validate
+          uv run filo protocol validate
           sh -n install.sh
           pwsh -NoProfile -Command '$null = [scriptblock]::Create((Get-Content -Raw install.ps1))'
           uv audit --locked
@@ -47,12 +47,12 @@ jobs:
         id: package
         run: |
           version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
-          sbom="dist/therapist-${version}.cdx.json"
+          sbom="dist/filo-${version}.cdx.json"
           uv export --locked --no-dev --format cyclonedx1.5 --preview-features sbom-export \
             --output-file "$sbom" >/dev/null
           jq -e --arg version "$version" \
             '.bomFormat == "CycloneDX" and .specVersion == "1.5" and
-             .metadata.component.name == "therapist-cli" and
+             .metadata.component.name == "filo-cli" and
              .metadata.component.version == $version and
              (.components | length > 0)' "$sbom" >/dev/null
           (
@@ -70,11 +70,11 @@ jobs:
           subject-path: |
             dist/*.whl
             dist/*.tar.gz
-          sbom-path: dist/therapist-${{ steps.package.outputs.version }}.cdx.json
+          sbom-path: dist/filo-${{ steps.package.outputs.version }}.cdx.json
       - name: Upload candidate artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: therapist-release-candidate-${{ github.sha }}
+          name: filo-release-candidate-${{ github.sha }}
           path: dist/
           if-no-files-found: error
           retention-days: 14

@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/matteodante/therapist/security/advisories/new
+    url: https://github.com/matteodante/filo/security/advisories/new
     about: Report vulnerabilities privately. Never include secrets or real conversations.
   - name: Support and data-handling rules
-    url: https://github.com/matteodante/therapist/blob/main/SUPPORT.md
+    url: https://github.com/matteodante/filo/blob/main/SUPPORT.md
     about: Read where to get project help and what must not be posted publicly.

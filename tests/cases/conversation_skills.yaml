@@ -1,4 +1,4 @@
-name: therapeutic_skill_contracts
+name: conversation_skill_contracts
 cases:
   - name: ROOT
     inputs:

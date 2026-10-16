@@ -55,7 +55,7 @@ opt-in regression aids; they are not clinical validation.
 Deterministic harness tests exercise:
 
 ```text
-load_therapeutic_skill
+load_skill
 retrieve_case_context
 record_user_reports
 record_hypothesis
@@ -111,22 +111,22 @@ evaluation, reviewer fields, and notes. It must never contain real user data.
 ```bash
 uv run pytest -m "not live"
 
-THERA_RUN_LIVE_TESTS=1 OPENAI_API_KEY=... \
+FILO_RUN_LIVE_TESTS=1 OPENAI_API_KEY=... \
   uv run pytest -m live
 
-THERA_RUN_CODEX_EVALS=1 \
+FILO_RUN_CODEX_EVALS=1 \
   uv run pytest tests/test_live_codex_memory.py -m live
 
-THERA_RUN_CODEX_SAFETY_EVALS=1 THERA_CODEX_SAFETY_EVAL_REPEAT=3 \
+FILO_RUN_CODEX_SAFETY_EVALS=1 FILO_CODEX_SAFETY_EVAL_REPEAT=3 \
   uv run pytest tests/test_live_codex_safety.py -m live
 
-THERA_RUN_CONVERSATION_EVALS=1 THERA_EVAL_MODEL=codex:gpt-5.6-sol \
+FILO_RUN_CONVERSATION_EVALS=1 FILO_EVAL_MODEL=codex:gpt-5.6-sol \
   uv run pytest tests/test_live_conversational_roleplays.py -m live
 ```
 
-`THERA_CONVERSATION_EVAL_CASES` optionally selects comma-separated scenario IDs for focused reruns.
-`THERA_PROTOCOL_PATH` optionally points the same harness at an extracted prior pack for comparison.
-`THERA_CODEX_SAFETY_CASES` optionally selects comma-separated safety scenario IDs for focused
+`FILO_CONVERSATION_EVAL_CASES` optionally selects comma-separated scenario IDs for focused reruns.
+`FILO_PROTOCOL_PATH` optionally points the same harness at an extracted prior pack for comparison.
+`FILO_CODEX_SAFETY_CASES` optionally selects comma-separated safety scenario IDs for focused
 reruns.
 
 Release evidence records provider/model, protocol commit, locale, repeat count, deterministic

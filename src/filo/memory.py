@@ -467,10 +467,10 @@ class MemoryStore:
             self._ephemeral_database = sqlite3.connect(":memory:", autocommit=False)
             self._ephemeral_database.execute("PRAGMA foreign_keys = ON")
         else:
-            self.directory = directory or Path.home() / ".therapist"
+            self.directory = directory or Path.home() / ".filo"
             self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
             os.chmod(self.directory, 0o700)
-            self.database_path = self.directory / "thera.db"
+            self.database_path = self.directory / "filo.db"
             encryption_key = self._load_or_create_key()
         self._cipher = Fernet(encryption_key)
         self._hash_key = encryption_key
@@ -2060,7 +2060,7 @@ class MemoryStore:
             }
         except Exception as error:
             raise MemoryError(
-                "Semantic memory is unavailable. Run `thera setup` and try again."
+                "Semantic memory is unavailable. Run `filo setup` and try again."
             ) from error
 
     def _delete_semantic_entities(self, entity_type: str, entity_ids: list[str]) -> None:

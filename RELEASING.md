@@ -1,6 +1,6 @@
 # Releasing
 
-Therapist releases are maintainer-controlled snapshots of an experimental, non-commercial,
+Filo releases are maintainer-controlled snapshots of an experimental, non-commercial,
 adult-only project. A release is not clinical validation, regulatory approval, or evidence that the
 software is safe or effective for mental-health treatment.
 
@@ -99,10 +99,10 @@ Run from a clean checkout of the exact candidate commit:
 uv sync --locked --all-groups --extra dev
 uv run ruff format --check .
 uv run ruff check .
-uv run ty check src/therapist
+uv run ty check src/filo
 uv run coverage run -m pytest -m "not live"
 uv run coverage report
-uv run thera protocol validate
+uv run filo protocol validate
 sh -n install.sh
 pwsh -NoProfile -Command '$null = [scriptblock]::Create((Get-Content -Raw install.ps1))'
 uv build
@@ -113,13 +113,13 @@ uv audit --locked
 Run the configured real-provider gates separately:
 
 ```bash
-THERA_RUN_CONVERSATION_EVALS=1 THERA_EVAL_MODEL=codex:gpt-5.6-sol \
+FILO_RUN_CONVERSATION_EVALS=1 FILO_EVAL_MODEL=codex:gpt-5.6-sol \
   uv run pytest tests/test_live_conversational_roleplays.py -m live
 
-THERA_RUN_CODEX_EVALS=1 \
+FILO_RUN_CODEX_EVALS=1 \
   uv run pytest tests/test_live_codex_memory.py -m live
 
-THERA_RUN_CODEX_SAFETY_EVALS=1 THERA_CODEX_SAFETY_EVAL_REPEAT=3 \
+FILO_RUN_CODEX_SAFETY_EVALS=1 FILO_CODEX_SAFETY_EVAL_REPEAT=3 \
   uv run pytest tests/test_live_codex_safety.py -m live
 ```
 
@@ -133,8 +133,8 @@ in a fresh isolated tool environment:
 ```bash
 shasum -a 256 dist/*
 uv tool install --force --python 3.12 dist/*.whl
-"$(uv tool dir --bin)/thera" protocol validate
-"$(uv tool dir --bin)/thera" doctor
+"$(uv tool dir --bin)/filo" protocol validate
+"$(uv tool dir --bin)/filo" doctor
 ```
 
 The manual `Release candidate` workflow repeats the offline gates from the exact selected `main`
@@ -147,8 +147,8 @@ gh workflow run release-candidate.yml --ref main
 gh run watch
 gh run download <run-id>
 gh attestation verify <artifact> \
-  --repo matteodante/therapist \
-  --signer-workflow matteodante/therapist/.github/workflows/release-candidate.yml
+  --repo matteodante/filo \
+  --signer-workflow matteodante/filo/.github/workflows/release-candidate.yml
 ```
 
 Treat the workflow artifact as the authoritative candidate bundle. The SBOM captures the locked

@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from therapist.memory import (
+from filo.memory import (
     AppState,
     CaseFormulation,
     ClaimCorrection,

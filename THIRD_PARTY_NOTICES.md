@@ -1,16 +1,16 @@
 # Third-party notices
 
-Therapist's original code, protocol text, documentation, and synthetic product screenshot are
+Filo's original code, protocol text, documentation, and synthetic product screenshot are
 licensed under `AGPL-3.0-or-later`. The items below remain under their owners' terms and are not
-relicensed by Therapist.
+relicensed by Filo.
 
 ## uv
 
 When `uv` is absent, the bootstrap installers download the official uv 0.11.31 platform archive
-directly from its immutable GitHub release. Therapist does not include or host the uv executable.
+directly from its immutable GitHub release. Filo does not include or host the uv executable.
 The archive and release checksum manifest are verified before installation.
 
-Therapist selects uv's MIT license option, verifies its text from uv's pinned source commit, and
+Filo selects uv's MIT license option, verifies its text from uv's pinned source commit, and
 installs the complete verified license next to the downloaded executable as `uv-LICENSE-MIT`.
 
 > MIT License
@@ -37,17 +37,17 @@ Upstream: <https://github.com/astral-sh/uv/tree/0.11.31>
 ## Local embedding model
 
 Setup downloads `Qwen/Qwen3-Embedding-0.6B` at commit
-`97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3`. The model is not included in Therapist's wheel or
+`97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3`. The model is not included in Filo's wheel or
 source distribution. Its official repository metadata identifies it as Apache-2.0, but the pinned
 snapshot does not contain a `LICENSE` or `NOTICE` file. Do not mirror or redistribute the model as
-part of Therapist without a separate licensing review.
+part of Filo without a separate licensing review.
 
 Upstream: <https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/tree/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3>
 
 ## Python dependencies
 
 Runtime dependencies are declared in `pyproject.toml`, resolved in `uv.lock`, and installed as
-separate upstream distributions. They are not vendored into Therapist's wheel. Each retains its own
+separate upstream distributions. They are not vendored into Filo's wheel. Each retains its own
 license and notices. A self-contained binary, container, offline environment, or mirrored package
 set requires a new notice audit against the exact platform artifacts.
 

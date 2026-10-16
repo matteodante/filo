@@ -13,5 +13,5 @@ before waiting for motivation, one small feasible activity, planning, observatio
 sources are condition- and delivery-specific and assume self-help support or trained helpers; they
 do not justify treating illness or genuine exhaustion as avoidance or validate AI delivery. One
 activity at a time, exact consent, and stopping after increased distress, shame, or exhaustion are
-conservative Therapist constraints. WHO and NICE reuse constraints apply; no scripts, schedules, or
+conservative Filo constraints. WHO and NICE reuse constraints apply; no scripts, schedules, or
 recommendation wording are copied.

@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 from pydantic_ai.providers.openai import OpenAIProvider
 
-from therapist.memory import MemoryStore
+from filo.memory import MemoryStore
 
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 AUTH_BASE_URL = "https://auth.openai.com"
@@ -119,7 +119,7 @@ def logout_codex(store: MemoryStore) -> None:
 def codex_model(store: MemoryStore, model_name: str) -> OpenAIResponsesModel:
     credential = load_credential(store)
     if credential is None:
-        raise AuthError("Not logged in. Run `thera auth login` first.")
+        raise AuthError("Not logged in. Run `filo auth login` first.")
     if credential.expires_at <= int(time.time()) + 60:
         credential = _refresh(credential.refresh_token)
         save_credential(store, credential)
@@ -130,7 +130,7 @@ def codex_model(store: MemoryStore, model_name: str) -> OpenAIResponsesModel:
         extra_headers={
             "OpenAI-Beta": "responses=experimental",
             "chatgpt-account-id": credential.account_id,
-            "originator": "therapist-cli",
+            "originator": "filo-cli",
         },
     )
     return OpenAIResponsesModel(
@@ -206,7 +206,7 @@ def _request_json(url: str, payload: dict[str, object], *, form: bool = False) -
     request = Request(
         url,
         data=data,
-        headers={"Content-Type": content_type, "User-Agent": "therapist-cli/0.1"},
+        headers={"Content-Type": content_type, "User-Agent": "filo-cli/0.1"},
         method="POST",
     )
     try:

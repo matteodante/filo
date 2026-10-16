@@ -1,9 +1,9 @@
-id: therapist.transdiagnostic
+id: filo.transdiagnostic
 status: experimental
 locales: [it-IT, en-US]
 population: adults-18-plus
 intended_use: Adult self-reflection and organization of user-provided thoughts; not diagnosis, treatment, monitoring, or emergency care.
-root_sha256: 2e5a039d45f4ca2879ac8fc0ba4352ac905d8bdfe3bd236c4ceda473ae902560
+root_sha256: 71e9d19e83601919096ab2d087b01cfa1b2921e8cf8cbe26fedb130eaf3037cd
 skills:
   - id: stay-with-emotion
     path: skills/stay-with-emotion/SKILL.md
@@ -97,13 +97,13 @@ skills:
     locales: [it-IT, en-US]
 references:
   - path: references/sources.md
-    sha256: e40d08f448eb75b73db21bb98cb108de3074413f83221b47c8e6e7a8f1f68ce7
+    sha256: 19749bbfc97acc969b9e8486ca3f0e727f313bd5659d44f0abe95b0a6a46a16f
     url: https://www.who.int/publications/i/item/9789240105935
     revision: "2025-07-10"
     verified_at: 2026-07-24
     license: links-and-original-summary-only
   - path: skills/stay-with-emotion/references/basis.md
-    sha256: 444d952a9c084cd20aec5d0aedf8feb7cd4c043dad499e1638e5c36a09488cc4
+    sha256: 679c21586c8a93634360d9308b7b4b1a1ca8b8f8f1f9c2655fa847d720eceaed
     url: https://www.who.int/publications/i/item/9789240105935
     revision: "2025-08-25"
     verified_at: 2026-08-04
@@ -121,19 +121,19 @@ references:
     verified_at: 2026-08-04
     license: links-and-original-summary-only
   - path: skills/interrupt-rumination/references/basis.md
-    sha256: 03860dcb3f512a7db1c541092124b92a25bf657cf983a1c947788d4d4d7b67fe
+    sha256: 2bb8478a0296f7c222e95f40200c2dbcebe692987830ef2ebab6d720a619319c
     url: https://www.cci.health.wa.gov.au/resources/looking-after-yourself/worry-and-rumination
     revision: "2023-07-10"
     verified_at: 2026-08-04
     license: links-and-original-summary-only
   - path: skills/restore-activity/references/basis.md
-    sha256: c3fb1e7de52f01fd8ee9c6326213bdf9aad2b7256bd08c32a34c3b58fb707bd0
+    sha256: 9fea18cd2583e8569ca2210b08e89f2215d0c56a0ba32f9b3e77898f921f54fd
     url: https://www.who.int/publications/i/item/B09738
     revision: "2026-06-01"
     verified_at: 2026-08-04
     license: links-and-original-summary-only
   - path: skills/establish-contract-and-preferences/references/basis.md
-    sha256: e68318b0727f2f4c0162446da60845dad4d5dd5cd0bc0ff887a18fe5a0529c3d
+    sha256: 13173228e988bc6041975a09b2d5dd8b218b1ded64ec4a796804840e321720fb
     url: https://www.who.int/publications/i/item/9789240105935
     revision: "2025-07-10"
     verified_at: 2026-07-24
@@ -187,7 +187,7 @@ references:
     verified_at: 2026-07-24
     license: links-and-original-summary-only
   - path: skills/support-referral-and-closure/references/basis.md
-    sha256: 417117efe6bcbb5cf25ece82bb5e61c136528512fb976765ab3671088919bc85
+    sha256: 51f865bd3188a5df817f2444e8c250286f43bfabfadf655bf6df8f5d502cdab5
     url: https://www.psy.it/lo_psicologo/codice_deontologico.html
     revision: current-page
     verified_at: 2026-07-24

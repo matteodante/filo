@@ -1,6 +1,6 @@
 # Governance
 
-Therapist is currently a single-maintainer project. Matteo Dante is the project maintainer and has
+Filo is currently a single-maintainer project. Matteo Dante is the project maintainer and has
 final responsibility for scope, releases, security response, repository access, and protocol
 changes.
 

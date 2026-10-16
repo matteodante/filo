@@ -5,7 +5,7 @@ compliance.
 
 ## Identity, purpose, and operator
 
-Therapist is an AI for adults privately organizing and reflecting on user-provided thoughts. It is
+Filo is an AI for adults privately organizing and reflecting on user-provided thoughts. It is
 not a human, psychologist, psychotherapist, clinical service, emergency service, or human-monitored
 channel. It does not diagnose or prescribe, and its output can be wrong.
 
@@ -15,10 +15,10 @@ use does not send conversations, memory, or credentials to the repository mainta
 
 ## Local storage
 
-By default `~/.therapist/thera.db` holds encrypted payloads for configuration, transcripts,
+By default `~/.filo/filo.db` holds encrypted payloads for configuration, transcripts,
 successful model history, sessions, claims and evidence, case formulation, process preferences,
 interventions and unwanted effects, support choices, and the derived semantic index.
-`~/.therapist/memory.key` holds the Fernet key. Directory and key permissions are restricted where
+`~/.filo/memory.key` holds the Fernet key. Directory and key permissions are restricted where
 the operating system supports them.
 
 The pinned multilingual embedding model is downloaded from Hugging Face and performs document and
@@ -31,7 +31,7 @@ database and key.
 
 ## Memory modes
 
-The current mode is shown by `thera privacy show`, Telegram `/status`, and Telegram `/privacy`.
+The current mode is shown by `filo privacy show`, Telegram `/status`, and Telegram `/privacy`.
 
 - `standard` (default): encrypted transcript/history, claims, formulation, preferences,
   interventions, support choices, and semantic index.
@@ -64,13 +64,13 @@ history is persisted.
 ## Retention, export, and deletion
 
 Retention defaults to indefinite (`None`) for raw messages, session summaries, and stale
-hypotheses. `thera retention set`, `dry-run`, and `apply` configure or execute local retention;
+hypotheses. `filo retention set`, `dry-run`, and `apply` configure or execute local retention;
 policy is also applied at conversation startup and before retrieval when configured. There is no
 background worker.
 
-`thera delete-session <id>`, `thera delete-before <date>`, claim forgetting, corrections, retention,
-and `thera delete-data` propagate to derived semantic entries, formulation links, summaries,
-excerpts, intervention content, and pending IDs where applicable. `thera export` returns decrypted
+`filo delete-session <id>`, `filo delete-before <date>`, claim forgetting, corrections, retention,
+and `filo delete-data` propagate to derived semantic entries, formulation links, summaries,
+excerpts, intervention content, and pending IDs where applicable. `filo export` returns decrypted
 JSON; a file export is plaintext and must be protected.
 
 Local deletion cannot delete data already held by a model provider or Telegram, or copies in
@@ -87,4 +87,4 @@ store after preserving any export you need.
 
 Do not put conversations, databases, exports, health information, credentials, or identifiers in a
 GitHub issue. Use synthetic reproductions. Report vulnerabilities through
-[GitHub private vulnerability reporting](https://github.com/matteodante/therapist/security/advisories/new).
+[GitHub private vulnerability reporting](https://github.com/matteodante/filo/security/advisories/new).

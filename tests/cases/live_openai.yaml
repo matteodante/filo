@@ -1,4 +1,4 @@
-name: live_openai_therapeutic_process
+name: live_openai_conversation_process
 cases:
   - name: LIVE-001
     metadata:

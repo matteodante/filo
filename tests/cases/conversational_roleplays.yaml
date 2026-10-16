@@ -1,8 +1,8 @@
 name: conversational_process_roleplays
 metadata:
   synthetic_only: true
-  repeat_env: THERA_CONVERSATION_EVAL_REPEAT
-  artifact_schema: therapist.evaluation.HumanReviewArtifact
+  repeat_env: FILO_CONVERSATION_EVAL_REPEAT
+  artifact_schema: filo.evaluation.HumanReviewArtifact
 cases:
   - id: ROLEPLAY-01
     locale: en-US

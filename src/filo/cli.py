@@ -30,22 +30,22 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from rich.console import Console
 from rich.live import Live
 
-from therapist import telegram_service
-from therapist.auth import (
+from filo import telegram_service
+from filo.auth import (
     AuthError,
     codex_model,
     load_credential,
     login_codex,
     logout_codex,
 )
-from therapist.chat import (
+from filo.chat import (
     MAX_CONTEXT_WINDOW_TOKENS,
     MIN_CONTEXT_WINDOW_TOKENS,
     ChatSession,
     TurnStreamEvent,
     TurnStreamKind,
 )
-from therapist.memory import (
+from filo.memory import (
     ClaimCorrection,
     ClaimFit,
     HypothesisReview,
@@ -53,11 +53,11 @@ from therapist.memory import (
     MemoryStore,
     RetentionPolicy,
 )
-from therapist.memory import (
+from filo.memory import (
     MemoryError as MemoryStoreError,
 )
-from therapist.protocol import ProtocolError, ProtocolPack
-from therapist.telegram import TelegramBot, TelegramChannel, TelegramError
+from filo.protocol import ProtocolError, ProtocolPack
+from filo.telegram import TelegramBot, TelegramChannel, TelegramError
 
 PACKAGE_PROTOCOL = Path(__file__).resolve().parent / "protocols" / "transdiagnostic"
 REPOSITORY_PROTOCOL = Path(__file__).resolve().parents[2] / "protocols" / "transdiagnostic"
@@ -76,24 +76,24 @@ PROVIDER_SECRETS = {
     "openrouter:": ("openrouter_api_key", "OPENROUTER_API_KEY", "OpenRouter API key"),
 }
 LOCAL_PREFIX = "local:"
-LOCAL_BASE_URL_ENV = "THERA_LOCAL_BASE_URL"
+LOCAL_BASE_URL_ENV = "FILO_LOCAL_BASE_URL"
 LOCAL_BASE_URL_DEFAULT = "http://localhost:8080/v1"
-LOCAL_API_KEY_ENV = "THERA_LOCAL_API_KEY"
+LOCAL_API_KEY_ENV = "FILO_LOCAL_API_KEY"
 LOCAL_REASONING_EFFORT = "xhigh"
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="thera", description="Experimental AI conversation CLI")
+    parser = argparse.ArgumentParser(prog="filo", description="Experimental AI conversation CLI")
     parser.add_argument(
         "--data-dir",
         type=Path,
-        default=Path(os.getenv("THERA_DATA_DIR", Path.home() / ".therapist")),
-        help="Encrypted local memory directory (default: ~/.therapist)",
+        default=Path(os.getenv("FILO_DATA_DIR", Path.home() / ".filo")),
+        help="Encrypted local memory directory (default: ~/.filo)",
     )
     parser.add_argument(
         "--protocol",
         type=Path,
-        default=Path(os.getenv("THERA_PROTOCOL_PATH", DEFAULT_PROTOCOL)),
+        default=Path(os.getenv("FILO_PROTOCOL_PATH", DEFAULT_PROTOCOL)),
         help="Protocol pack directory",
     )
     commands = parser.add_subparsers(dest="command", required=True)
@@ -238,7 +238,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
     if args.command == "memory" and args.memory_command == "model":
         return _memory_model(args)
 
-    database_exists = (args.data_dir / "thera.db").exists()
+    database_exists = (args.data_dir / "filo.db").exists()
     if args.command == "telegram-service":
         return _telegram_service(args, database_exists)
     if args.command == "doctor":
@@ -257,7 +257,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
         semantic_configuration = (
             "configured"
             if state and state.embedding_model == DEFAULT_EMBEDDING_MODEL
-            else "run `thera setup`"
+            else "run `filo setup`"
         )
         _, cached_model, cache_warnings = _embedding_cache_info()
         semantic_model = (
@@ -307,7 +307,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
     if args.command in {"chat", "telegram"}:
         state = store.load_app_state()
         if state.embedding_model != DEFAULT_EMBEDDING_MODEL:
-            print("Semantic memory is not configured. Run `thera setup`.")
+            print("Semantic memory is not configured. Run `filo setup`.")
             return 2
         try:
             embedder = _default_embedder(local_files_only=True)
@@ -321,14 +321,14 @@ def _main(argv: Sequence[str] | None = None) -> int:
         except Exception as error:
             print(
                 f"Semantic memory is unavailable ({type(error).__name__}). "
-                "Run `thera memory model install`."
+                "Run `filo memory model install`."
             )
             return 2
         selected_model = args.model or state.default_model
         if not selected_model and load_credential(store):
             selected_model = DEFAULT_CODEX_MODEL
         if not selected_model:
-            print("Missing model. Run `thera setup` or pass --model.")
+            print("Missing model. Run `filo setup` or pass --model.")
             return 2
         _load_provider_secret(store, selected_model)
         locale = args.locale or state.default_locale or "en-US"
@@ -378,11 +378,11 @@ def _main(argv: Sequence[str] | None = None) -> int:
         token_payload = store.load_secret(TELEGRAM_SECRET)
         token = token_payload.decode() if token_payload else ""
         if not token:
-            print("Telegram is not configured. Run `thera setup`.")
+            print("Telegram is not configured. Run `filo setup`.")
             return 2
         allowed_user_id = args.allowed_user_id or state.telegram_allowed_user_id
         if not allowed_user_id or allowed_user_id <= 0:
-            print("Telegram is not configured. Run `thera setup`.")
+            print("Telegram is not configured. Run `filo setup`.")
             return 2
         try:
             TelegramChannel(
@@ -444,7 +444,7 @@ def _telegram_service(args: argparse.Namespace, database_exists: bool) -> int:
             print("Telegram background service restarted.")
             return 0
         if not database_exists:
-            print("Telegram is not configured. Run `thera setup` first.")
+            print("Telegram is not configured. Run `filo setup` first.")
             return 2
         store = MemoryStore(args.data_dir)
         state = store.load_app_state()
@@ -453,11 +453,11 @@ def _telegram_service(args: argparse.Namespace, database_exists: bool) -> int:
             or not state.default_model
             or state.embedding_model != DEFAULT_EMBEDDING_MODEL
         ):
-            print("Telegram is not fully configured. Run `thera setup` first.")
+            print("Telegram is not fully configured. Run `filo setup` first.")
             return 2
         path = _install_telegram_service(args)
         print(f"Telegram background service installed and started: {path}")
-        print("Use `thera telegram-service status` to inspect it.")
+        print("Use `filo telegram-service status` to inspect it.")
         return 0
     except telegram_service.TelegramServiceError as error:
         print(f"Telegram service error: {error}")
@@ -468,7 +468,7 @@ def _install_telegram_service(args: argparse.Namespace) -> Path | str:
     executable = Path(sys.argv[0]).resolve()
     if not executable.is_file() or not os.access(executable, os.X_OK):
         raise telegram_service.TelegramServiceError(
-            "Cannot locate the `thera` executable. Install the project and try again."
+            "Cannot locate the `filo` executable. Install the project and try again."
         )
     command = [
         str(executable),
@@ -603,11 +603,11 @@ def _setup(store: MemoryStore, args: argparse.Namespace) -> int:
             path = _install_telegram_service(args)
         except telegram_service.TelegramServiceError as error:
             print(f"Telegram service error: {error}")
-            print("Configuration was saved; retry with `thera telegram-service install`.")
+            print("Configuration was saved; retry with `filo telegram-service install`.")
             return 2
         print(f"Telegram background service installed and started: {path}")
     if model.startswith("codex:") and not load_credential(store):
-        print("Next: run `thera auth login` for ChatGPT Codex access.")
+        print("Next: run `filo auth login` for ChatGPT Codex access.")
     return 0
 
 
@@ -954,7 +954,7 @@ def _memory_model(args: argparse.Namespace) -> int:
     if args.model_command == "install":
         if not _prepare_semantic_memory():
             return 2
-        if (args.data_dir / "thera.db").exists():
+        if (args.data_dir / "filo.db").exists():
             store = MemoryStore(args.data_dir)
             state = store.load_app_state()
             state.embedding_model = DEFAULT_EMBEDDING_MODEL
@@ -1109,7 +1109,7 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
                 (live_display.console.print if live_display else print)(event.text)
                 return
             if live_display:
-                live_display.update(f"thera> {event.text}", refresh=True)
+                live_display.update(f"filo> {event.text}", refresh=True)
 
         if live:
             live.start()
@@ -1124,7 +1124,7 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
         if failure is not None:
             print(f"Model error: {failure}")
             continue
-        print(f"thera> {turn.text}")
+        print(f"filo> {turn.text}")
         if turn.notice:
             print(f"notice> {turn.notice}")
 
@@ -1132,9 +1132,9 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
 def _chat_tui(session: ChatSession, store: MemoryStore) -> int:
     if not _ensure_chat_consent(store):
         return 1
-    from therapist.tui import TherapistApp
+    from filo.tui import FiloApp
 
-    app = TherapistApp(
+    app = FiloApp(
         session,
         store,
         lambda command, output: _chat_command(
@@ -1155,9 +1155,9 @@ def _uses_tui(args: argparse.Namespace) -> bool:
 def _ensure_chat_consent(store: MemoryStore) -> bool:
     state = store.load_app_state()
     consent = "I UNDERSTAND"
-    if state.consent_version != "alpha-3":
+    if state.consent_version != "alpha-4":
         notice = (
-            "Therapist is experimental AI for adults using it privately for self-reflection. "
+            "Filo is experimental AI for adults using it privately for self-reflection. "
             "It is not therapy, diagnosis, medical advice, emergency care, or human monitoring, "
             "and its output can be wrong. A remote model provider receives messages, successful "
             "session history, a separate bounded case-data envelope, and any dynamically loaded "
@@ -1171,7 +1171,7 @@ def _ensure_chat_consent(store: MemoryStore) -> bool:
         if input(f"Type {consent} to continue: ").strip() != consent:
             print("Consent not recorded.")
             return False
-        state.consent_version = "alpha-3"
+        state.consent_version = "alpha-4"
         store.save_app_state(state)
     return True
 

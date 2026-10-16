@@ -9,6 +9,6 @@
 The skill is an original abstraction of close listening, tentative emotion naming, correction by
 the person, validation, bodily noticing, and allowing difficult feelings without immediate
 suppression. The pacing, the possibility that another feeling is present, and the decision to defer
-technique are conservative Therapist conversation design rather than universal findings. The
+technique are conservative Filo conversation design rather than universal findings. The
 sources assume human-helping or self-help contexts and do not validate unsupervised AI delivery.
 WHO reuse constraints apply; no exercise, script, or illustration is copied.

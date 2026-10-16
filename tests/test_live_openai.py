@@ -10,16 +10,16 @@ from pydantic_ai import models
 from pydantic_evals import Dataset
 from pydantic_evals.evaluators import Evaluator, EvaluatorContext, LLMJudge
 
-from therapist.chat import ChatSession
-from therapist.memory import ClaimFit, ClaimOrigin, MemoryKind, MemoryStore
-from therapist.protocol import ProtocolPack
+from filo.chat import ChatSession
+from filo.memory import ClaimFit, ClaimOrigin, MemoryKind, MemoryStore
+from filo.protocol import ProtocolPack
 
 CASES_PATH = Path(__file__).parent / "cases" / "live_openai.yaml"
 pytestmark = [
     pytest.mark.live,
     pytest.mark.skipif(
-        os.getenv("THERA_RUN_LIVE_TESTS") != "1" or not os.getenv("OPENAI_API_KEY"),
-        reason="Set THERA_RUN_LIVE_TESTS=1 and OPENAI_API_KEY to run live provider tests.",
+        os.getenv("FILO_RUN_LIVE_TESTS") != "1" or not os.getenv("OPENAI_API_KEY"),
+        reason="Set FILO_RUN_LIVE_TESTS=1 and OPENAI_API_KEY to run live provider tests.",
     ),
 ]
 
@@ -68,7 +68,7 @@ def test_real_openai_longitudinal_dataset(tmp_path: Path) -> None:
             for index, message in enumerate(inputs["initial_messages"]):
                 turn = chat.respond(message, started_at + timedelta(minutes=index * 20))
                 replies.append(turn.text)
-                transcript.append(f"USER: {message}\nTHERAPIST: {turn.text}")
+                transcript.append(f"USER: {message}\nASSISTANT: {turn.text}")
             closed = chat.end(started_at + timedelta(minutes=90))
 
             restarted = MemoryStore(Path(data_directory))
@@ -81,11 +81,11 @@ def test_real_openai_longitudinal_dataset(tmp_path: Path) -> None:
                     started_at + timedelta(days=inputs["return_after_days"], minutes=index * 20),
                 )
                 replies.append(turn.text)
-                transcript.append(f"USER: {message}\nTHERAPIST: {turn.text}")
+                transcript.append(f"USER: {message}\nASSISTANT: {turn.text}")
             items = restarted.list_claims()
             context = restarted.retrieve_case_context(inputs["return_messages"][-1])
             return {
-                "all_replies_non_empty": all("THERA: \n" not in turn for turn in transcript),
+                "all_replies_non_empty": all("FILO: \n" not in turn for turn in transcript),
                 "session_consolidated": closed is not None and bool(closed.summary.strip()),
                 "consolidation_error": None if closed is None else closed.consolidation_error,
                 "formulation_created": bool(
@@ -117,7 +117,7 @@ def test_real_openai_longitudinal_dataset(tmp_path: Path) -> None:
             LLMJudge(
                 model="openai:gpt-5.2",
                 rubric=(
-                    "Pass only if the synthetic transcript shows a credible, natural therapeutic "
+                    "Pass only if the synthetic transcript shows a credible, natural reflective "
                     "process, not generic coaching or a repeated script. The assistant must: "
                     "(1) respond to the user's immediate meaning before advice, without routinely "
                     "paraphrasing it; (2) explore concrete experience when it adds value, without "
@@ -160,7 +160,7 @@ def test_real_openai_longitudinal_dataset(tmp_path: Path) -> None:
     with models.override_allow_model_requests(True):
         report = dataset.evaluate_sync(
             run_case,
-            repeat=int(os.getenv("THERA_LIVE_REPEAT", "3")),
+            repeat=int(os.getenv("FILO_LIVE_REPEAT", "3")),
             progress=False,
         )
 
