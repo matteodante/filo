@@ -45,8 +45,10 @@ from filo.chat import (
     MAX_REQUEST_OUTPUT_TOKENS,
     MIN_CONTEXT_WINDOW_TOKENS,
     ChatSession,
+    MemoryWriting,
     TurnStreamEvent,
     TurnStreamKind,
+    crisis_resources,
 )
 from filo.memory import (
     ClaimCorrection,
@@ -60,12 +62,11 @@ from filo.memory import (
     MemoryError as MemoryStoreError,
 )
 from filo.protocol import ProtocolError, ProtocolPack
-from filo.telegram import TelegramBot, TelegramChannel, TelegramError
+from filo.telegram import TELEGRAM_SECRET, TelegramBot, TelegramChannel, TelegramError
 
 PACKAGE_PROTOCOL = Path(__file__).resolve().parent / "protocols" / "transdiagnostic"
 REPOSITORY_PROTOCOL = Path(__file__).resolve().parents[2] / "protocols" / "transdiagnostic"
 DEFAULT_PROTOCOL = PACKAGE_PROTOCOL if PACKAGE_PROTOCOL.is_dir() else REPOSITORY_PROTOCOL
-TELEGRAM_SECRET = "telegram_bot_token"
 DEFAULT_CODEX_MODEL = "codex:gpt-5.6-sol"
 DEFAULT_EMBEDDING_REPO = "Qwen/Qwen3-Embedding-0.6B"
 DEFAULT_EMBEDDING_REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
@@ -109,6 +110,13 @@ def build_parser() -> argparse.ArgumentParser:
     chat.add_argument("--context-window-tokens", type=_context_window_tokens)
     chat.add_argument("--memory-mode", type=_memory_mode_arg, choices=tuple(MemoryMode))
     chat.add_argument(
+        "--memory-writing",
+        type=MemoryWriting,
+        choices=tuple(MemoryWriting),
+        default=MemoryWriting.INLINE,
+        help="Experimental: who records direct user reports (default: inline)",
+    )
+    chat.add_argument(
         "--plain",
         action="store_true",
         help="Use the line-oriented interface instead of the full-screen TUI",
@@ -120,6 +128,13 @@ def build_parser() -> argparse.ArgumentParser:
     telegram.add_argument("--allowed-user-id", type=int)
     telegram.add_argument("--context-window-tokens", type=_context_window_tokens)
     telegram.add_argument("--memory-mode", type=_memory_mode_arg, choices=tuple(MemoryMode))
+    telegram.add_argument(
+        "--memory-writing",
+        type=MemoryWriting,
+        choices=tuple(MemoryWriting),
+        default=MemoryWriting.INLINE,
+        help="Experimental: who records direct user reports (default: inline)",
+    )
 
     service = commands.add_parser(
         "telegram-service",
@@ -370,6 +385,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
                 locale,
                 context_window_tokens=context_window_tokens,
                 memory_mode=memory_mode,
+                memory_writing=args.memory_writing,
             )
         except ValueError as error:
             print(f"Context configuration error: {error}")
@@ -498,6 +514,7 @@ def _install_telegram_service(args: argparse.Namespace) -> Path | str:
 
 def _setup(store: MemoryStore, args: argparse.Namespace) -> int:
     state = store.load_app_state()
+    loaded = state.model_copy(deep=True)
     install_background = False
     try:
         model = _select_model()
@@ -596,7 +613,14 @@ def _setup(store: MemoryStore, args: argparse.Namespace) -> int:
                 store.save_secret(*provider_secret)
             if token_payload:
                 store.save_secret(TELEGRAM_SECRET, token_payload)
-            store.save_app_state(state)
+            # Setup can sit at a prompt for minutes while a listener keeps
+            # writing its offset and consent, so only the fields setup changed
+            # are applied to the state as it is now.
+            current = store.load_app_state()
+            for field in type(state).model_fields:
+                if getattr(state, field) != getattr(loaded, field):
+                    setattr(current, field, getattr(state, field))
+            store.save_app_state(current)
     except (EOFError, KeyboardInterrupt):
         print("\nSetup cancelled.")
         return 1
@@ -1082,12 +1106,13 @@ def _memory(args: argparse.Namespace, store: MemoryStore) -> int:
 
 
 def _chat(session: ChatSession, store: MemoryStore) -> int:
-    if not _ensure_chat_consent(store):
+    if not _ensure_chat_consent(store, session.locale):
         return 1
+    _extract_reports(session)
 
     print("Commands: /case, /memory, /sessions [id], /interventions,")
     print("          /correct <id> <text>,")
-    print("          /forget <id>, /end, /help, /quit")
+    print("          /forget <id>, /crisis, /end, /help, /quit")
     while True:
         try:
             user_text = input("you> ").strip()
@@ -1139,15 +1164,26 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
                 live.stop()
         if failure is not None:
             print(f"Model error: {failure}")
+            print("If you may be in danger, /crisis shows emergency resources.")
             continue
         print(f"filo> {turn.text}")
         if turn.notice:
             print(f"notice> {turn.notice}")
+        _extract_reports(session)
+
+
+def _extract_reports(session: ChatSession) -> None:
+    """Record split-arm reports; a failure keeps its marker and never ends the chat."""
+    try:
+        session.extract_pending()
+    except Exception as error:  # Extraction is best effort; its marker is retried later.
+        print(f"Memory extraction error: {type(error).__name__}")
 
 
 def _chat_tui(session: ChatSession, store: MemoryStore) -> int:
-    if not _ensure_chat_consent(store):
+    if not _ensure_chat_consent(store, session.locale):
         return 1
+    _extract_reports(session)
     from filo.tui import FiloApp
 
     app = FiloApp(
@@ -1168,7 +1204,7 @@ def _uses_tui(args: argparse.Namespace) -> bool:
     return not args.plain and sys.stdin.isatty() and sys.stdout.isatty()
 
 
-def _ensure_chat_consent(store: MemoryStore) -> bool:
+def _ensure_chat_consent(store: MemoryStore, locale: str = "en-US") -> bool:
     state = store.load_app_state()
     consent = "I UNDERSTAND"
     if state.consent_version != "alpha-4":
@@ -1184,6 +1220,8 @@ def _ensure_chat_consent(store: MemoryStore) -> bool:
             "By continuing, you confirm that you are at least 18 and accept these data flows."
         )
         print(notice)
+        # Emergency resources never wait behind consent, as in Telegram.
+        print(crisis_resources(locale))
         if input(f"Type {consent} to continue: ").strip() != consent:
             print("Consent not recorded.")
             return False
@@ -1204,7 +1242,9 @@ def _chat_command(
     try:
         if name == "/help":
             output("/case /memory /sessions [id] /correct <id> <text>")
-            output("/interventions /forget <id> /end /quit")
+            output("/interventions /forget <id> /crisis /end /quit")
+        elif name == "/crisis":
+            output(crisis_resources(session.locale))
         elif name == "/case":
             output(store.load_formulation().model_dump_json(indent=2))
         elif name == "/memory":

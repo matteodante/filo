@@ -91,6 +91,10 @@ Retrieval combines lexical overlap, local multilingual embeddings, recency, focu
 interventions, process preferences, conflicts, relevant sessions, and concrete excerpts. Results are
 bounded as complete JSON records. Missing embeddings fail closed.
 
+`--memory-writing split` is an experimental alternative under evaluation: instead of the
+conversation agent, one extra model call after each delivered reply records what you reported,
+under the same exact-evidence rules. `inline` remains the default.
+
 ## Privacy modes and retention
 
 ```bash
@@ -104,7 +108,8 @@ filo privacy set-default ephemeral
 - `standard`: encrypted transcript/history plus all structured and semantic state.
 - `transcript-only`: encrypted transcript/history, with no new claims, formulation mutations,
   intervention records, or support choices.
-- `ephemeral`: process memory only; nothing is written to disk.
+- `ephemeral`: process memory only; no conversation content is written to disk (Telegram still saves
+  its update position).
 
 Changing mode does not delete earlier data. Retention is disabled by default and can be configured
 and applied explicitly:
@@ -126,8 +131,8 @@ copies. See [PRIVACY.md](PRIVACY.md).
 
 ```text
 filo setup
-filo chat [--plain] [--memory-mode standard|transcript-only|ephemeral]
-filo telegram [--memory-mode standard|transcript-only|ephemeral]
+filo chat [--plain] [--memory-mode standard|transcript-only|ephemeral] [--memory-writing inline|split]
+filo telegram [--memory-mode standard|transcript-only|ephemeral] [--memory-writing inline|split]
 filo telegram-service install|status|restart|uninstall
 filo auth login|status|logout
 filo memory show|case|sessions|interventions
@@ -153,6 +158,11 @@ reachable, so conversations can stay on your own hardware; set `FILO_LOCAL_BASE_
 server is not on `http://localhost:8080/v1`. That path carries no support claim, and the remaining
 PydanticAI providers stay technical escape hatches. Telegram checks private-chat type and numeric
 allowlist and keeps configuration secrets out of process arguments.
+
+Type `/crisis` in chat or in the Telegram bot for emergency and crisis resources (Italy/EU and US)
+in your locale. It is static text with no model call, so it works when the provider is down, and it
+is not archived. The same text appears at the consent prompt, and in Telegram `/crisis` works
+before consent.
 
 ## Clean-break storage
 

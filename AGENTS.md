@@ -111,7 +111,8 @@ Known gaps in the current state of the repository. Close them or record why they
 let them accumulate silently.
 
 - Forward schema migrations are required from the Filo store onward, but the migration framework
-  does not exist yet. Build it before the first change to the Filo schema.
+  does not exist yet. Build it before the first change to the Filo schema after the first Filo
+  release.
 - The installers pin the release named in `pyproject.toml`. Until the first release tagged under
   the Filo name exists, that tag still contains the Therapist package and the installers cannot
   complete, so `README.md` documents the checkout installation instead of the bootstrap. The
@@ -128,6 +129,14 @@ let them accumulate silently.
   behaves on the safety floors. Run the three live gates against a `local:` model before that path
   is described as anything more than an unevaluated escape hatch, and keep it out of any support
   claim until then.
+- Memory writing has two arms behind `--memory-writing inline|split` (work item W2.3 of
+  `docs/improvement-program-2026-10.md`). `inline` stays the default until a live measurement
+  shows the split arm improves extraction recall without raising false memories or lowering
+  conversation quality; then keep one arm and remove the other.
+- SQLite foreign keys are enforced only inside `MemoryStore.transaction()`. Plain connections use
+  `autocommit=False`, which opens a transaction on connect, where SQLite ignores
+  `PRAGMA foreign_keys = ON`. Deletion code removes dependent rows explicitly instead of relying on
+  cascades; fix the pragma together with the migration framework.
 
 ## Conversation behavior
 
@@ -166,8 +175,15 @@ Behavioral rules:
   diluting the wording until it asserts nothing;
 - identify recurring themes and inconsistencies with a gentle, collaborative tone;
 - label interpretations as hypotheses until the user confirms them;
-- treat an unstated short-term benefit or protective function of a behavior as an inference and put
-  grammatical uncertainty on the functional verb itself, rather than elsewhere in the sentence;
+- when offering an inferred cause, motive, function, benefit, or pattern the user did not state, say
+  that it is the agent's inference and what it rests on; softening words alone do not make it a
+  hypothesis;
+- separate a process rupture (pace, tone, length, or a reading the user says does not fit their own
+  experience), which gets repair, from a substantive disagreement (a point about how things work or
+  a concern about a plan), where the agent keeps a view it still holds, gives the reason once, and
+  respects the user's choice;
+- pass no verdicts on absent third parties, endorse no high-risk plan, and praise in proportion to
+  what was actually done;
 - ask permission before exercises;
 - when the user asks for understanding before suggestions, offer at most one brief hypothesis and
   keep exploring instead of listing explanations or introducing an exercise;
@@ -186,7 +202,25 @@ Behavioral rules:
 - for possible immediate danger, after localized emergency guidance, a physically present person,
   distance from available means, and the no-monitoring boundary, ask which one immediate protective
   action the user can take now; checking whether ingestion already occurred may accompany but not
-  replace that action-focused question.
+  replace that action-focused question. When the country is unknown, general resources come first
+  and a country question may follow that action question but never replaces it.
+- the root protocol's risk-and-scope section covers suicide and self-harm, harm to others, being
+  harmed, possible psychosis or mania cues, eating and substance risks, and medical emergency, and
+  outranks process preferences, a loaded skill, and stored memory; a stored premise or a "don't tell
+  me to call anyone" preference never outranks it.
+- possible psychosis or mania cues are for the agent's own recognition and are never named to the
+  user.
+- a premise the user cannot verify and that could lead to harm (being watched, followed, targeted,
+  or someone who must be caught) receives warmth and attention to the distress, never help with
+  escalating tactics such as confrontation, retaliation, damage, surveillance of others, or hunting
+  for hidden devices or the person; keeping a plain record of events and contacting 1522, the US
+  Hotline, or the police stay open. A stored claim holding that premise records what was said, not
+  a fact.
+- on a turn carrying one of those risks the agent makes no durable write, except stopping or pausing
+  an intervention the user says is causing harm, with its unwanted effects. This is a protocol
+  instruction, not a code gate: detecting such a turn deterministically would need the keyword
+  classifier the project rules out. A consented safety record is not built; if one is added it must
+  never apply to a user who said they are under 18.
 
 ## Architecture
 
@@ -204,7 +238,10 @@ Encrypted SQLite archive + structured longitudinal memory
 ```
 
 Use one PydanticAI agent run per conversation turn. Static instructions contain only the root
-protocol, verified skill catalog, tool/epistemic contracts, and response rules. Longitudinal data is
+protocol, verified skill catalog, tool/epistemic contracts, and response rules. They say when
+durable memory is worth writing; how a quote may become a record (exact spans, verbatim kinds,
+restatement limits, polarity) lives in each write tool's description and argument documentation,
+and a rejected call says exactly what to change. Longitudinal data is
 serialized as a bounded `CaseContextEnvelope` JSON object in a separate user-data message with an
 explicit quoted-data boundary; it is never concatenated into instructions. Successful session
 history remains another distinct message sequence.
@@ -217,6 +254,33 @@ evidence-supported mutation adds value. Read results accumulate, identical write
 and write invariants are validated across the complete staged turn. The model may use no tool and
 may load no skill. It may load at most one verified skill, with no keyword router or preliminary
 classifier. Write tools are absent outside standard memory mode.
+
+Who records direct user reports is a setting, `MemoryWriting`, so both designs can be measured.
+`inline`, the default, is the design above. `split` removes `record_user_reports` from the
+conversation agent, which keeps hypotheses, corrections, reviews, focus, process feedback, support
+choices, and interventions inline, and adds `record_user_under_18`, which the agent calls when the
+user has said, now or earlier, that they are under 18; it stops report extraction for the rest of
+the session. A focused extractor then makes one structured model call
+(`ExtractedReports`, at most three requests and two output retries) over the current user message,
+with the previous assistant reply and any wording corrected that turn as quoted data, and records at
+most two reports. Its output passes the same tool-side validation, with retry, and the same store
+gates as an inline report. It also returns two independent flags: `under_18` records nothing for
+the rest of that session, also when the same message is about danger, and `risk` (possible danger,
+or a premise that may reflect psychosis or mania) records nothing for that turn. Within a session,
+markers are extracted in message order and a later one never before an earlier one is resolved, so
+a failed extraction of the message that gave the user's age cannot be overtaken; an exhausted
+marker blocks the rest of its session's extraction for good. The all-or-nothing invariant holds through durable retry: in `standard` mode
+the turn commits together with a pending-extraction marker, and the extractor's writes commit
+together with the marker's removal, which is deleted first so a concurrent run writes nothing. A
+turn is never archived without either its memory or a marker. Transports run the extraction after
+delivering the reply: the TUI keeps input disabled until it ends, so no command uses the store
+concurrently, and Telegram runs it only after the update's offset and replies are persisted and
+delivered, queues its change notice in the outbox, and never lets an extraction error stop the
+listener. Pending markers are also drained before each turn's retrieval and before an explicit
+`/end` consolidation, and the CLI drains them at startup. Each thread holds its own store
+transaction, so one thread's statements never commit or roll back with another's. A failure keeps the marker with a content-free error
+class, and a marker stops being retried after three failed attempts. `transcript_only` and
+`ephemeral` create no markers.
 
 An agent-authored explanation or pattern that is important enough to revisit or ask the user to
 review later is recorded with `record_hypothesis` in the same turn before it is presented. A later
@@ -359,16 +423,25 @@ it does not replace full-disk encryption or protect a compromised operating-syst
 
 Memory modes are explicit. `standard` persists every encrypted layer; `transcript_only` persists
 only transcript and successful model history and exposes no structured write tools; `ephemeral`
-uses an in-process encrypted SQLite store and writes nothing to disk. Mode changes do not erase
+uses an in-process encrypted SQLite store and writes no conversation content to disk; Telegram
+still persists its update offset in the configuration store. Mode changes do not erase
 earlier data. `RetentionPolicy` independently controls raw-message, session-summary, and stale-
 hypothesis days; all values default to `None`. Apply it at startup, before retrieval when configured,
 or through explicit CLI commands. There is no worker.
+
+The `pending_extractions` table holds only a user-message ID, a timestamp, an attempt count, and an
+exception class name, never content. It was added to the unreleased `filo-1` schema directly, and
+an existing `filo-1` store gains it when opened. Deleting a message, session, or all data removes its
+markers.
 
 The rename to Filo was an intentional clean break: Filo uses a fresh data directory and never
 reads, migrates, or modifies a Therapist store. From the Filo store onward, every schema change must
 ship a forward migration so that years of memory survive upgrades; the migration framework is a
 separate work item and does not exist yet. Do not add legacy aliases, schema fallbacks, or plaintext
-backups. The Filo schema marker is `filo-1`. Reject an unknown or future schema version before
+backups. The Filo schema marker is `filo-1`. The `filo-1` baseline is frozen at the first Filo
+release; until then no store carrying it exists outside development, so schema additions such as
+the `telegram_outbox` table amend `filo-1` directly, and from that release on every change ships a
+forward migration (W0.3). Reject an unknown or future schema version before
 creating any table, and refuse a data directory containing a Therapist `thera.db` before creating,
 chmodding, or reading anything in it.
 
@@ -414,8 +487,8 @@ Primary commands:
 
 ```text
 filo setup
-filo chat [--plain] [--memory-mode standard|transcript-only|ephemeral]
-filo telegram [--memory-mode standard|transcript-only|ephemeral]
+filo chat [--plain] [--memory-mode standard|transcript-only|ephemeral] [--memory-writing inline|split]
+filo telegram [--memory-mode standard|transcript-only|ephemeral] [--memory-writing inline|split]
 filo telegram-service install
 filo telegram-service status
 filo telegram-service restart
@@ -540,10 +613,18 @@ Interactive chat commands:
 /confirm <id>
 /correct <id> <text>
 /forget <id>
+/crisis
 /end
 /help
 /quit
 ```
+
+`/crisis` prints static, localized emergency and crisis resources for Italy/EU and the US from
+`crisis_resources()` in `src/filo/chat.py`, without a model call, and is not archived like every
+other command. The CLI and TUI consent prompt shows the same text, so neither transport puts
+emergency resources behind consent. The numbers and their verification dates live in
+`protocols/transdiagnostic/references/risk-resources.md`; re-verify them before each release. A
+model failure in the CLI, TUI, or Telegram points to `/crisis`.
 
 `/quit` only leaves the process. It does not close the conversation session. A later message closes
 and consolidates the previous session if at least eight hours elapsed. `/end` closes it immediately.
@@ -572,6 +653,8 @@ privacy view explains that local deletion does not delete Telegram messages. Cha
 increments its stored version and requires renewed consent.
 
 Telegram is a conversation and read-only transparency surface, not a remote administration surface.
+`/crisis` returns the same static localized resources as the CLI, without a model call or storage,
+and is answered before consent so it never sits behind the notice.
 `/status`, `/case`, `/memory [page]`, `/sessions [page|id]`, `/interventions [page]`, and `/privacy`
 show the agent identity, active session, bounded paginated structured state, evidence links, data
 flow, and limitations. `/start`, `/help`, and `/end` manage consent, guidance, and the conversational
@@ -587,11 +670,53 @@ limit, and persists the validated output with `sendRichMessage`. An HTTP 400 ric
 falls back to plain text; ambiguous transport failures, rate limits, and server failures never
 trigger a second delivery format. Failed tool-event deliveries are retried separately and in order
 before the final reply. Durable-change notices remain separate plain-text messages. Incoming text
-and outgoing content stay below Telegram's limits. The encrypted update offset survives restarts and
-advances only after all output for the update is delivered; transient failures honor Telegram's
-`retry_after` before the update is retried. A crash or ambiguous transport failure between model
-state commit and offset persistence can still cause one update to be processed again; full durable
-inbox idempotency is deferred until `ChatSession` can atomically accept an external idempotency key.
+and outgoing content stay below Telegram's limits. Every reply for an update is written to an
+encrypted `telegram_outbox` table, one row per message, in the same transaction as the advanced
+update offset (and, for `/consent`, the recorded consent); for a model turn that
+write happens inside the turn's storage transaction through `ChatSession.respond(on_commit=...)`, so
+a committed turn is never handed to the model again and a turn that fails before commit leaves
+neither replies nor offset behind. The listener drains the outbox in order before every poll,
+including after a restart, deletes each row by ID only after Telegram accepts it, so no process ever
+writes back a stale copy of the queue, and honors
+`retry_after` on transient failures. Delivery is at least once: a crash or ambiguous transport failure
+after Telegram accepted a message but before its removal can send that one message twice. Only a
+400 or 403 rejection of one queued message is logged and dropped, so later replies are not wedged;
+401 and 404 mean an invalid or revoked token and stop the listener, while 408, 429, 5xx, and every
+network failure, including resets, TLS errors, and truncated responses, surface as a transient
+`TelegramError` and are retried. A queued message whose chat is no longer the allowlisted user is
+dropped without being sent; the listener rereads the pairing before every send, so once setup pairs
+another account even a listener that is still running stops delivering to the old one. The typing indicator is
+repeated every four seconds while a turn runs and pauses for any longer `retry_after`. In
+`ephemeral` mode queued replies stay in process memory and are queued only after the in-memory turn
+returns; only the update offset is written to the on-disk configuration store, so a crash before
+delivery loses those replies instead of writing conversation content to disk. Replies already
+queued on disk by an earlier standard or transcript-only run are delivered first. Correcting or
+forgetting a claim, deleting a session or a date range, and `delete-data` discard every undelivered
+queued reply, because a queued message is not linked to the records it quotes; retention discards
+only replies queued before the cutoff that removed data, so the startup retention pass keeps replies
+a crash left queued. The listener records the persisted pairing and a SHA-256 fingerprint of the
+stored bot token (never the token) when it starts; when either changes it stops before confirming
+or recording any further update and reloads the configuration in the same process, so no platform
+depends on a service manager to restart it, and it stops cleanly when nothing is configured any
+more. Queued rows addressed to a pairing other than the one a listener runs with are skipped, not
+dropped, so an `--allowed-user-id` listener and the paired one never block each other. Store
+transactions begin with `BEGIN IMMEDIATE` and a ten-second busy timeout, and the listener retries
+an update when the store stays locked instead of exiting. Each such discard increments a stored counter, and a transparency view
+(`/status`, `/case`, `/memory`, `/sessions`, `/interventions`, `/privacy`) is queued only if the
+counter is unchanged since it was rendered, in the queue's own transaction; otherwise it is rendered
+again, so a deletion that lands mid-render cannot let the old view through. A model reply and its
+change summary pass the same check against the counter read before the turn: if a deletion landed
+while the reply was written, the committed turn is kept but only a short notice asking the user to
+resend is queued. `delete-data` advances the counter rather than resetting it. Accepted limits:
+retention keeps a recently queued reply that may quote content it just removed, since discarding
+it would lose the replies the queue recovers after a crash; live tool events and drafts of a turn
+already running can still reach the previously paired chat if re-pairing happens mid-turn, while
+its final reply is dropped; and correcting or forgetting a claim discards unrelated queued replies
+too, preferring privacy over delivery. Incoming updates pass the same reread pairing check as delivery, so a listener
+still running after re-pairing or `delete-data` stops handing the old account's messages to the
+model. A turn waits at most one second for an in-flight typing request before its reply is queued.
+`filo setup` applies only the fields it changed to the state as it is when it saves, so a listener's
+offset and consent written while setup waits at a prompt are not rolled back.
 
 `filo telegram-service install` validates the saved configuration and starts the listener without
 putting secrets in process arguments. It writes a mode-`0600` LaunchAgent in
@@ -800,7 +925,8 @@ plainly distinguishes AI-supported conversation or self-help from diagnosis and 
 - Telegram rejects unauthorized/non-private input before model invocation, requires channel-specific
   consent, persists its update offset, exposes read-only state with evidence and pagination, reports
   durable turn changes, keeps privileged memory operations local, honors flood-control delays, and
-  does not advance the update offset after failed delivery.
+  queues each committed turn's output with its update offset so a delivery failure or crash never
+  re-runs the model.
 - Telegram background installation uses the native per-user service or task manager, keeps secrets
   out of process arguments and native definitions, and supports status, restart, and clean removal
   on macOS, Linux, and Windows.
@@ -839,10 +965,19 @@ path, persistence result, and absence of state changes when no tool is needed. R
 manually before releases or after changing model integration; do not make ordinary local or CI runs
 depend on an external provider.
 
+Offline tests verify that `/crisis` in the CLI and in Telegram returns the static localized text
+without a model call, a session, or archived content, that Telegram answers it before consent and
+the CLI consent prompt shows it, that the Italian and English texts list the same resources, and
+that a model failure points to it. The conversation-skill audit keeps the risk-and-scope,
+disagreement, and inference rules present in the root protocol.
+
 Deterministic runtime-contract tests additionally verify that staged tool actions survive output
 retry but never persist after a failed run, repeated reads and cumulative writes work without
 duplication, successful history retains paired tool exchanges, and the per-turn operational
-tool-call budget is enforced before commit.
+tool-call budget is enforced before commit. Split memory-writing tests verify that extractor writes
+pass the same validation, a crash between turn commit and extraction leaves a marker that is retried
+without a double write, non-standard modes create no markers or claims, and under-18 and
+risk-premise turns write nothing. The coordinator measures the two arms live; ordinary runs never do.
 
 A separate Codex-subscription memory eval exercises the configured experimental OAuth backend with
 synthetic data through the production `ChatSession`: capture, explicit hypothesis confirmation,
@@ -930,6 +1065,11 @@ uv run ruff check .
 - OpenAI Codex for Open Source: https://developers.openai.com/community/codex-for-oss
 - pi provider documentation:
   https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/providers.md
+- Risk resources (verified 2026-10-16), listed with sources in
+  `protocols/transdiagnostic/references/risk-resources.md`: EU 112
+  https://digital-strategy.ec.europa.eu/en/policies/112, 988 Lifeline https://988lifeline.org/,
+  Poison Help https://poisonhelp.hrsa.gov/, National Domestic Violence Hotline
+  https://www.thehotline.org/, Italian 1522 https://www.pariopportunita.gov.it/
 - Telegram Bot API: https://core.telegram.org/bots/api
 - Telegram Bots FAQ: https://core.telegram.org/bots/faq
 - Apple launchd jobs:

@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from pathlib import Path
 
 from textual.containers import VerticalScroll
@@ -26,6 +27,9 @@ class FakeSession:
             TurnStreamEvent(TurnStreamKind.REPLY, "**Streaming reply.**")
         )
         return ChatTurn("**Streaming reply.**", notice="Context notice.")
+
+    def extract_pending(self) -> int:
+        return 0
 
 
 def test_tui_loads_history_and_renders_streamed_markdown(tmp_path: Path) -> None:
@@ -76,5 +80,42 @@ def test_tui_opens_at_latest_history(tmp_path: Path) -> None:
             conversation = app.query_one("#conversation", VerticalScroll)
             assert conversation.max_scroll_y > 0
             assert conversation.is_vertical_scroll_end
+
+    asyncio.run(scenario())
+
+
+def test_tui_keeps_input_disabled_until_extraction_ends_and_hides_its_failure(
+    tmp_path: Path,
+) -> None:
+    started = threading.Event()
+    release = threading.Event()
+
+    class ExtractingSession(FakeSession):
+        def extract_pending(self) -> int:
+            started.set()
+            release.wait(5)
+            raise RuntimeError("database is locked")
+
+    app = FiloApp(ExtractingSession(), MemoryStore(tmp_path), lambda *_: False)  # type: ignore[arg-type]
+
+    async def scenario() -> None:
+        async with app.run_test() as pilot:
+            await pilot.click("#input")
+            await pilot.press(*"New message.", "enter")
+            for _ in range(200):
+                await pilot.pause(0.01)
+                if started.is_set():
+                    break
+            await pilot.pause(0.05)
+            # No /correct or /forget can be typed while the extraction uses the store.
+            assert app.query_one("#input", Input).disabled
+            release.set()
+            for _ in range(200):
+                await pilot.pause(0.01)
+                if not app.query_one("#input", Input).disabled:
+                    break
+            assert not app.query_one("#input", Input).disabled
+            assert len(app.query(".error")) == 0
+            assert app.query(".assistant").last(Markdown).source.endswith("**Streaming reply.**")
 
     asyncio.run(scenario())
