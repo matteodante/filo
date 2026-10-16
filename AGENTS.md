@@ -200,11 +200,16 @@ Behavioral rules:
   harmed, possible psychosis or mania cues, eating and substance risks, and medical emergency, and
   outranks process preferences, a loaded skill, and stored memory; a stored premise or a "don't tell
   me to call anyone" preference never outranks it.
+- possible psychosis or mania cues are for the agent's own recognition and are never named to the
+  user.
 - a premise the user cannot verify and that could lead to harm (being watched, followed, targeted,
-  or someone who must be caught) receives warmth and attention to the distress, never operational
-  help such as detection, searching, recording, confrontation, retaliation, or damage; a stored
-  claim holding that premise records what was said, not a fact.
-- on a turn carrying one of those risks the agent makes no durable write. This is a protocol
+  or someone who must be caught) receives warmth and attention to the distress, never help with
+  escalating tactics such as confrontation, retaliation, damage, surveillance of others, or hunting
+  for hidden devices or the person; keeping a plain record of events and contacting 1522, the US
+  Hotline, or the police stay open. A stored claim holding that premise records what was said, not
+  a fact.
+- on a turn carrying one of those risks the agent makes no durable write, except stopping or pausing
+  an intervention the user says is causing harm, with its unwanted effects. This is a protocol
   instruction, not a code gate: detecting such a turn deterministically would need the keyword
   classifier the project rules out. A consented safety record is not built; if one is added it must
   never apply to a user who said they are under 18.
@@ -563,7 +568,8 @@ Interactive chat commands:
 
 `/crisis` prints static, localized emergency and crisis resources for Italy/EU and the US from
 `crisis_resources()` in `src/filo/chat.py`, without a model call, and is not archived like every
-other command. The numbers and their verification dates live in
+other command. The CLI and TUI consent prompt shows the same text, so neither transport puts
+emergency resources behind consent. The numbers and their verification dates live in
 `protocols/transdiagnostic/references/risk-resources.md`; re-verify them before each release. A
 model failure in the CLI, TUI, or Telegram points to `/crisis`.
 
@@ -907,7 +913,8 @@ manually before releases or after changing model integration; do not make ordina
 depend on an external provider.
 
 Offline tests verify that `/crisis` in the CLI and in Telegram returns the static localized text
-without a model call, a session, or archived content, that Telegram answers it before consent, and
+without a model call, a session, or archived content, that Telegram answers it before consent and
+the CLI consent prompt shows it, that the Italian and English texts list the same resources, and
 that a model failure points to it. The conversation-skill audit keeps the risk-and-scope,
 disagreement, and inference rules present in the root protocol.
 

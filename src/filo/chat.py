@@ -285,8 +285,9 @@ CRISIS_RESOURCES = {
         "potresti usare per farti del male.\n\n"
         "Italia: violenza o stalking, 1522, gratuito e attivo giorno e notte, anche in chat "
         "su 1522.eu. Telefono Amico, per parlare con qualcuno: 02 2327 2327.\n"
-        "USA: chiama o scrivi al 988 per una crisi suicidaria o emotiva. Centro antiveleni: "
-        "1-800-222-1222.\n\n"
+        "USA: chiama o scrivi al 988, o usa la chat su chat.988lifeline.org, per una crisi "
+        "suicidaria o emotiva. Centro antiveleni: 1-800-222-1222. Violenza domestica: "
+        "1-800-799-7233, oppure scrivi START al 88788.\n\n"
         "Scegli una di queste cose che puoi fare adesso."
     ),
 }
