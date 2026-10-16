@@ -132,3 +132,15 @@ The registration asks for simplification when H1 fails. Options, for the maintai
 2. Keep the design and target its two measured weaknesses, retiring outdated claims and the lower
    process quality, then measure again on fresh test personas, since this split is now spent.
 
+## After W2.5 (simplified memory)
+
+The maintainer chose the simplification. W2.5 (#65) stops recording facts and events as claims,
+keeps patterns and preferences, removes the split arm, and lets a correction retire earlier wording
+from the conversation archive. A sanity check on tuning persona MP01 (run
+`20261016T232424-acd0a5`, US$1.00) found probes 8/10 (9/10 before), false memories 2 (3 before),
+and every helpfulness criterion 6/6. The test split is spent, so no new confirmatory claim is made.
+
+Known measurement limit: `honest_continuity` is judged on one session at a time, so a detail the
+person gave in an earlier session and the assistant correctly recalls can be marked as invented.
+Three of the six MP01 sessions after W2.5 failed it this way (Ornella, the neighbour Dario). Judge it
+against the person's earlier messages before relying on that criterion.
