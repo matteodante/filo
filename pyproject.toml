@@ -53,6 +53,7 @@ packages = ["src/therapist"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = ["live: requires real provider credentials and network access"]
 
 [tool.coverage.run]

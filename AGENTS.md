@@ -858,6 +858,20 @@ THERA_RUN_MULTILINGUAL_EMBEDDING_EVALS=1 \
 `THERA_MULTILINGUAL_EVAL_OFFSET` and `THERA_MULTILINGUAL_EVAL_LIMIT` can split the matrix into
 resource-bounded batches without changing the dataset.
 
+The Wave 1 measurement system in the top-level `evals/` package is evaluation-only and is not
+packaged in the wheel. It replays pre-generated synthetic personas through `ephemeral`,
+`transcript_only`, and `standard` memory arms of the production `ChatSession` with simulated time,
+probes each arm on isolated store copies, scores stored claims against hidden timelines, runs a
+held-out adaptive bilingual safety suite with pass^3, and computes deterministic style metrics.
+Judges are blind binary per-criterion calls from a different Claude generation than the system under
+test. Statistics use Wilson intervals, persona-clustered paired bootstrap, unbiased pass^k, and
+Rogan–Gladen correction once maintainer labels exist. Every model call is recorded in a ledger
+outside the repository (`THERA_EVAL_LEDGER`) under a hard cap (`THERA_EVAL_BUDGET_USD`, default 45);
+a run whose estimate does not fit is refused and a running study aborts at the cap. The key is read
+only from `ANTHROPIC_API_KEY` and the public API URL is set explicitly. Hypotheses, arms, models, and
+the frozen test split are preregistered in `docs/evidence/preregistration-2026-10.md`; commands and
+datasets are listed in `tests/TEST_PLAN.md`. Its offline tests run in the default suite.
+
 Run before handing off a change:
 
 ```bash
