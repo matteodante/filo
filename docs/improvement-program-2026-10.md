@@ -477,6 +477,31 @@ recall does not fall.
 - **W4.2 Release v0.4.0.** Update `RELEASING.md` so the go/no-go uses the v2 suites and their
   intervals, and record the evidence. The release runbook keeps its manual gates.
 
+### Wave 5 — help between sessions (added 2026-10-16 by the maintainer)
+
+What helps the person using Filo between conversations, by trusting the model with data rather than
+adding rules. Every item uses records Filo already keeps and is read-only for the conversation
+history.
+
+- **W5.1 Experiments with follow-up.** An agreed experiment keeps, on its existing
+  `InterventionRecord`, what it is, when the person means to try it (`planned_for`), and what they
+  expect (`prediction`), in their own words. On the first turn of the next session the case-data
+  envelope lists agreed experiments with no reported outcome in `follow_up_due`, and one sentence of
+  the envelope preamble asks the model to ask how each went and adapt. The root protocol text stays
+  with W3.3.
+- **W5.2 Recap on request.** `/recap [weeks]` in the CLI, TUI, and Telegram, `filo memory recap`,
+  and `retrieve_case_context(recap_weeks=...)` for a natural-language ask. It lists recurring themes,
+  what was tried and how it went, new reports, reviewed hypotheses, corrections, and wellbeing
+  checks, each with its record ID, from stored records only.
+- **W5.3 Optional wellbeing check (WHO-5).** `/wellbeing` shows the five WHO-5 statements in the
+  official English or Italian wording and records five answers. It is offered unprompted once, at
+  `/end`, and then at most every two weeks only if the person turned reminders on. The score is shown
+  as a number and a trend, without clinical cutoffs or labels. Checks are encrypted, exported, removed
+  by `delete-data`, `filo memory forget <id>`, and the raw-message retention limit, and are not kept
+  in transcript-only mode.
+
+*Check:* offline tests for each item; the live Codex smoke stays with the maintainer.
+
 ### Currency audit (2026-10-16)
 
 The maintainer asked that every approach be checked against current practice. An audit of primary

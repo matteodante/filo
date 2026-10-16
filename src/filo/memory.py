@@ -18,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from uuid import uuid4
 
 import numpy as np
@@ -73,6 +73,9 @@ CREATE TABLE IF NOT EXISTS pending_extractions (
 );
 CREATE TABLE IF NOT EXISTS telegram_outbox (
     id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, payload BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS wellbeing_checks (
+    id TEXT PRIMARY KEY, created_at TEXT NOT NULL, payload BLOB NOT NULL
 );
 """
 DEFAULT_STALE_HYPOTHESIS_DAYS = 180
@@ -285,6 +288,22 @@ class RetentionPolicy(StrictModel):
     stale_hypothesis_days: int | None = Field(default=None, ge=1)
 
 
+class WellbeingCheck(StrictModel):
+    """One WHO-5 self-report: five answers from 0 (at no time) to 5 (all of the time)."""
+
+    id: str
+    created_at: str
+    answers: list[Annotated[int, Field(ge=0, le=5)]] = Field(min_length=5, max_length=5)
+
+    @property
+    def raw_score(self) -> int:
+        return sum(self.answers)
+
+    @property
+    def percentage(self) -> int:
+        return self.raw_score * 4
+
+
 class TelegramDelivery(StrictModel):
     chat_id: int
     text: str = Field(min_length=1)
@@ -304,6 +323,10 @@ class AppState(StrictModel):
     telegram_allowed_user_id: int | None = Field(default=None, gt=0)
     pending_hypothesis_id: str | None = None
     pending_intervention_id: str | None = None
+    # The optional WHO-5 check: offered unprompted once, then every two weeks only if enabled.
+    wellbeing_enabled: bool = False
+    wellbeing_invited: bool = False
+    wellbeing_offered_at: str | None = None
 
 
 class EvidenceRef(StrictModel):
@@ -451,6 +474,7 @@ class InterventionRecord(StrictModel):
     consent_evidence: EvidenceRef | None = None
     evidence_message_ids: list[int] = Field(default_factory=list)
     prediction: str | None = Field(default=None, max_length=500)
+    planned_for: str | None = Field(default=None, max_length=500)
     context: str | None = Field(default=None, max_length=500)
     outcome: str | None = Field(default=None, max_length=500)
     user_appraisal: str | None = Field(default=None, max_length=500)
@@ -583,6 +607,7 @@ class ContextIntervention(StrictModel):
     description: str
     state: InterventionState
     prediction: str | None
+    planned_for: str | None = None
     outcome: str | None
     user_appraisal: str | None
     unwanted_effects: str | None
@@ -635,6 +660,8 @@ class CaseContextEnvelope(StrictModel):
     conflicts: list[ClaimConflict] = Field(default_factory=list)
     relevant_sessions: list[ContextSession] = Field(default_factory=list)
     active_interventions: list[ContextIntervention] = Field(default_factory=list)
+    # Agreed experiments from before this session with no reported outcome, on its first turn.
+    follow_up_due: list[str] = Field(default_factory=list)
     process_preferences: list[ContextPreference] = Field(default_factory=list)
     support_choices: list[ContextSupportChoice] = Field(default_factory=list)
     relevant_excerpts: list[ContextExcerpt] = Field(default_factory=list)
@@ -1860,6 +1887,7 @@ class MemoryStore:
         consent_quote: str | None = None,
         evidence_text: str | None = None,
         prediction: str | None = None,
+        planned_for: str | None = None,
         context: str | None = None,
         follow_up_information: str | None = None,
         now: datetime | None = None,
@@ -1894,6 +1922,7 @@ class MemoryStore:
             ),
             evidence_message_ids=[evidence_message_id],
             prediction=_normalized(prediction) if prediction else None,
+            planned_for=_normalized(planned_for) if planned_for else None,
             context=_normalized(context) if context else None,
             follow_up_information=(
                 _normalized(follow_up_information) if follow_up_information else None
@@ -1914,6 +1943,7 @@ class MemoryStore:
         consent_quote: str | None = None,
         evidence_text: str | None = None,
         prediction: str | None = None,
+        planned_for: str | None = None,
         context: str | None = None,
         outcome: str | None = None,
         user_appraisal: str | None = None,
@@ -1930,6 +1960,7 @@ class MemoryStore:
         for field_name, value in (
             ("description", description),
             ("prediction", prediction),
+            ("planned_for", planned_for),
             ("context", context),
             ("outcome", outcome),
             ("user_appraisal", user_appraisal),
@@ -1979,7 +2010,13 @@ class MemoryStore:
         *,
         allow_index_write: bool = True,
         now: datetime | None = None,
+        follow_up_before: str | None = None,
     ) -> CaseContextResult:
+        """Bounded case data for one query.
+
+        ``follow_up_before`` is the start of a session on its first turn: experiments the person
+        agreed to before it and has not reported on are then listed in ``follow_up_due``.
+        """
         current = now or _now()
         if not self._ephemeral:
             policy = self.load_app_state().retention_policy
@@ -2105,12 +2142,25 @@ class MemoryStore:
                 claim_round_scores[reference.message_id] = max(
                     claim_round_scores.get(reference.message_id, 0.0), _context_claim_score(item)
                 )
+        follow_up_due = (
+            [
+                item.id
+                for item in self.list_interventions(active_only=True)
+                if item.state is InterventionState.AGREED
+                and not item.outcome
+                and item.updated_at < follow_up_before
+            ][:3]
+            if follow_up_before
+            else []
+        )
         interventions = self._relevant_interventions(
             query,
             query_vector,
             app_state.pending_intervention_id,
             allow_index_write=allow_index_write,
+            pinned=set(follow_up_due),
         )
+        interventions.sort(key=lambda item: item.id not in follow_up_due)
         latest, sessions = self._relevant_sessions(
             query, query_vector, allow_index_write=allow_index_write
         )
@@ -2151,6 +2201,7 @@ class MemoryStore:
             conflicts=conflicts[:5],
             relevant_sessions=sessions[:3],
             active_interventions=interventions[:5],
+            follow_up_due=follow_up_due,
             process_preferences=[
                 ContextPreference(
                     id=item.id,
@@ -2200,6 +2251,7 @@ class MemoryStore:
         pending_id: str | None,
         *,
         allow_index_write: bool,
+        pinned: set[str] | None = None,
     ) -> list[ContextIntervention]:
         items = self.list_interventions(active_only=True)
         text = {
@@ -2208,6 +2260,7 @@ class MemoryStore:
                 for value in (
                     item.description,
                     item.prediction,
+                    item.planned_for,
                     item.context,
                     item.outcome,
                     item.user_appraisal,
@@ -2236,6 +2289,7 @@ class MemoryStore:
                 description=item.description,
                 state=item.state,
                 prediction=item.prediction,
+                planned_for=item.planned_for,
                 outcome=item.outcome,
                 user_appraisal=item.user_appraisal,
                 unwanted_effects=item.unwanted_effects,
@@ -2247,6 +2301,7 @@ class MemoryStore:
             )
             for item in items
             if item.id == pending_id
+            or item.id in (pinned or set())
             or _lexical_score(query, text[item.id]) > 0
             or scores.get(item.id, 0.0) >= MIN_SEMANTIC_RELEVANCE
             or item.unwanted_effects is not None
@@ -2384,6 +2439,7 @@ class MemoryStore:
         message_ids: list[int] = []
         summaries: list[SessionRecord] = []
         hypotheses: list[MemoryItem] = []
+        wellbeing_ids: list[str] = []
         with self._connect() as database:
             if policy.raw_message_days:
                 cutoff = _iso(current - timedelta(days=policy.raw_message_days))
@@ -2391,6 +2447,13 @@ class MemoryStore:
                     row[0]
                     for row in database.execute(
                         "SELECT id FROM messages WHERE created_at < ?", (cutoff,)
+                    ).fetchall()
+                ]
+                # Wellbeing checks are raw self-reports, so they share the raw-message limit.
+                wellbeing_ids = [
+                    row[0]
+                    for row in database.execute(
+                        "SELECT id FROM wellbeing_checks WHERE created_at < ?", (cutoff,)
                     ).fetchall()
                 ]
         if policy.session_summary_days:
@@ -2411,6 +2474,7 @@ class MemoryStore:
             ]
         result = {
             "messages": len(message_ids),
+            "wellbeing_checks": len(wellbeing_ids),
             "session_summaries": len(summaries),
             "stale_hypotheses": len(hypotheses),
         }
@@ -2421,7 +2485,7 @@ class MemoryStore:
         removal_cutoffs = [
             current - timedelta(days=days)
             for days, removed in (
-                (policy.raw_message_days, message_ids),
+                (policy.raw_message_days, [*message_ids, *wellbeing_ids]),
                 (policy.session_summary_days, summaries),
                 (policy.stale_hypothesis_days, hypotheses),
             )
@@ -2431,6 +2495,10 @@ class MemoryStore:
             if removal_cutoffs:
                 self._discard_telegram_output(before=max(removal_cutoffs))
             self._delete_message_ids(message_ids)
+            with self._connect() as database:
+                database.executemany(
+                    "DELETE FROM wellbeing_checks WHERE id = ?", [(item,) for item in wellbeing_ids]
+                )
             for session in summaries:
                 _clear_session_reflection(session)
                 self.save_session(session)
@@ -2472,7 +2540,13 @@ class MemoryStore:
             if datetime.fromisoformat(item.ended_at or item.last_activity_at) < before
         ]
         deleted = sum(self.delete_session(item.id) for item in sessions)
-        return {"sessions": deleted}
+        with self.transaction(), self._connect() as database:
+            checks = database.execute(
+                "DELETE FROM wellbeing_checks WHERE created_at < ?", (_iso(before),)
+            ).rowcount
+            if checks:
+                self._discard_telegram_output()
+        return {"sessions": deleted, "wellbeing_checks": checks}
 
     def export(self) -> dict[str, Any]:
         with self._connect() as database:
@@ -2534,7 +2608,39 @@ class MemoryStore:
             "telegram_outbox": [
                 item.model_dump(mode="json") for _id, item in self.list_telegram_output()
             ],
+            "wellbeing_checks": [
+                {**item.model_dump(mode="json"), "raw_score": item.raw_score}
+                for item in self.list_wellbeing_checks()
+            ],
         }
+
+    def record_wellbeing_check(
+        self, answers: list[int], now: datetime | None = None
+    ) -> WellbeingCheck:
+        check = WellbeingCheck(id=f"wb_{uuid4().hex[:10]}", created_at=_iso(now), answers=answers)
+        with self._connect() as database:
+            database.execute(
+                "INSERT INTO wellbeing_checks(id, created_at, payload) VALUES (?, ?, ?)",
+                (check.id, check.created_at, self._encrypt_model(check)),
+            )
+        return check
+
+    def list_wellbeing_checks(self) -> list[WellbeingCheck]:
+        with self._connect() as database:
+            rows = database.execute(
+                "SELECT payload FROM wellbeing_checks ORDER BY created_at, id"
+            ).fetchall()
+        return [WellbeingCheck.model_validate(self._decrypt_json(row[0])) for row in rows]
+
+    def forget_wellbeing_check(self, check_id: str) -> bool:
+        with self.transaction(), self._connect() as database:
+            deleted = database.execute(
+                "DELETE FROM wellbeing_checks WHERE id = ?", (check_id,)
+            ).rowcount
+            if deleted:
+                # A queued Telegram view may show this score.
+                self._discard_telegram_output()
+        return bool(deleted)
 
     def load_secret(self, name: str) -> bytes | None:
         return self._read_state(f"secret:{name}")
@@ -2562,6 +2668,7 @@ class MemoryStore:
                 "process_preferences",
                 "support_choices",
                 "telegram_outbox",
+                "wellbeing_checks",
                 "state",
             ):
                 database.execute(f"DELETE FROM {table}")
@@ -2960,6 +3067,7 @@ class MemoryStore:
             if not record.evidence_message_ids:
                 record.description = "Content removed by retention or selective deletion."
                 record.prediction = None
+                record.planned_for = None
                 record.context = None
                 record.outcome = None
                 record.user_appraisal = None
@@ -3025,6 +3133,7 @@ class MemoryStore:
             for field_name in (
                 "description",
                 "prediction",
+                "planned_for",
                 "context",
                 "outcome",
                 "user_appraisal",
