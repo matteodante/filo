@@ -602,7 +602,10 @@ queued on disk by an earlier standard or transcript-only run are delivered first
 forgetting a claim, deleting a session or a date range, and `delete-data` discard every undelivered
 queued reply, because a queued message is not linked to the records it quotes; retention discards
 only replies queued before the cutoff that removed data, so the startup retention pass keeps replies
-a crash left queued. Incoming updates pass the same reread pairing check as delivery, so a listener
+a crash left queued. Each such discard increments a stored counter, and a transparency view
+(`/status`, `/case`, `/memory`, `/sessions`, `/interventions`, `/privacy`) is queued only if the
+counter is unchanged since it was rendered, in the queue's own transaction; otherwise it is rendered
+again, so a deletion that lands mid-render cannot let the old view through. Incoming updates pass the same reread pairing check as delivery, so a listener
 still running after re-pairing or `delete-data` stops handing the old account's messages to the
 model. A turn waits at most one second for an in-flight typing request before its reply is queued.
 `filo setup` applies only the fields it changed to the state as it is when it saves, so a listener's

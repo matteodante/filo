@@ -276,15 +276,16 @@ class TelegramChannel:
         update_id = update.get("update_id")
         outbox: list[TelegramDelivery] = []
 
-        def enqueue(*, consent: bool = False) -> None:
-            durable = [] if self._ephemeral else outbox
-            if self._ephemeral:
-                self._ephemeral_outbox.extend(outbox)
-            self.config_store.queue_telegram_output(
-                durable,
+        def enqueue(*, consent: bool = False, rendered_at_epoch: int | None = None) -> bool:
+            queued = self.config_store.queue_telegram_output(
+                [] if self._ephemeral else outbox,
                 update_offset=update_id + 1 if isinstance(update_id, int) else None,
                 consent_version=CONSENT_VERSION if consent else None,
+                rendered_at_epoch=rendered_at_epoch,
             )
+            if queued and self._ephemeral:
+                self._ephemeral_outbox.extend(outbox)
+            return queued
 
         handled, queued = self._handle_update(update, outbox, enqueue)
         if not queued:
@@ -338,7 +339,7 @@ class TelegramChannel:
         self,
         update: dict[str, Any],
         outbox: list[TelegramDelivery],
-        enqueue: Callable[..., None],
+        enqueue: Callable[..., bool],
     ) -> tuple[bool, bool]:
         """Return whether the update was handled and whether its replies are already queued."""
         message = update.get("message")
@@ -390,10 +391,20 @@ class TelegramChannel:
             send(self._consent_notice(False))
             return True, False
 
-        if command:
-            response = self._command_response(command, _command_argument(text))
-            send(response or self._unknown_command())
+        if command == "/end":
+            send(self._command_response(command, None) or self._unknown_command())
             return True, False
+        if command:
+            # These views render stored records. A local deletion between the
+            # read and the queue write would otherwise let a discarded record
+            # reach Telegram, so the view is rendered again when one intervened.
+            while True:
+                epoch = self.config_store.telegram_output_epoch()
+                outbox.clear()
+                response = self._command_response(command, _command_argument(text))
+                send(response or self._unknown_command())
+                if enqueue(rendered_at_epoch=epoch):
+                    return True, True
         before = self._durable_snapshot()
         draft_id = secrets.randbits(31) or 1
         last_draft_at = 0.0

@@ -2255,23 +2255,37 @@ class MemoryStore:
         *,
         update_offset: int | None = None,
         consent_version: str | None = None,
+        rendered_at_epoch: int | None = None,
         now: datetime | None = None,
-    ) -> None:
-        """Queue replies and record the update that produced them in one transaction."""
+    ) -> bool:
+        """Queue replies and record the update that produced them in one transaction.
+
+        With ``rendered_at_epoch``, nothing is written and False is returned if a
+        deletion discarded queued output after the replies were rendered, since
+        they may quote what it removed.
+        """
         with self.transaction():
+            if rendered_at_epoch is not None and rendered_at_epoch != self.telegram_output_epoch():
+                return False
             with self._connect() as database:
                 database.executemany(
                     "INSERT INTO telegram_outbox(created_at, payload) VALUES (?, ?)",
                     [(_iso(now), self._encrypt_model(item)) for item in deliveries],
                 )
             if update_offset is None and consent_version is None:
-                return
+                return True
             app = self.load_app_state()
             if update_offset is not None:
                 app.telegram_update_offset = max(app.telegram_update_offset or 0, update_offset)
             if consent_version is not None:
                 app.telegram_consent_version = consent_version
             self.save_app_state(app)
+        return True
+
+    def telegram_output_epoch(self) -> int:
+        """Count of deletions that discarded queued Telegram output."""
+        payload = self._read_state("telegram_output_epoch")
+        return 0 if payload is None else int(payload)
 
     def list_telegram_output(self, limit: int | None = None) -> list[tuple[int, TelegramDelivery]]:
         with self._connect() as database:
@@ -2291,6 +2305,7 @@ class MemoryStore:
         # An undelivered Telegram reply can quote what is being deleted, and
         # nothing ties a queued message to the records it mentions, so a
         # deletion drops every queued reply that could predate it.
+        self._write_state("telegram_output_epoch", str(self.telegram_output_epoch() + 1).encode())
         with self._connect() as database:
             if before is None:
                 database.execute("DELETE FROM telegram_outbox")

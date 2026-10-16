@@ -675,3 +675,35 @@ def test_consent_is_recorded_only_together_with_its_reply_and_offset(
     assert state.telegram_consent_version == CONSENT_VERSION
     assert state.telegram_update_offset == 42
     assert len(_queued(store)) == 1
+
+
+def test_a_view_rendered_before_a_local_deletion_is_never_queued(tmp_path: Path) -> None:
+    channel, store = _channel(tmp_path, [])
+    message_id = store.save_turn(store.start_session(), USER_TEXT, "Noted.", [])
+    store.add_user_reports(
+        [UserReport(kind=MemoryKind.FACT, content=USER_TEXT, evidence_quote=USER_TEXT)],
+        message_id,
+        USER_TEXT,
+    )
+    claim_id = store.list_claims()[0].id
+    render = channel._memory
+    renders: list[str] = []
+
+    def render_then_forget(argument: str | None) -> str:
+        view = render(argument)
+        renders.append(view)
+        if len(renders) == 1:
+            store.forget_claim(claim_id)  # `filo memory forget` lands mid-render
+        return view
+
+    channel._memory = render_then_forget  # type: ignore[method-assign]
+    update = _update()
+    update["message"]["text"] = "/memory"
+
+    channel.accept_update(update)
+
+    assert USER_TEXT in renders[0]
+    queued = [item.text for item in _queued(store)]
+    assert len(queued) == 1
+    assert USER_TEXT not in queued[0]
+    assert store.load_app_state().telegram_update_offset == 42
