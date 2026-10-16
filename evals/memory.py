@@ -17,8 +17,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 from pydantic_ai import Agent
-from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.embeddings import Embedder
+from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.models import Model
 
 from evals.costs import Ledger, estimate_cost
