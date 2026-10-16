@@ -257,8 +257,16 @@ manual smoke on macOS.
   comparator), raw retrieval over all messages. Later arms are added by Wave 2.
 
 **W1.2 Judges and statistics.**
-- One binary judge per criterion with an "unknown" option, `claude-opus-5-5` as primary and
-  `claude-sonnet-5-5` as a sensitivity check.
+- One binary judge per criterion with an "unknown" option. The only provider key available is
+  Anthropic's, so judges come from a different Claude *generation* than the Claude system under
+  test: Claude 5.5 models (Haiku, Sonnet) are tested, and a Claude 4.x model (Opus 4.8 primary,
+  Sonnet 4.6 as a sensitivity check) judges. The user simulator also comes from a model other than
+  the one under test.
+- A different generation lowers self-recognition but may not remove shared-vendor bias. The
+  decisive control is agreement with the maintainer's labels (per-criterion TPR/TNR on a frozen
+  split). Runs of the supported `codex:gpt-5.6-sol` configuration on the maintainer's Mac are
+  judged by Claude, which is cross-family. Ablations compare arms of the same system under test,
+  so judge bias toward that model affects both arms alike.
 - The judge is blind to the arm and the memory mode. Pairwise comparison is secondary only, run in
   both orders, with inconsistent pairs counted as ties.
 - Report Wilson or Bayesian intervals clustered by persona or scenario, pass^3 per scenario, and the
@@ -420,9 +428,9 @@ the cap the maintainer sets.
    - keep everything;
    - change only the agent's self-presentation and Italian-facing copy now;
    - full rename of the product, command and repository later.
-3. Whether to add a second-family key (OpenAI or Google) so that results on Claude as the system
-   under test are also judged cross-family. Without it, cross-family judging happens on the Codex
-   confirmation runs.
+3. **Decided 2026-10-16:** only an Anthropic key for now. Judges use a different Claude generation
+   than the system under test (W1.2). A second-family key can be added later without changing the
+   design.
 4. Time commitment for labeling.
 
 ## 8. Out of scope and risks
