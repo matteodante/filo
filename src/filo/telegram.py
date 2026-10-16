@@ -53,6 +53,10 @@ class TelegramError(RuntimeError):
         )
 
 
+class TelegramPairingChanged(RuntimeError):
+    """Setup paired another account while this listener was running."""
+
+
 class TelegramBot:
     def __init__(self, token: str) -> None:
         token = token.strip()
@@ -228,6 +232,15 @@ class TelegramChannel:
         paired = self.config_store.load_app_state().telegram_allowed_user_id
         return paired == self._paired_at_start or user_id == paired
 
+    def _stop_if_repaired(self) -> None:
+        # Consuming updates after a re-pairing would confirm the new account's
+        # messages to Telegram and advance the offset past them, so the
+        # replacement listener would never see them. Stop instead.
+        if self.config_store.load_app_state().telegram_allowed_user_id != self._paired_at_start:
+            raise TelegramPairingChanged(
+                "Telegram was paired with another account; restart the listener to use it."
+            )
+
     def run(self) -> None:
         identity = self.bot.get_me()
         self.bot.delete_webhook()
@@ -236,6 +249,7 @@ class TelegramChannel:
         print(f"Telegram bot @{username} is listening. Press Ctrl-C to stop.")
         offset = self.config_store.load_app_state().telegram_update_offset
         while True:
+            self._stop_if_repaired()
             try:
                 self.deliver_pending()
                 updates = self.bot.get_updates(offset)
@@ -251,6 +265,7 @@ class TelegramChannel:
                     continue
                 if offset is not None and update_id < offset:
                     continue
+                self._stop_if_repaired()
                 self.accept_update(update)
                 offset = update_id + 1
                 try:
@@ -305,6 +320,9 @@ class TelegramChannel:
                 entry_id, delivery = None, self._ephemeral_outbox[0]
             else:
                 return
+            paired = self.config_store.load_app_state().telegram_allowed_user_id
+            if delivery.chat_id == paired != self.allowed_user_id:
+                return  # queued for the newly paired account; its listener delivers it
             if not self._paired(delivery.chat_id):
                 # Queued for an account that is no longer paired; never send
                 # private content to it.

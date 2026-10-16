@@ -58,7 +58,7 @@ from filo.memory import (
     MemoryError as MemoryStoreError,
 )
 from filo.protocol import ProtocolError, ProtocolPack
-from filo.telegram import TelegramBot, TelegramChannel, TelegramError
+from filo.telegram import TelegramBot, TelegramChannel, TelegramError, TelegramPairingChanged
 
 PACKAGE_PROTOCOL = Path(__file__).resolve().parent / "protocols" / "transdiagnostic"
 REPOSITORY_PROTOCOL = Path(__file__).resolve().parents[2] / "protocols" / "transdiagnostic"
@@ -396,6 +396,11 @@ def _main(argv: Sequence[str] | None = None) -> int:
         except TelegramError as error:
             print(f"Telegram startup error: {error}")
             return 2
+        except TelegramPairingChanged as error:
+            # A non-zero exit lets launchd and systemd (Restart=on-failure)
+            # start a fresh listener that reads the new pairing.
+            print(str(error))
+            return 3
         except KeyboardInterrupt:
             print()
         return 0

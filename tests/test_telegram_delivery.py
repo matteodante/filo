@@ -30,7 +30,13 @@ from filo.memory import (
     UserReport,
 )
 from filo.protocol import ProtocolPack
-from filo.telegram import CONSENT_VERSION, TelegramBot, TelegramChannel, TelegramError
+from filo.telegram import (
+    CONSENT_VERSION,
+    TelegramBot,
+    TelegramChannel,
+    TelegramError,
+    TelegramPairingChanged,
+)
 
 models.ALLOW_MODEL_REQUESTS = False
 USER_TEXT = "I work from home"
@@ -707,3 +713,36 @@ def test_a_view_rendered_before_a_local_deletion_is_never_queued(tmp_path: Path)
     assert len(queued) == 1
     assert USER_TEXT not in queued[0]
     assert store.load_app_state().telegram_update_offset == 42
+
+
+def test_old_listener_stops_without_consuming_the_new_accounts_updates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.telegram_allowed_user_id = 42
+    store.save_app_state(state)
+    model_calls: list[str] = []
+    channel, store = _channel(tmp_path, model_calls)
+    from_new_account = _update()
+    from_new_account["message"]["from"]["id"] = from_new_account["message"]["chat"]["id"] = 43
+
+    class RepairingApi(FakeBotApi):
+        def __call__(self, request: Any, timeout: float = 0) -> BytesIO:
+            if request.full_url.endswith("/getUpdates"):
+                state = store.load_app_state()
+                state.telegram_allowed_user_id = 43  # setup re-pairs during this poll
+                store.save_app_state(state)
+                store.queue_telegram_output([TelegramDelivery(chat_id=43, text="for B")])
+            return super().__call__(request, timeout)
+
+    api = RepairingApi(from_new_account)
+    monkeypatch.setattr("filo.telegram.urlopen", api)
+
+    with pytest.raises(TelegramPairingChanged):
+        channel.run()
+
+    assert api.calls["getUpdates"] == 1  # no later poll confirms the update to Telegram
+    assert store.load_app_state().telegram_update_offset is None
+    assert model_calls == []
+    assert [item.text for item in _queued(store)] == ["for B"]

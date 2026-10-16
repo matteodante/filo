@@ -111,7 +111,8 @@ Known gaps in the current state of the repository. Close them or record why they
 let them accumulate silently.
 
 - Forward schema migrations are required from the Filo store onward, but the migration framework
-  does not exist yet. Build it before the first change to the Filo schema.
+  does not exist yet. Build it before the first change to the Filo schema after the first Filo
+  release.
 - The installers pin the release named in `pyproject.toml`. Until the first release tagged under
   the Filo name exists, that tag still contains the Therapist package and the installers cannot
   complete, so `README.md` documents the checkout installation instead of the bootstrap. The
@@ -369,7 +370,10 @@ The rename to Filo was an intentional clean break: Filo uses a fresh data direct
 reads, migrates, or modifies a Therapist store. From the Filo store onward, every schema change must
 ship a forward migration so that years of memory survive upgrades; the migration framework is a
 separate work item and does not exist yet. Do not add legacy aliases, schema fallbacks, or plaintext
-backups. The Filo schema marker is `filo-1`. Reject an unknown or future schema version before
+backups. The Filo schema marker is `filo-1`. The `filo-1` baseline is frozen at the first Filo
+release; until then no store carrying it exists outside development, so schema additions such as
+the `telegram_outbox` table amend `filo-1` directly, and from that release on every change ships a
+forward migration (W0.3). Reject an unknown or future schema version before
 creating any table, and refuse a data directory containing a Therapist `thera.db` before creating,
 chmodding, or reading anything in it.
 
@@ -602,7 +606,10 @@ queued on disk by an earlier standard or transcript-only run are delivered first
 forgetting a claim, deleting a session or a date range, and `delete-data` discard every undelivered
 queued reply, because a queued message is not linked to the records it quotes; retention discards
 only replies queued before the cutoff that removed data, so the startup retention pass keeps replies
-a crash left queued. Each such discard increments a stored counter, and a transparency view
+a crash left queued. A listener that finds the persisted pairing changed since it started stops
+polling before confirming or recording any further update, and exits non-zero so launchd or systemd
+starts a replacement that reads the new pairing; the new account's queued replies are left for that
+replacement. Each such discard increments a stored counter, and a transparency view
 (`/status`, `/case`, `/memory`, `/sessions`, `/interventions`, `/privacy`) is queued only if the
 counter is unchanged since it was rendered, in the queue's own transaction; otherwise it is rendered
 again, so a deletion that lands mid-render cannot let the old view through. Incoming updates pass the same reread pairing check as delivery, so a listener
