@@ -957,3 +957,39 @@ def test_store_with_older_schema_marker_is_rejected_without_modification(tmp_pat
     with sqlite3.connect(store.database_path) as database:
         tables = {row[0] for row in database.execute("SELECT name FROM sqlite_master")}
     assert "semantic_index" not in tables
+
+
+def test_unmarked_store_with_state_table_is_rejected_without_modification(tmp_path) -> None:
+    MemoryStore(tmp_path)  # creates memory.key
+    database_path = tmp_path / "filo.db"
+    database_path.unlink()
+    with sqlite3.connect(database_path) as database:
+        database.execute(
+            "CREATE TABLE state (name TEXT PRIMARY KEY, payload BLOB NOT NULL, "
+            "updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+        )
+    before = database_path.read_bytes()
+
+    with pytest.raises(MemoryError, match="incompatible schema"):
+        MemoryStore(tmp_path)
+
+    assert database_path.read_bytes() == before
+    with sqlite3.connect(database_path) as database:
+        tables = {row[0] for row in database.execute("SELECT name FROM sqlite_master")}
+    assert tables == {"state", "sqlite_autoindex_state_1"}
+
+
+def test_interrupted_initialization_leaves_an_empty_reusable_database(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def crash(*_: object) -> None:
+        raise RuntimeError("interrupted")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(MemoryStore, "_write_state", crash)
+        with pytest.raises(RuntimeError, match="interrupted"):
+            MemoryStore(tmp_path)
+
+    with sqlite3.connect(tmp_path / "filo.db") as database:
+        assert database.execute("SELECT name FROM sqlite_master").fetchall() == []
+    assert MemoryStore(tmp_path).load_app_state() is not None

@@ -15,20 +15,21 @@ Formerly published as Therapist (v0.1–v0.3).
 
 ## Install
 
-macOS or Linux:
+Until the first release published under the Filo name, install from a checkout. This needs Git and
+[uv](https://docs.astral.sh/uv/):
 
 ```bash
-curl -LsSf https://raw.githubusercontent.com/matteodante/filo/main/install.sh | sh
+git clone https://github.com/matteodante/filo.git
+cd filo
+uv tool install --python 3.12 .
+filo setup
+filo doctor
 ```
 
-Windows PowerShell:
-
-```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/matteodante/filo/main/install.ps1 | iex"
-```
-
-The tagged-alpha installer needs no administrator privileges, existing Python, or Git checkout. It
-installs an isolated Python 3.12 tool, runs guided setup, and finishes with `filo doctor`.
+The one-line bootstrap installers (`install.sh`, `install.ps1`) still pin `v0.3.1`, which predates
+the rename, so they are not usable until that release. They need no administrator privileges,
+existing Python, or Git checkout, install an isolated Python 3.12 tool, run guided setup, and
+finish with `filo doctor`.
 
 ## Architecture
 

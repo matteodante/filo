@@ -80,6 +80,18 @@ commit's GitHub CI and CodeQL results before tagging. Never describe the release
 reviewed, protected by multi-person governance, continuously recoverable, or able to accept
 confidential conduct cases. Reassess these constraints before broader promotion or material growth.
 
+## First release under the Filo name
+
+The installers pin a tag, and every tag up to `v0.3.1` ships the Therapist package and the `thera`
+command. The first Filo release therefore moves the installer pin and the public install path
+together:
+
+1. Bump the version in `pyproject.toml`, `src/filo/__init__.py`, `install.sh`, and `install.ps1`.
+2. Restore the one-line bootstrap commands in the README `Install` section, replacing the checkout
+   installation, and drop the matching item from the AGENTS.md open work.
+3. After publication, run the bootstrap from `main` on a clean account and confirm it installs
+   `filo` before announcing the release.
+
 ## Version and tag policy
 
 - Use Semantic Versioning for Git tags and PEP 440-compatible package versions.

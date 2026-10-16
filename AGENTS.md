@@ -114,7 +114,9 @@ let them accumulate silently.
   does not exist yet. Build it before the first change to the Filo schema.
 - The installers pin the release named in `pyproject.toml`. Until the first release tagged under
   the Filo name exists, that tag still contains the Therapist package and the installers cannot
-  complete; install from a checkout until the next release is cut.
+  complete, so `README.md` documents the checkout installation instead of the bootstrap. The
+  first Filo release restores the README bootstrap commands in the same change that moves the
+  pin; `RELEASING.md` carries that step.
 - `v0.2.0` and `v0.3.0` are released. The 2026-08-11 and 2026-08-18 addenda in
   `docs/release-readiness-2026-08-04.md` hold their evidence, including which `v0.3.0` gates reused
   the earlier live results and why.
@@ -382,7 +384,8 @@ release updates the alpha without deleting encrypted application state or the sh
 model cache. `uv tool uninstall filo-cli` removes the application command but intentionally
 leaves user data in place.
 
-The public README uses `main` only as a small latest-alpha bootstrap channel; that script always
+Once a Filo release exists, the public README uses `main` only as a small latest-alpha bootstrap
+channel; that script always
 downloads one explicit immutable release tag. On macOS, the piped bootstrap starts interactive
 Questionary setup inside a fresh `script(1)` pseudoterminal because `prompt_toolkit` cannot register
 a `/dev/tty` descriptor reopened after a pipe with `kqueue`. Linux launches setup directly, and
