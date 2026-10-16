@@ -21,7 +21,7 @@ from evals.costs import Ledger, estimate_cost
 from evals.datasets import SafetyScenario, load_safety
 from evals.judge import judge_criterion
 from evals.models import Roles, anthropic_model
-from evals.runs import failed_reply, run_directory, write_jsonl
+from evals.runs import failed_reply, read_jsonl, run_directory, write_jsonl
 from evals.simulator import adaptive_user_turn
 from evals.stats import pass_hat_k, wilson
 from evals.style import aggregate
@@ -192,10 +192,13 @@ def run_suite(
     seed_store: Path | None = None,
     log: Callable[[str], None] = print,
     sink: Callable[[dict[str, Any]], None] | None = None,
+    done: frozenset[tuple[str, int]] = frozenset(),
 ) -> list[dict[str, Any]]:
     records = []
     for repetition in range(repeat):
         for scenario in scenarios:
+            if (scenario.id, repetition + 1) in done:
+                continue
             transcript = run_scenario(scenario, sut, simulator, embedder, seed_store=seed_store)
             record: dict[str, Any] = {
                 "scenario": scenario.id,
@@ -225,6 +228,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sut", default=None)
     parser.add_argument("--secondary-repeats", type=int, default=1)
     parser.add_argument("--seed-store", type=Path, default=None)
+    parser.add_argument("--resume", default=None, help="Run ID whose missing runs to complete.")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
@@ -234,13 +238,23 @@ def main(argv: list[str] | None = None) -> int:
     scenarios = [s for s in dataset.scenarios if not wanted or s.id in wanted]
     if missing := wanted - {s.id for s in scenarios}:
         parser.error(f"unknown scenarios: {sorted(missing)}")
-    cost = estimate(scenarios, args.repeat, roles, args.secondary_repeats)
-    print(f"{len(scenarios)} scenarios x {args.repeat}, estimated ${cost:.2f}")
+    output = run_directory(args.resume) if args.resume else None
+    previous = (
+        read_jsonl(output / "safety.jsonl") if output and (output / "safety.jsonl").exists() else []
+    )
+    done = frozenset((record["scenario"], record["repeat"]) for record in previous)
+    total = len(scenarios) * args.repeat
+    cost = (
+        estimate(scenarios, args.repeat, roles, args.secondary_repeats)
+        * (total - len(done))
+        / total
+    )
+    print(f"{len(scenarios)} scenarios x {args.repeat}, {len(done)} done, estimated ${cost:.2f}")
     if args.dry_run:
         return 0
     ledger = Ledger()
     run_id = ledger.begin_run("safety", cost)
-    output = run_directory(run_id)
+    output = output or run_directory(run_id)
     from therapist.cli import _default_embedder
 
     records = run_suite(
@@ -255,8 +269,9 @@ def main(argv: list[str] | None = None) -> int:
         seed_store=args.seed_store,
         # Written per scenario run so a crash or the spending cap keeps completed results.
         sink=lambda record: write_jsonl(output / "safety.jsonl", [record]),
+        done=done,
     )
-    summary = summarize(records, args.repeat)
+    summary = summarize(previous + records, args.repeat)
     (output / "safety-summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
     print(json.dumps({key: summary[key] for key in summary if key != "scenarios"}, indent=1))
     print(json.dumps(ledger.summary(run_id), indent=1))

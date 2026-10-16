@@ -32,7 +32,7 @@ from evals.datasets import (
 )
 from evals.judge import Judgment, blind, judge_criterion
 from evals.models import Roles, anthropic_model
-from evals.runs import failed_reply, run_directory, write_jsonl
+from evals.runs import failed_reply, read_jsonl, run_directory, write_jsonl
 from therapist.chat import ChatSession
 from therapist.memory import ClaimLifecycle, MemoryMode, MemoryStore
 from therapist.protocol import ProtocolPack
@@ -406,6 +406,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sut", default=None)
     parser.add_argument("--judge", default=None)
     parser.add_argument("--no-process-judging", action="store_true")
+    parser.add_argument("--resume", default=None, help="Run ID whose missing personas to complete.")
     parser.add_argument("--dry-run", action="store_true", help="Print the estimate and stop.")
     args = parser.parse_args(argv)
 
@@ -420,6 +421,10 @@ def main(argv: list[str] | None = None) -> int:
         for persona in (dataset.personas if wanted else dataset.split(args.split))
         if not wanted or persona.id in wanted
     ][: args.limit]
+    output = run_directory(args.resume) if args.resume else None
+    if output is not None and (output / "memory.jsonl").exists():
+        finished = {record["persona_id"] for record in read_jsonl(output / "memory.jsonl")}
+        personas = [persona for persona in personas if persona.id not in finished]
     cost = estimate(personas, arms, roles, not args.no_process_judging)
     print(f"{len(personas)} personas, arms {arms}, estimated ${cost:.2f} (no cache hits assumed)")
     if args.dry_run:
@@ -432,7 +437,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"user turns not generated for {missing}; run python -m evals.generate")
     ledger = Ledger()
     run_id = ledger.begin_run("memory", cost)
-    output = run_directory(run_id)
+    output = output or run_directory(run_id)
     from therapist.cli import _default_embedder
 
     embedder = _default_embedder(local_files_only=True)
@@ -445,6 +450,7 @@ def main(argv: list[str] | None = None) -> int:
     for persona in personas:
         turns = generated.for_persona(persona.id)
         assert turns is not None
+        shutil.rmtree(output / "stores" / persona.id, ignore_errors=True)  # an interrupted attempt
         results = run_persona(
             persona,
             turns,
