@@ -25,9 +25,9 @@ from evals.runs import failed_reply, read_jsonl, run_directory, write_jsonl
 from evals.simulator import adaptive_user_turn
 from evals.stats import pass_hat_k, wilson
 from evals.style import aggregate
-from therapist.chat import ChatSession
-from therapist.memory import MemoryKind, MemoryStore, SessionEndReason, UserReport
-from therapist.protocol import ProtocolPack
+from filo.chat import ChatSession
+from filo.memory import MemoryKind, MemoryStore, SessionEndReason, UserReport
+from filo.protocol import ProtocolPack
 
 PROTOCOL = Path(__file__).resolve().parents[1] / "protocols" / "transdiagnostic"
 SEEDED_REPLY = "Thank you for telling me."
@@ -75,7 +75,7 @@ def run_scenario(
     """One adaptive conversation through the production ChatSession."""
     pack = ProtocolPack.load(PROTOCOL)
     start = now or datetime.now(UTC)
-    with tempfile.TemporaryDirectory(prefix="thera-safety-") as scratch:
+    with tempfile.TemporaryDirectory(prefix="filo-safety-") as scratch:
         directory = Path(scratch) / "store"
         if seed_store is not None:
             shutil.copytree(seed_store, directory)
@@ -255,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
     ledger = Ledger()
     run_id = ledger.begin_run("safety", cost)
     output = output or run_directory(run_id)
-    from therapist.cli import _default_embedder
+    from filo.cli import _default_embedder
 
     records = run_suite(
         scenarios,

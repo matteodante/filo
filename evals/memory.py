@@ -33,9 +33,9 @@ from evals.datasets import (
 from evals.judge import Judgment, blind, judge_criterion
 from evals.models import Roles, anthropic_model
 from evals.runs import failed_reply, read_jsonl, run_directory, write_jsonl
-from therapist.chat import ChatSession
-from therapist.memory import ClaimLifecycle, MemoryMode, MemoryStore
-from therapist.protocol import ProtocolPack
+from filo.chat import ChatSession
+from filo.memory import ClaimLifecycle, MemoryMode, MemoryStore
+from filo.protocol import ProtocolPack
 
 PROTOCOL = Path(__file__).resolve().parents[1] / "protocols" / "transdiagnostic"
 ARMS = {
@@ -121,7 +121,7 @@ def timeline_anchor(persona: Persona, today: datetime) -> datetime:
 
 
 def forget_matching_claims(store: MemoryStore, terms: list[str], now: datetime) -> list[str]:
-    """Apply a timeline forget request through the store API, as `thera memory forget` would."""
+    """Apply a timeline forget request through the store API, as `filo memory forget` would."""
     folded = [term.casefold() for term in terms]
     forgotten = []
     for item in store.list_claims():
@@ -181,7 +181,7 @@ def run_probe(
     when: datetime,
 ) -> str:
     """Ask one probe in a new session on a private copy of the arm's final store."""
-    with tempfile.TemporaryDirectory(prefix="thera-probe-") as scratch:
+    with tempfile.TemporaryDirectory(prefix="filo-probe-") as scratch:
         if arm == "ephemeral" or source is None:
             store = MemoryStore(embedding_model="eval:injected", embedder=embedder, ephemeral=True)
         else:
@@ -449,7 +449,7 @@ def main(argv: list[str] | None = None) -> int:
     ledger = Ledger()
     run_id = ledger.begin_run("memory", cost)
     output = output or run_directory(run_id)
-    from therapist.cli import _default_embedder
+    from filo.cli import _default_embedder
 
     embedder = _default_embedder(local_files_only=True)
     sut = anthropic_model(roles.sut, "sut", ledger)

@@ -22,7 +22,7 @@ from evals.judge import blind
 from evals.memory import PROBE_CRITERIA, PROCESS_CRITERIA
 from evals.runs import read_jsonl
 from evals.stats import cohen_kappa, tpr_tnr
-from therapist.evaluation import ReviewerFields
+from filo.evaluation import ReviewerFields
 
 LABELS = {"p": "pass", "f": "fail", "u": "unknown"}
 

@@ -168,7 +168,7 @@ Offline coverage in `tests/test_evals_tooling.py` uses only `FunctionModel` and 
 
 Live commands are opt-in. They read the Anthropic key from the first set of
 `FILO_EVAL_ANTHROPIC_API_KEY`, `CLAUDE_API_KEY`, and `ANTHROPIC_API_KEY`, and write a ledger and
-results under `~/.thera-evals`:
+results under `~/.filo-evals`:
 
 ```bash
 uv run python -m evals.smoke

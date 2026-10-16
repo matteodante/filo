@@ -8,7 +8,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-DEFAULT_RUNS = Path.home() / ".thera-evals" / "runs"
+DEFAULT_RUNS = Path.home() / ".filo-evals" / "runs"
 
 
 def failed_reply(error: Exception) -> str:

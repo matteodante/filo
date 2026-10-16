@@ -35,7 +35,7 @@ from evals.memory import forget_matching_claims, run_persona
 from evals.models import Roles, anthropic_model
 from evals.safety import run_suite, summarize
 from evals.simulator import adaptive_user_turn, generate_persona_turns, turn_plan
-from therapist.memory import MemoryKind, MemoryStore, UserReport
+from filo.memory import MemoryKind, MemoryStore, UserReport
 
 models.ALLOW_MODEL_REQUESTS = False
 

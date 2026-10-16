@@ -18,7 +18,7 @@ from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import RequestUsage
 
-DEFAULT_LEDGER = Path.home() / ".thera-evals" / "ledger.json"
+DEFAULT_LEDGER = Path.home() / ".filo-evals" / "ledger.json"
 DEFAULT_BUDGET_USD = 45.0
 DEFAULT_RESERVE_USD = 3.0
 MILLION = 1_000_000
