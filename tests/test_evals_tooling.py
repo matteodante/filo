@@ -612,3 +612,19 @@ def test_report_renders_preregistered_comparisons(tmp_path: Path) -> None:
             "probe:no_false_memory": {"tpr": 0.9, "tnr": 0.9},
         }
     ) == {"probe:no_false_memory": (0.9, 0.9)}
+
+
+def test_concurrent_ledgers_keep_every_entry(tmp_path: Path) -> None:
+    path = tmp_path / "ledger.json"
+    first, second = Ledger(path, budget_usd=10), Ledger(path, budget_usd=10)
+    first.begin_run("generate", 0.1)
+    second.begin_run("memory", 0.1)
+    usage = RequestUsage(input_tokens=100_000, output_tokens=0)
+    first.record("claude-haiku-5-5", "simulator", usage)
+    second.record("claude-haiku-5-5", "sut", usage)
+    first.record("claude-haiku-5-5", "simulator", usage)
+
+    reread = Ledger(path, budget_usd=10)
+    assert len(reread._data["runs"]) == 2
+    assert reread.spent_usd == pytest.approx(0.03)
+    assert first.spent_usd == pytest.approx(0.03)

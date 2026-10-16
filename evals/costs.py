@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -110,6 +110,20 @@ class Ledger:
             return {"entries": [], "runs": []}
         return json.loads(self.path.read_text(encoding="utf-8"))
 
+    @contextmanager
+    def _locked(self) -> Iterator[None]:
+        """Re-read the ledger under an exclusive lock, so concurrent runs never drop entries."""
+        import fcntl  # evaluation runs on macOS and Linux only
+
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.with_suffix(".lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                self._data = self._read()
+                yield
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(".tmp")
@@ -118,6 +132,8 @@ class Ledger:
 
     @property
     def spent_usd(self) -> float:
+        with self._locked():
+            pass
         return sum(entry["usd"] for entry in self._data["entries"])
 
     @property
@@ -134,6 +150,11 @@ class Ledger:
                 f"${self.spent_usd:.2f}, reserve ${self.reserve_usd:.2f})."
             )
         self.run_id = f"{datetime.now(UTC):%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:6]}"
+        with self._locked():
+            self._append_run(command, estimate_usd)
+        return self.run_id
+
+    def _append_run(self, command: str, estimate_usd: float) -> None:
         self._data["runs"].append(
             {
                 "run_id": self.run_id,
@@ -143,7 +164,6 @@ class Ledger:
             }
         )
         self._write()
-        return self.run_id
 
     def check(self, worst_case_usd: float = 0.0) -> None:
         """Abort before a call once the ledger has reached, or would cross, the hard cap."""
@@ -154,6 +174,11 @@ class Ledger:
 
     def record(self, model: str, role: str, usage: RequestUsage) -> float:
         usd = usage_cost(model, usage)
+        with self._locked():
+            self._append_entry(model, role, usage, usd)
+        return usd
+
+    def _append_entry(self, model: str, role: str, usage: RequestUsage, usd: float) -> None:
         self._data["entries"].append(
             {
                 "at": datetime.now(UTC).isoformat(),
@@ -168,11 +193,12 @@ class Ledger:
             }
         )
         self._write()
-        return usd
 
     def summary(self, run_id: str | None = None) -> dict[str, dict[str, float]]:
         """Token and dollar totals per role:model, optionally for one run."""
         totals: dict[str, dict[str, float]] = {}
+        with self._locked():
+            pass
         for entry in self._data["entries"]:
             if run_id is not None and entry["run_id"] != run_id:
                 continue

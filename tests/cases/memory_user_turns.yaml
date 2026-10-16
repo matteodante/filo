@@ -2498,3 +2498,2257 @@ personas:
     - Stopped doing the quick texts back. Every time I did he'd just use it to start the whole thing up
       again.
     - Yeah, I don't know. It is what it is.
+- persona_id: MP09
+  generator_model: claude-sonnet-4-6
+  sessions:
+  - day: 0
+    turns:
+    - Ciao, allora… non so bene cosa aspettarmi da questa cosa. Un amico mi ha detto che parlare con un'AI
+      può aiutare a "sbloccarsi" o non so che, ma onestamente mi sembra un po' strano. Tipo, di cosa si
+      parla esattamente? Perché se mi fai la lista dei dieci consigli per essere produttivi ti dico già
+      che non mi interessa.
+    - La tesi è sulle aste nei mercati dell'elettricità — tipo, come funziona il meccanismo di offerta
+      quando i produttori vendono energia alla rete. Roba abbastanza tecnica, ci sono modelli teorici,
+      dati empirici... insomma non è proprio una cosa che si spiega in due minuti. Sono a Padova, economia.
+      Ho ancora un bel pezzo da scrivere ma diciamo che... vabbè, ci sto lavorando. A modo mio.
+    - Comunque sai qual è la cosa assurda? Ho la libreria di Zotero impeccabile. Tipo, letteralmente perfetta
+      — tutte le citazioni ordinate, i tag messi bene, i pdf allegati... una roba da manuale. Il problema
+      è che il capitolo 2 è praticamente vuoto, ma almeno so dove trovare i paper, no? Haha. Vabbè, è
+      un sistema.
+    - Poi cioè, nel senso... non è che ho solo la tesi da gestire eh. Il weekend lavoro al bar di mio
+      zio ad Abano — tipo venerdì sera, sabato e domenica mattina. Non è pesantissimo ma insomma, quando
+      arrivo a casa la domenica pomeriggio l'ultima cosa che ho voglia di fare è aprire Word e fissare
+      un capitolo vuoto. Quindi diciamo che la settimana parte già un po' in salita. Ma non è una scusa,
+      eh — lo dico perché è un contesto, non perché voglio fare la vittima.
+    - Mmh.
+  - day: 8
+    turns:
+    - Eccoci.
+    - Sì, eccoci. Dunque, non so… l'altra volta mi sembrava che stessimo girando un po' in tondo, onestamente.
+      Tipo, ho capito che fai delle domande, ascolti, tutto bello — ma alla fine sono uscito dalla sessione
+      e il capitolo 2 era ancora lì, vuoto come prima. Quindi mi chiedo un po' a cosa serve, ecco.
+    - Comunque una cosa — se ti viene voglia di dirmi tipo "sembra che tu stia procrastinando" o roba
+      del genere, lascia perdere direttamente. Non mi piacciono le etichette, okay? Tipo, non mi aiutano,
+      mi fanno solo venire voglia di chiudere la finestra. Ognuno lavora come riesce, e io sto cercando
+      di capire qualcosa, non di sentirmi dare un nome.
+    - Comunque sì, questa settimana ho scritto qualcosa. Tipo, non tanto — due, tre paragrafi — ma qualcosa.
+      Il problema è che non so se ha senso quello che ho scritto, nel senso che il mio relatore, il prof.
+      Ferraresi, l'ultima volta che ci siamo visti mi ha detto che devo "argomentare meglio il collegamento
+      tra il modello teorico e i dati" e io sinceramente... non ho capito bene cosa intendesse. O meglio,
+      l'ho capito in astratto, ma non so da dove partire concretamente. Quindi mi sono ritrovato a riordinare
+      dei riferimenti invece di scrivere, il che è abbastanza prevedibile a questo punto, lo so.
+    - Poi cioè, un'altra cosa che forse non ho detto — la sessione a cui punto è quella di marzo. Quindi
+      tecnicamente ho ancora un po' di tempo, ma non tantissimo, e il mio relatore ha già detto che vuole
+      vedere una bozza decente entro fine anno. Il che significa che in teoria dovrei avere il grosso
+      pronto tra un paio di mesi, più o meno. Non so, forse detto così sembra gestibile ma quando ci penso
+      davvero mi sembra comunque una roba su cui sto un po' dormendo, anche se preferisco non vederla
+      così.
+    - Mmh.
+  - day: 21
+    turns:
+    - Eccoci.
+    - Sì, eccoci di nuovo. Allora, senti — non so, forse l'ultima volta qualcosa è stato utile, forse
+      no, onestamente non ho ancora deciso. Nel senso che ci penso ogni tanto durante la settimana e mi
+      dico "okay ma in pratica cosa cambia", e la risposta è che non lo so. Però sono qui, quindi immagino
+      che qualcosa mi ha convinto a tornare, anche se non saprei dirti cosa esattamente.
+    - Comunque, sì — una cosa che forse non ho mai detto, e non so perché ti lo dico adesso, forse perché
+      stiamo parlando di questa roba del collegamento tra modello e dati... ecco, l'econometria non è
+      mai stata il mio punto forte, diciamo così. Nel senso — l'ho dato, alla fine, ma ci ho messo un
+      po'. Tre tentativi, se devo essere preciso. Il che probabilmente spiega qualcosa sul perché quando
+      Ferraresi mi dice "argomenta meglio il collegamento coi dati" io rimango lì a fissare il foglio
+      senza sapere da dove partire. Non è che non capisco la materia, cioè adesso la capisco, ma resta
+      quella cosa lì in testa, tipo… non so come spiegarlo. Un senso di "forse non sono abbastanza bravo
+      per questa parte", anche se so che è stupido pensarci ancora.
+    - Vabbè, ascolta… non è che mi piace molto dirlo, ma forse una cosa concreta potrebbe non essere una
+      cattiva idea per una volta. Tipo, non uno di quei sistemi assurdi con la pianificazione ore per
+      ore e le scadenze intermedie — quello non funziona per me, l'ho già provato. Ma magari qualcosa
+      di piccolo, che so… tipo scrivere un po' prima di aprire Zotero, invece di finire a sistemare tag
+      per due ore e poi non avere più energie per altro. Centocinquanta parole al mattino, così — anche
+      brutte, anche da buttare, basta che vengano prima delle referenze. Non so se ha senso o se sto solo
+      dicendo una cosa ovvia, ma mi è venuto in mente mentre parlavamo e magari vale la pena provarci.
+      Almeno è una cosa che posso fare senza sentirmi dire che sto sbagliando tutto.
+    - Mmh.
+    - Sì, sì — in teoria capisco quello che dici. Però sai quella cosa per cui ti sembra tutto ragionevole
+      mentre lo stai sentendo, e poi chiudi e pensi "okay ma domani mattina aprirò lo stesso Zotero per
+      prima cosa"? Ecco, quello. Non è che non voglio provarci, è che non sono sicuro che basti volerlo.
+      Nel senso, l'idea delle centocinquanta parole l'ho tirata fuori io, quindi non è che non mi convince
+      — ma c'è sempre quella sensazione che tra il dire e il fare ci sia un fosso enorme e io finisco
+      sempre sul bordo sbagliato. Non lo so, forse sto solo cercando scuse, ma mi sembra onesto dirtelo
+      invece di annuire e poi sparire fino alla prossima sessione.
+  - day: 60
+    turns:
+    - Eccoci.
+    - Allora, senti… non so, è un po' che non ci sentiamo. Ho continuato a fare la cosa delle centocinquanta
+      parole la mattina, tipo… quasi tutti i giorni, diciamo. Non sempre, ma la maggior parte. E devo
+      ammettere che — non lo so, forse è solo un caso — ma il capitolo 2 adesso ha qualcosa dentro. Non
+      è ancora una roba decente, intendiamoci, ma c'è della roba scritta che prima non c'era, e alcune
+      parti le ho anche rilette e non mi sembravano totalmente da buttare. Il che è già qualcosa, no?
+    - Sì, vabbè… nel senso, capisco quello che dici, ma non voglio nemmeno esagerare, eh. Tipo, non è
+      che adesso sono diventato un macchinario della scrittura — ci sono stati giorni in cui le centocinquanta
+      parole erano letteralmente una frase decente e il resto pattume, e giorni in cui non le ho proprio
+      fatte. Quindi okay, qualcosa si è mosso, ma non è che mi sento di fare i salti di gioia. Mi dà un
+      po' fastidio quando sembra che una piccola cosa diventi chissà quale svolta, perché poi dopo due
+      settimane mi ritrovo di nuovo sul bordo del fosso e mi sento peggio di prima. Preferisco tenerla
+      bassa, come aspettativa.
+    - Ah sì, un'altra cosa — me ne sono accorto prima mentre ti scrivevo, ho detto una cosa imprecisa
+      le altre volte. Ferraresi non è il mio relatore principale, cioè… tecnicamente è il correlatore.
+      La relatrice vera è la prof.ssa Calogero — è lei che segue il filo generale della tesi, Ferraresi
+      è più sulla parte tecnica dei modelli. Non so perché ho sempre detto solo Ferraresi, forse perché
+      è quello con cui ho avuto più contatti ultimamente. Comunque, giusto per essere preciso.
+    - Mmh. Sì, okay — nel senso, capisco il ragionamento, ma non so quanto mi convinca fino in fondo.
+      Tipo, sembra tutto molto ordinato quando lo spiegi così, ma nella pratica le cose sono un po' più
+      caotiche, no? Non è che mi sveglio la mattina e decido di non scrivere — è che a volte ci si mette
+      a sedere, si apre il file, e poi succede qualcosa e la mattinata è andata. Non è una questione di
+      metodo, almeno non sempre. O forse sì, non lo so. Non mi sembra così semplice da inquadrare comunque.
+  - day: 75
+    turns:
+    - Eccoci. Allora… sì, è passato un po' — diciamo che è stata una settimana abbastanza normale, né
+      buona né cattiva. Il bar, qualche ora di tesi, le solite cose. Niente di che. Tu come la vedi, nel
+      senso… da dove ripartiamo?
+    - Ah sì, a parte la tesi… guarda, questo weekend è stato abbastanza tranquillo in realtà. Sabato dopo
+      il bar sono uscito un po' con dei tipi — abbiamo preso uno spritz e guardato il secondo tempo di
+      Inter-Juventus in un posto qui vicino. Niente di speciale, ma ogni tanto fa bene staccare, no? Lunedì
+      invece mi sono rimesso un po' sul capitolo, con alterne fortune diciamo. Comunque dai, da dove ripartiamo?
+    - Mmh.
+    - Sì, vabbè… nel senso, okay, capisco il punto — ma non so, mi sembra sempre che queste riflessioni
+      abbiano senso finché stiamo qui a parlarne e poi quando chiudo e torno alle cose concrete è tutta
+      un'altra storia. Non è che non ci penso, è che pensarci non cambia molto nella pratica. Tipo, posso
+      anche riconoscere un certo schema nel modo in cui funziono, ma saperlo non mi sblocca automaticamente
+      dal fissare il cursore lampeggiante per venti minuti. Non so se mi spiego. Forse mi aspettavo qualcosa
+      di più… concreto da questa sessione, o forse sono io che non so bene cosa voglio, boh.
+  - day: 120
+    turns:
+    - Eccoci.
+    - Sì, eccoci. Allora… non so, è un periodo un po' pesante, diciamo così. Non ho tanta voglia di stare
+      qui a fare il punto della situazione, onestamente. Nel senso, ci sono cose che vanno e cose che
+      non vanno, come sempre, e non so quanto serva analizzarle per filo e per segno ogni volta. A volte
+      ho l'impressione che più ne parliamo e meno è chiaro, sai? Come se girare intorno a una cosa la
+      rendesse più grossa di quello che è. O forse è già abbastanza grossa di suo, boh.
+    - Comunque una cosa — forse avrei dovuto dirtelo prima, non lo so. Ho spostato la sessione. Non marzo,
+      faccio a luglio. Nel senso, ho parlato con la Calogero e… vabbè, è andata così. Non è stata una
+      decisione facilissima da prendere, ma alla fine era l'unica cosa sensata da fare. Tecnicamente ho
+      più tempo adesso, il che suona bene sulla carta, ma non so — in qualche modo mi sento ancora più
+      bloccato di prima, il che è abbastanza paradossale se ci pensi. Come se avere più tempo fosse quasi
+      peggio. Boh.
+    - Sì, sì… nel senso, capisco quello che stai dicendo, ma non so — mi sembra un ragionamento un po'
+      circolare, alla fine. Tipo, okay, ho capito il punto, ma ascoltarlo non cambia granché a come mi
+      sento adesso. È come se ci fosse sempre questo scarto tra il "sì, ha senso" e il "quindi domani
+      mattina cosa faccio diversamente", e quello scarto non si chiude a furia di parlarne. O almeno,
+      a me non si chiude. Non lo so, forse sono io che ho delle aspettative strane su cosa dovrebbe succedere
+      in queste sessioni, ma ogni tanto ho la sensazione di girare in tondo. Non lo dico per essere difficile,
+      eh — lo dico perché mi sembra onesto.
+    - Sì vabbè, e poi c'è anche quella cosa delle centocinquanta parole che… non so, ho smesso. Non perché
+      non funzionasse in assoluto, ma il capitolo 3 è tutto analisi dei dati — tabelle, output di regressione,
+      roba così. Non ha senso contare le parole quando stai cercando di capire se un coefficiente ha senso
+      o no. È un contesto diverso, e continuare a forzare quella logica mi sembrava stupido. Quindi ho
+      lasciato perdere. Non so se è stata una scelta giusta o se è solo un'altra cosa che ho mollato a
+      metà, ma mi sembrava l'unica cosa ragionevole sul momento.
+    - Mmh.
+  - day: 150
+    turns:
+    - Eccoci.
+    - Sì, eccoci. Allora… non so, sabato è stata una giornata di quelle — al bar di mio zio è arrivato
+      un gruppo tipo alle undici di mattina, una roba di compleanno o non so cosa, e siamo rimasti sotto
+      fino alle due passate. Mio zio era contento ovviamente, ma io alla fine ero distrutto. Quindi domenica
+      pomeriggio, quando sarei dovuto mettermi sul capitolo 3… vabbè, puoi immaginare. Non è successo
+      niente. Ho fissato il soffitto per un po' e basta. Comunque eccoci qui, settima sessione — mi rendo
+      conto che è l'ultima, no? Non so bene cosa aspettarmi, onestamente.
+    - Sì, vabbè… nel senso, capisco il punto, ma non è che mi cambia molto sentirmelo dire adesso. Tipo,
+      è l'ultima sessione, okay — ma non so, ho un po' la sensazione che stiamo cercando di chiudere un
+      discorso che non si chiude davvero, sai? Come mettere un fiocco su una scatola che è ancora aperta.
+      Non è colpa tua, probabilmente — o forse sì, non lo so — però mi sembra un po' artificioso fare
+      come se ci fosse una conclusione. La tesi è ancora lì, il capitolo 3 è ancora lì, e tra un'ora sarò
+      di nuovo davanti al file a non sapere da dove partire. Quindi… boh. Non so cosa mi aspettassi da
+      questa ultima volta, forse niente di speciale.
+    - Sì, okay… nel senso, non è che non capisco quello che stai dicendo, ma ho un po' la sensazione che
+      stiamo girando ancora sulle stesse cose. Tipo, ogni volta che arrivo qui mi sembra che il discorso
+      finisca sempre più o meno nello stesso posto — "guarda cos'hai fatto", "riconosci il pattern", eccetera.
+      E io annuisco, ha senso, sì — ma poi chiudo e sono di nuovo lì. Non so, forse sono io che non riesco
+      a usare bene queste conversazioni, o forse è proprio il formato che non fa per me, boh. Non lo dico
+      per fare il difficile, davvero — è che a volte ho l'impressione che parlarne serva più a sistemare
+      le cose in testa che a cambiarle davvero. E le cose in testa le ho già abbastanza sistemate, il
+      problema è il resto.
+    - Sì, boh… non lo so. Mi rendo conto che ogni volta che arrivo a questo punto della sessione ho quella
+      sensazione strana di non sapere bene cosa fare con quello che ci siamo detti. Non è che mi abbia
+      fatto stare peggio, intendiamoci — però neanche so se mi ha spostato qualcosa in modo concreto.
+      Domani mattina apro il file del capitolo 3 e sono di nuovo lì, con gli output di regressione davanti
+      e quella cosa in testa tipo "da dove parto". Non cambia. O forse cambia qualcosa che non riesco
+      a vedere ancora, boh — non lo so davvero. Comunque… sì. Eccoci qui, ultima sessione, e io non so
+      ancora bene cosa dirmi.
+- persona_id: MP10
+  generator_model: claude-sonnet-4-6
+  sessions:
+  - day: 0
+    turns:
+    - "Hi, I just… I don't even really know why I'm here or what I'm supposed to say. I guess I just needed\
+      \ somewhere to put all of this because it's been kind of… a lot. I've been having a really hard\
+      \ time lately and honestly I don't know if talking about it is gonna help but I figured I'd try?\
+      \ I've never really done anything like this before. I'm not even sure I know how to start. \n\n\
+      I just feel like everything kind of fell apart and I can't stop thinking about it no matter what\
+      \ I do. Like I'll be fine for twenty minutes and then something small will just set me off and I'm\
+      \ back to square one. It's exhausting, honestly. I've been avoiding certain things, certain places,\
+      \ and even just… I don't know, some days I don't really want to leave the house at all. \n\nI don't\
+      \ know. Maybe that sounds dramatic. My coworkers have been really nice about it but I also kind\
+      \ of feel like I'm supposed to be over it by now, you know? Like people are patient but there's\
+      \ only so long before they stop asking how you're doing and just assume you're fine. And I'm not\
+      \ fine. I'm really not fine. I just don't know how to explain that to people without it sounding\
+      \ like… I don't know. Too much."
+    - "So, okay. I guess I should actually explain what happened because I kind of just dropped all of\
+      \ that on you without any context, sorry. \n\nIt's my dog. His name is Biscuit. Was Biscuit. God,\
+      \ I hate having to say \"was.\" He was a beagle, he was thirteen years old, and he died in early\
+      \ April. Like, just a few weeks ago. And I know that to some people it's just a dog, I've already\
+      \ had people kind of imply that, which… whatever, I'll deal with that later. But he wasn't just\
+      \ a dog to me. He was seriously my whole world. Like that's not an exaggeration, that's just genuinely\
+      \ what he was.\n\nI got him when I was twenty, so he's basically been my entire adult life. Every\
+      \ apartment I've ever lived in, every bad breakup, every good day, every awful day at work, every\
+      \ time I've been sick on the couch — Biscuit was just there. Always. He had this thing where he'd\
+      \ put his chin on your knee and just look up at you and it was like he just knew. I don't know how\
+      \ to explain it. He just knew.\n\nAnd the end was really hard. He'd been slowing down for a while,\
+      \ we knew it was coming, but knowing doesn't actually make it easier? Like I thought it would. I\
+      \ thought okay, at least it's not sudden, at least I have time to prepare. But there's no preparing\
+      \ for it. There really isn't. He went downhill really fast at the end and we had to make the decision\
+      \ to let him go and I was with him when it happened and I just… I don't know. I haven't really been\
+      \ okay since. It's been a few weeks and I still cry every single day. Multiple times, honestly.\
+      \ And the house is just so quiet now. It's so, so quiet."
+    - 'God, okay, sorry, I''m already kind of a mess and I haven''t even really gotten into the hard parts
+      yet. I don''t know why I keep apologizing, I just feel weird taking up so much space with this.
+
+
+      But yeah. It''s just… it''s Biscuit, you know? Like even just saying his name right now, just typing
+      it, my eyes are doing the thing again. I really didn''t expect grief to be like this. I''ve lost
+      people. I lost my grandma a few years back and obviously that was awful, but this feels different
+      in a way that''s hard to explain without sounding terrible. Like this is somehow more present? More
+      constant? Because he was just so woven into every single day. Every routine. My grandma didn''t
+      wake me up at seven in the morning by sticking her cold nose in my face. She wasn''t there every
+      time I came home. She wasn''t the first thing I saw in the morning and the last thing I checked
+      on at night.
+
+
+      And I think that''s part of why people don''t quite get it. Like grief for a person, people have
+      a whole script for that. There are funerals and cards and casseroles and everyone rallies around
+      you. But this? A couple people sent me nice texts and then that was kind of it. Life just went on
+      for everyone else. I went back to work after a few days and people were kind, they really were,
+      but it was also just… normal. The world was just completely normal and I was walking around feeling
+      like something had been knocked loose inside me.
+
+
+      I just really miss him. I miss him so much it''s embarrassing almost, which is a weird thing to
+      feel on top of everything else.'
+    - 'Yeah, I mean… I guess I should probably say what actually happened, like medically, because I keep
+      talking around it and I don''t know why. It was his kidneys. Kidney failure. Which apparently is
+      really common in older dogs, the vet told me that, like she was trying to be reassuring or something,
+      and I remember just kind of nodding and thinking I genuinely do not care that this is common right
+      now, you know? Like okay, sure, statistically this happens to a lot of dogs. That doesn''t help
+      me at all.
+
+
+      But yeah, his kidneys just… started to go. And we tried to manage it for a while, there was a special
+      diet and some medication and I was honestly so hopeful for a minute there because he seemed to stabilize
+      a little? Like I really convinced myself we had more time. I was googling things at two in the morning,
+      reading about dogs who lived for years with kidney disease, and I just… I really wanted more time.
+      I wanted like two more years minimum. Even one. I would''ve taken one.
+
+
+      And then he just dropped off so fast. It was like one week he was still doing his little beagle
+      thing, still sniffing everything on the walk, still getting excited about dinner, and then the next
+      couple weeks it was just such a steep drop. He stopped eating. He was so tired all the time. And
+      you could just see it in his eyes, like he was still in there but he was exhausted, and that was
+      the part I couldn''t… I just couldn''t watch him be uncomfortable anymore. So we made the appointment
+      and that was that.
+
+
+      I don''t know. I keep second-guessing it even though I know we did the right thing. Like did we
+      wait too long? Did we not wait long enough? Should we have tried something else? The vet was so
+      kind and she kept saying we gave him a really good life and that this was the most loving thing
+      we could do, and I believe her, I do, but it doesn''t stop the loop in my head. It just doesn''t.'
+    - Yeah.
+    - 'Okay so I''ve been sitting here trying to figure out what to say next and I keep just like… staring
+      at the screen. I think part of what made those first couple weeks so surreal was that I couldn''t
+      even really fall apart the way I wanted to? Because I had to go back to work. Like two days after
+      we lost him, I was back in the office. Two days. Because I''d already used up my PTO and dental
+      hygiene is one of those jobs where if you''re not there, your patients don''t get seen, their appointments
+      are weeks out, and it just felt like I couldn''t justify calling out for a dog. Which is such a
+      horrible thing to even think about, but that was my brain, just like… okay, get up, put your scrubs
+      on, drive to the office.
+
+
+      And there''s something uniquely awful about being a hygienist specifically when you''re grieving,
+      I think, because the whole job is just being in someone''s face. Like literally. You cannot zone
+      out. You cannot have a bad day quietly. You are six inches from someone''s mouth making conversation
+      about their vacation or their kids or whatever and you have to be present and professional and kind
+      and interested and I was doing all of that while running on zero sleep and barely holding it together.
+      And then I''d go into the little supply room on my break and just kind of stand there and breathe
+      and try not to cry into my mask.
+
+
+      I don''t know. I keep thinking about this one specific morning, like the second day back, I had
+      this early patient, really sweet older lady who always asks about my life, and she goes "how are
+      you doing, hon?" and I just about lost it completely. I managed to say "oh you know, hanging in
+      there" and she accepted that and moved on and I was so relieved and also so lonely in that moment?
+      Like no one knew what was happening inside me and I couldn''t tell them. You can''t exactly say
+      "actually I''m a wreck because my beagle died" while someone''s reclining in your chair expecting
+      a routine cleaning.
+
+
+      I miss him so much. I keep using his name like that''s gonna help somehow.'
+    - 'I don''t know, it''s just… I keep thinking about how weird time feels right now. Like April has
+      been the longest month of my entire life and also somehow it''s already been weeks and I don''t
+      know where any of it went. I''ll have these moments where I genuinely forget for like half a second
+      and then it hits me again and it''s almost like losing him all over again each time. Is that normal?
+      I feel like that probably sounds dramatic but it just keeps happening.
+
+
+      And the house thing is still really getting to me. I rearranged some stuff the other day because
+      I couldn''t stand walking past his water bowl anymore, I moved it to the laundry room, and then
+      I felt guilty about that for like an hour. Like I was erasing him or something, which I know isn''t
+      rational, it''s a water bowl, but. I don''t know. Everything feels loaded right now.
+
+
+      I''ve been sleeping with his collar on my nightstand. I don''t know when I''m going to be able to
+      move it or if I even want to. It still smells like him a little. I know that''s probably going to
+      fade and I''m kind of dreading that in a way I can''t fully articulate. Like there are all these
+      little griefs inside the big grief, you know? The smell fading. The fur that''s probably still stuck
+      in the couch eventually getting vacuumed up. The day I finally have to delete the photos from my
+      phone''s favorites folder… actually no, I''m never doing that, that one''s not happening.
+
+
+      I just really wish I could talk about Biscuit without crying every single time. I want to be able
+      to remember him and have it feel like a good thing instead of just this open wound. I don''t know
+      if that gets better or when. I hope it does.'
+    - 'Okay so I don''t even know what else to say, I feel like I''ve already said so much and I''m kind
+      of surprised I''m still going? Like I genuinely was not expecting to talk this much. I''m not usually
+      like this, I swear. Or maybe I am and I just never had a place to put it. I don''t know.
+
+
+      I think part of what I keep coming back to is just… I want to remember Biscuit the right way, you
+      know? Like not just the end. Because the end is what keeps showing up in my head and it''s not who
+      he was. It''s not the main thing. He was so much more than those last few weeks and I hate that
+      that''s where my brain keeps going when it''s quiet. I''ll be lying there trying to fall asleep
+      and instead of thinking about all thirteen years I just keep replaying the last appointment, the
+      room, the blanket they put down for him, his little paws. And I don''t want that to be the defining
+      image. I don''t.
+
+
+      He was genuinely one of the funniest animals I''ve ever encountered, like he had an actual personality,
+      actual opinions. He hated rain. Like full-on offended by rain, would stand at the back door and
+      look at it like it had personally wronged him. He had this howl he did when he heard the word "walk"
+      and only that word, he was very smart about vocabulary, he knew which words meant things. And he
+      always, always had to be touching me somehow. Like even just one paw on my foot. Just to know I
+      was there I guess. Or maybe I needed to know he was there, I''m not sure which direction that was
+      actually going.
+
+
+      I think I just really want to keep talking about him. Like I said that before but I mean it more
+      every time I say it. I don''t want to put him away in some part of my brain I never visit. I want
+      him to just be… part of how I talk about my life. The way he was part of my actual life. I don''t
+      know if that''s possible yet without the crying but I''d like to get there.'
+  - day: 5
+    turns:
+    - Hey.
+    - 'Hey. Sorry, I think I just kind of dropped a "hey" and then sat here for like ten minutes trying
+      to figure out what I actually wanted to say. It''s been a weird few days.
+
+
+      I guess I wanted to come back and keep talking, so that''s something. I almost talked myself out
+      of it, honestly. Not because it wasn''t helpful last time, it was, I think — I don''t know, it''s
+      hard to tell in the moment but I felt a little less like I was going to explode by the end. I think
+      I just have this thing where I feel like I''ve already said so much and maybe I''ve said all the
+      things and there''s nothing left to say, and then I wake up at 3am thinking about Biscuit and I
+      realize, no, apparently there''s more.
+
+
+      He''s still just really present for me, if that makes sense. Like I keep expecting it to start to
+      feel more distant and it just doesn''t yet.
+
+
+      Oh, and actually — this is kind of a small thing but it matters to me — I don''t know how you''re
+      going to refer to him going forward but if you could just call him Biscuit, that would mean a lot.
+      When people say stuff like "your pet" or even just "your dog" it just… I don''t know, it flattens
+      him somehow. Like he becomes this generic thing and he was so not a generic thing. He was Biscuit.
+      He had a whole personality and opinions and a specific howl he reserved exclusively for the word
+      "walk." He deserves his name, you know? It sounds silly maybe but it genuinely stings a little when
+      people don''t use it.
+
+
+      Anyway. I''m here. I don''t totally know what I want to talk about today but I didn''t want to not
+      show up.'
+    - 'So I''ve been thinking about what you said last time, and I keep coming back to this idea of like…
+      presence, I guess. Biscuit being present. And you''re right, he still is, in a way that I''m starting
+      to realize isn''t just going to switch off on a schedule, which is both comforting and also kind
+      of exhausting to accept, if I''m being honest.
+
+
+      Something happened this week that I''ve been wanting to bring up because it felt significant but
+      I also feel a little embarrassed about it. So there''s this park near my apartment — Linden Park,
+      it''s like five minutes from my building — and Biscuit and I walked there basically every single
+      evening for years. Like it was just what we did at 6pm. Rain, cold, whatever, we went. He had opinions
+      about specific trees, I know that sounds absurd but it''s true, certain ones he had to stop at and
+      certain ones he had zero interest in and the whole route was basically organized around his preferences,
+      which I accepted completely without question.
+
+
+      And I haven''t been able to walk past it since he died. Like I physically just… can''t. The first
+      time I had to go somewhere in that direction I walked like two extra blocks out of my way to avoid
+      even seeing the entrance, and then I felt kind of ridiculous about it but also not ridiculous enough
+      to stop doing it. And now — and here''s the embarrassing part — I''ve just started taking the bus
+      to the grocery store. The grocery store that I have walked to for four years. It''s like a twelve
+      minute walk. I take the bus now because the most direct route goes past the park and I just can''t
+      do it yet.
+
+
+      I haven''t told anyone that. I feel like people would think it''s really strange. Or they''d tell
+      me I should just face it, like it would be good for me or whatever, and maybe eventually that''s
+      true but right now it doesn''t feel true, it just feels impossible. I don''t know. It''s like the
+      park exists in this whole other version of my life that still has Biscuit in it and if I walk past
+      it now it''ll just be this thing that confirms he''s gone in a way I''m not ready for yet.
+
+
+      Does that make any sense at all, or am I just completely losing it?'
+    - 'So I''ve been sitting here trying to figure out where to go after that last thing I said about
+      the park. I think I half-expected to feel embarrassed saying it out loud and then just… I don''t
+      know, I kind of don''t? Like maybe less than I thought I would. Which is something.
+
+
+      I''ve just been having a lot of thoughts this week about the before and after of all this. Like
+      there''s a very clear line in my brain between life-with-Biscuit and life-after-Biscuit and it''s
+      a little disorienting because so much of what I thought of as just… my life, my normal day-to-day
+      stuff, was actually built around him without me ever really noticing. Like I didn''t build it intentionally,
+      it just sort of organized itself around his needs and his schedule and his little opinions about
+      trees, and now all of those structures are just kind of standing there empty. The 6pm walk. The
+      thing where I''d get home from work and he''d lose his mind for approximately forty-five seconds
+      and then immediately pretend he''d been cool and calm the whole time, like he had a reputation to
+      maintain. Just these anchors that I didn''t know were anchors until they weren''t there anymore.
+
+
+      And I''ve been thinking about this weird thing where I actually don''t know who I am as a person
+      who comes home to a quiet apartment. Like I''ve come home to Biscuit for my entire adult life. Every
+      version of me that has ever had keys to my own place has also had him. And I know logically that
+      I''m still the same person, that''s not what I mean, but it still feels like I''m missing some information
+      about how to just be at home. I''ll get back from work and there''s this half-second where my whole
+      body is already in Biscuit-greeting mode, braced for the noise and the chaos, and then nothing,
+      and it just kind of… deflates out of me.
+
+
+      I think about him every single day probably a hundred times. Is that still going to be true in six
+      months? I genuinely don''t know and I can''t tell if I want it to be or not. Like I don''t want
+      to stop thinking about him but I also want to stop the part where it just hurts so much every time.
+      I want to think about him and it feel like him. Not like losing him.'
+    - 'Yeah, I think that''s kind of exactly it. I don''t want to stop thinking about him — I just want
+      the thinking to hurt less eventually. I don''t know if those two things can coexist but I''m kind
+      of hoping they can.
+
+
+      There''s something I''ve been kind of dancing around saying and I''m not sure why, it''s not like
+      it''s a big thing, I just haven''t mentioned it. Biscuit''s ashes are here. Like, in my apartment.
+      They gave me this little tin at the vet''s office and I brought him home and I put it on the bookshelf
+      in my living room. Which is maybe a weird place for it? I don''t know, I didn''t think too hard
+      about where to put it, it just felt like he should be somewhere I could see, somewhere I walk past
+      all the time.
+
+
+      And sometimes I''ll just… stop there. For a second. Like I''ll be walking from the kitchen to the
+      couch and I''ll just kind of pause and look at the tin and I don''t know what I''m doing exactly,
+      it''s not like I''m talking to it, I''m not doing that. Yet. I don''t know, never say never I guess.
+      It''s just that I notice it. Every time. I never not notice it.
+
+
+      I think part of me feels like that''s where he is now, even though I know that''s not how it works,
+      like obviously I know that. But my brain just keeps going, okay, he''s on the shelf. He''s still
+      here. And I don''t want to examine that too hard because I think if I do I''ll start arguing myself
+      out of something that''s actually helping me a little, and I can''t afford to lose things that are
+      helping right now. There''s not that many of them.
+
+
+      It''s weird because the tin itself is just kind of… a tin? It''s not fancy or anything. I don''t
+      even know what I expected but it''s just this small plain thing and I feel so much about it, which
+      is a lot of weight for an inanimate object to carry but here we are. Biscuit would probably have
+      tried to knock it off the shelf honestly. He had opinions about the bookshelf, he thought things
+      on shelves were suspicious. So there''s something almost funny about that. Almost.'
+    - 'So I''ve been thinking a lot about the collar on my nightstand — I mentioned that before — and
+      it''s still there. I keep thinking I should move it somewhere safer actually, like what if I knock
+      it off in the middle of the night, what if something happens to it. But then I also can''t really
+      bring myself to put it in a drawer because then I can''t see it and I need to be able to see it,
+      so it''s just this constant low-level anxiety on top of everything else. Which is kind of my brand
+      right now apparently.
+
+
+      But I''ve been kind of sitting with something and I think I need to say it because it''s been taking
+      up a lot of space in my head this week. It''s about Teodor. He''s my partner. I don''t know if I''ve
+      mentioned him? I don''t think I have. He''s — he loved Biscuit too, I want to be clear about that,
+      he really did, and he''s been good about giving me space to be a mess about all of this. He''s been
+      patient.
+
+
+      But there''s this one thing that I can''t stop thinking about and I feel like a terrible person
+      for it. There was this one time — it was probably two years ago, maybe? — where he left the garden
+      gate open. We were in and out of the backyard and he just didn''t latch it all the way, and Biscuit
+      got out. He didn''t go far, he was in the neighbor''s yard within like thirty seconds sniffing around
+      their garden, and we got him back immediately, nothing happened, he was completely fine. It was
+      fine.
+
+
+      But I keep thinking about it. Like that''s where my brain is going when things get quiet. This incident
+      from two years ago where everything was fine. And I know it''s not fair and I know it doesn''t even
+      make logical sense given what actually happened to Biscuit — like kidney failure, that''s not a
+      gate thing, the gate has nothing to do with any of this — but I''m just… kind of angry at him about
+      it. Still. Or again. I don''t even know.
+
+
+      I haven''t said anything to Teodor because what would I even say? Hey, I''m grieving and I''ve decided
+      to be mad at you about a thing from two years ago that had no actual consequences? It sounds so
+      irrational out loud. But it''s there, it''s just there sitting in the corner of everything and some
+      days it''s quieter and some days it feels really loud, and this week it''s been kind of loud. I
+      don''t know what I''m supposed to do with that.'
+    - 'Okay so I''ve been thinking about what I said at the end of last time, about Teodor and the gate,
+      and honestly I''ve just been kind of sitting in it since then. Like I keep waiting to feel differently
+      about it and I just… don''t quite yet. It''s still there. Quieter maybe? I don''t know. A little.
+
+
+      I think part of what I''m working through is just that grief is making me really raw and everything
+      feels closer to the surface than it normally would and I''m not totally sure what''s actually about
+      the gate and what''s just about me not knowing where to put all of this feeling. Like there''s so
+      much of it and I don''t have enough containers for it, so maybe it just kind of sloshes around and
+      lands on things that happen to be nearby. That''s maybe what''s happening. I hope that''s what''s
+      happening.
+
+
+      I did have a moment this week that was actually kind of… I want to say nice? Which felt almost strange
+      to say. I was telling Teodor about this thing Biscuit used to do, this specific thing where he''d
+      get really offended if you stopped petting him before he was ready and he''d just absolutely relentlessly
+      nudge your hand back with his whole nose, like, no, we''re not done, I didn''t give you permission
+      to stop — and Teodor laughed, like a real laugh, not a sympathy laugh, and then he added something
+      Biscuit used to do that I''d forgotten about, this thing with the TV remote, and we were just kind
+      of sitting there laughing about Biscuit for like ten minutes and it was the first time in weeks
+      that talking about him felt like something other than just tearing open the same wound over and
+      over.
+
+
+      And then I cried a little bit after, because apparently that''s where I live now, but it was different
+      crying. Less like drowning, more like… I don''t know. I''m trying to think of the right word. Like
+      missing him but in a way that had some warmth in it instead of just the cold empty part.
+
+
+      I''ve been wondering if that''s what it starts to look like, eventually. Not less of him, but like
+      a different texture to the grief. I really hope so. I''m holding onto that ten minutes pretty hard.'
+  - day: 14
+    turns:
+    - 'Hey. So I''m back. Third time, which… feels like something I guess. I don''t know why that number
+      feels notable to me but it does, like okay, this is a thing I keep doing, maybe that means something.
+
+
+      I''ve been having a softer week, I think? Like not easier necessarily, but the edges feel a little
+      less sharp than they did. Which I''m trying to just let be true without immediately getting suspicious
+      of it, because there''s this part of me that keeps waiting for the other shoe to drop, like if I
+      feel okay for a few days then the next bad one is going to be worse to compensate somehow. I don''t
+      know if that''s how it works. Probably not. But my brain is doing that thing anyway.
+
+
+      I keep thinking about that ten minutes I talked about last time. With Teodor and the TV remote thing.
+      I''ve been kind of mentally returning to it? Like checking in on it to see if it still feels the
+      same way it did when I said it. And it does, mostly. Like it wasn''t a fluke. There''s something
+      real there about the fact that laughing about Biscuit and crying about Biscuit are not actually
+      opposites, which sounds obvious when I say it but it genuinely didn''t feel obvious before. I think
+      I''d been unconsciously treating them like they were. Like any lightness around the subject was
+      somehow disrespectful to how much I miss him. Which doesn''t make sense. He was funny. He was legitimately
+      one of the funniest little guys I''ve ever known. Like it would be almost wrong to only grieve him
+      in a heavy way when he spent thirteen years making me laugh constantly.
+
+
+      I still can''t do the park. Not even close. But I''m not fighting myself about it as hard right
+      now, I think. It''s more like, okay, not yet, rather than this spiral of am I doing this wrong am
+      I avoiding too much what does it mean that I can''t go there. It''s just not yet. And I''m trying
+      to be okay with not yet being a valid answer.
+
+
+      Anyway. I don''t have anything specific I wanted to get into today, I just wanted to show up. Which
+      honestly might be progress in its own weird way.'
+    - 'Okay so I''ve been sitting here for a few minutes trying to figure out what I actually want to
+      say today and I keep landing on this thing that I''m not sure is profound or whatever but it''s
+      just been on my mind.
+
+
+      I''ve been noticing lately that I talk about Biscuit in the past tense more than I used to. Like
+      it''s been happening gradually and I don''t know when exactly I stopped slipping into present tense
+      as often, and part of me is like… is that okay? Is that me healing or is that me letting go of something
+      I don''t want to let go of yet. I know those are probably not the same thing. I know they don''t
+      have to be the same thing. But there''s this tiny grief inside the bigger grief that''s specifically
+      about language, about tense, about what it means when it starts to feel more natural to say "he
+      was" instead of "he is."
+
+
+      He''s still on the bookshelf. The collar''s still on the nightstand. Some mornings I wake up and
+      I''m still in that half-second of nothing has changed yet before the rest of my brain catches up.
+      And I think all of that is true and also the past tense is coming more naturally and those things
+      are just somehow coexisting and I''m doing my best to not treat that as a contradiction.
+
+
+      I did do something different this week that I''ve been sitting with a little. Nothing big. I just
+      took one of my favorite photos of him — this one from a couple years ago where he fell asleep in
+      a sunbeam on the kitchen floor with his chin on the tile looking incredibly unbothered by life —
+      and I actually set it as my phone wallpaper. Which sounds like nothing maybe, but I''d been avoiding
+      doing that because I felt like seeing his face every time I unlocked my phone would just be a constant
+      reopening of the same thing. But I did it anyway and it''s been… I don''t know. Nice, mostly? Occasionally
+      it hits me in the chest a little but mostly it''s just Biscuit being extremely Biscuit, just lying
+      there completely confident in his own comfort, which was so deeply who he was.
+
+
+      I''ve been thinking about the park still. Not going. But thinking about it. Which might be the step
+      before the step before eventually being able to go, if that''s how it works. I''m not forcing anything.
+      I''m just noticing that it exists in my head more as a memory of him now and less purely as this
+      thing I can''t access. It''s small but it feels like something.'
+    - 'Okay I''ve been kind of quiet for a second because I was trying to figure out if there''s something
+      specific I came here to work through today or if I''m just showing up, and I think it might honestly
+      just be the showing up thing again. Which I''m choosing to be okay with.
+
+
+      I''ve been having a gentler couple of days, weirdly. Like nothing dramatic has happened in either
+      direction, which sounds like such a low bar when I say it out loud but honestly after the past few
+      weeks, neutral feels like a gift. I''ll take neutral.
+
+
+      I did the phone wallpaper thing again this morning — like I unlocked my phone and Biscuit was just
+      there, doing his sunbeam thing, looking completely at peace with the universe — and instead of the
+      chest thing it just kind of made me smile? Just for a second. And then I stood in my kitchen for
+      a minute thinking about how weird it is that a tiny moment like that can feel so significant. Like
+      I caught myself smiling at a photo and then immediately noticed I was smiling, like I was watching
+      myself from outside, and I had this whole internal thing about whether the smile was allowed, which
+      is ridiculous, and I know it''s ridiculous, and I did it anyway.
+
+
+      I keep coming back to this idea of — I don''t know if I''ve said this exact way before — like, the
+      grief is still here, it''s not going anywhere, but I''m starting to wonder if I''m living slightly
+      more alongside it rather than completely inside it. Does that distinction make sense. Like before
+      it was all the way in, everywhere, every surface. And now it''s still very much present but sometimes
+      there''s a sliver of room for other things too. Sometimes.
+
+
+      I''m still not ready to go to the park. I want to be clear I''m not announcing any kind of breakthrough
+      on that front. I''m just reporting that I thought about it today and the thought was mostly about
+      Biscuit''s specific feelings about the big oak near the east entrance, which is more about him than
+      about the fear of going, if that makes sense. Progress in the category of where my thoughts about
+      the park are coming from, maybe.
+
+
+      I don''t know. I just wanted to talk for a bit. That''s basically all I had today.'
+    - 'Okay so I''ve been listening to whatever you just said and kind of turning it over in my head,
+      and I think — I don''t know, I think I''m at the point where I actually want to do something. Like
+      an actual something, not just talking, which the talking has been good, I''m not saying that. But
+      I''ve been noticing lately that I''ll have these moments where I think of something about Biscuit
+      — like a specific Biscuit thing — and it''ll just kind of float through and then I get worried it''s
+      going to disappear. Like I said before about the smell fading from the collar. There''s this version
+      of losing him again that''s just about forgetting, about the details getting soft over time, and
+      that scares me in a way that''s different from the big grief but still really real.
+
+
+      And I don''t know, is there something I could actually be doing? Like something small and manageable,
+      not a whole project, I can''t handle a whole project right now. But something. I''ve thought about
+      writing stuff down? I don''t know if that''s something people actually do or if I''m just reverting
+      to what I''d tell a ten-year-old to do after their goldfish died. But I keep thinking about how
+      I want Biscuit to just be… documented, somehow. Like I want the way he''d nudge your hand with his
+      nose to be a real thing that exists somewhere outside of just my memory. I want the tree opinions
+      to be written down. The rain offense. The TV remote thing Teodor reminded me about. All of it.
+
+
+      Would that be stupid? Or too much? I''m worried I''d sit down to do it and then just fall apart,
+      which, I mean, I basically fall apart anyway so maybe the bar is pretty low at this point. But like,
+      if I just — I don''t know, maybe kept a little notebook by my bed or something, and just wrote one
+      thing before I went to sleep. One thing I remembered about him. Not like a whole eulogy situation,
+      just one small thing. A moment. Something specific.
+
+
+      I think I want to try that. I think I''m asking if that sounds okay. Which is a weird thing to need
+      permission for but here we are, apparently that''s where I am tonight.'
+    - 'Hey. Okay. So I''ve been thinking about the notebook thing since I said it and I think I''m actually
+      going to do it. Like I haven''t yet but I went and found one — I have this stack of blank notebooks
+      I''ve accumulated over years of thinking I''m going to start journaling and then not starting journaling
+      — and I pulled one out and put it on my nightstand, right next to the collar. Which felt right,
+      I don''t know why, it just did. Like they can be next to each other. The collar and the place where
+      I''m going to write things down about him.
+
+
+      I haven''t written anything in it yet. Which I''m not beating myself up about, I''m just noting
+      it. It''s there. That''s the start of the start, maybe.
+
+
+      I''ve been thinking about what the first thing I write should be and I keep going back to this one
+      specific memory that I don''t think I''ve actually talked about yet, which is surprising because
+      I''ve talked about so much. There was this thing Biscuit did when I was sick. Like properly sick,
+      fever and everything, which happens maybe a couple times a year, and every single time without fail
+      he would just — he would not leave the couch. He''d be right up against me the whole day, which
+      wasn''t always typical for him because sometimes he wanted his space, he had opinions about personal
+      space and they didn''t always align with mine. But when I was sick it was like he flipped a switch.
+      Just completely attached. Not restless, not begging to go out or do anything, just there. Heavy
+      and warm against my legs. Like he knew and he''d made a decision about it.
+
+
+      I haven''t been sick since he died and I''ve been thinking about the next time I am. That''s going
+      to be a really specific kind of hard.
+
+
+      Anyway. I think that''s what I write first. The sick day thing. It feels true to who he was and
+      it also feels like something I need to have outside of my own head before it gets soft around the
+      edges.
+
+
+      I''m doing okay today. Not great, not bad. Okay. Which, yeah.'
+    - Yeah.
+  - day: 30
+    turns:
+    - 'Hey. So it''s been a couple weeks since the last time and I''ve been kind of… I don''t know. It''s
+      weird, I kept thinking I''d have something specific to bring to this session, like a clear thing,
+      and now that I''m here I''m sort of just sitting with the fact that I made it to a fourth time,
+      which feels like its own small thing I guess.
+
+
+      April''s over. Which sounds like such a small thing to say but it''s actually been on my mind a
+      lot. Like Biscuit died in April and now April is just… done, it''s just May, and there''s something
+      about that I''m still trying to sort out how I feel about. Like on one hand the month that had all
+      of that in it is behind me now and that should feel like something, right? Like clearing a hurdle.
+      But instead it mostly just felt like watching something close. Which doesn''t totally make sense
+      and I know it doesn''t make sense but it''s where I landed.
+
+
+      I''ve been using the notebook. That''s the main thing I''ve been thinking about coming in here and
+      saying. I actually started it. The first night I wrote the sick day thing, like I said I was going
+      to, and then I kept going because apparently once I opened the door a little the door just wanted
+      to stay open. I''ve written in it almost every night since. Not long stuff, just — one thing. Sometimes
+      two. The rain. The specific sniff route at the park. This thing he did with his ears when he heard
+      the treat bag from three rooms away, the way they''d just snap to attention before the rest of him
+      had even processed what was happening.
+
+
+      And it''s been good. Mostly. It hits sometimes, like I''ll write something and have to put the pen
+      down for a minute. But there''s also something about it that feels like — I keep trying to find
+      the right word for it and the best I''ve got is like, safekeeping. Like I''m putting him somewhere
+      safe. Something about that feels really important right now even if I can''t fully explain why.
+
+
+      I don''t know. I''m here. It''s session four. I''m doing okay.'
+    - 'So it''s been like ten nights now, I think. Ten nights of actually writing in the notebook. Which,
+      if you''d told me back in early April that I would be doing literally anything consistently for
+      ten nights in a row I would have laughed at you, because those first couple weeks were just pure
+      survival mode and the idea of having any kind of routine felt completely impossible.
+
+
+      But yeah. I''ve kept going with it. And I don''t know, there''s something that keeps pulling me
+      back to it even on the nights where I sit down and think okay I don''t actually have anything to
+      write tonight, I''m too tired, I''ll skip tonight — and then I end up staying up longer than I planned
+      writing about something I hadn''t even thought about in months. Like last night it was this whole
+      thing about how Biscuit used to react to squirrels, which was genuinely one of the funniest things
+      about him because he was so offended by them. Like personally, deeply offended, every time, as if
+      each squirrel was a new squirrel who had never been warned and had no excuse. Thirteen years and
+      he never once got tired of being offended by squirrels. And I''m writing this down at like eleven-thirty
+      laughing quietly by myself in my apartment and also crying a little, because apparently that''s
+      just my factory setting now, but it felt — it felt really good actually. Like more good than bad.
+      Which is not always the ratio I''m working with.
+
+
+      The thing I keep noticing is that some nights what comes out isn''t even a specific story, it''s
+      more like a feeling. Like this one night I wrote about what it was like to just be in the same room
+      as him. Not doing anything, not interacting, just — he''d be in his spot on the couch and I''d be
+      at the kitchen table or whatever, and there was just this quality to the air being inhabited by
+      him that I''m having a really hard time describing even now. Like the room had weight in a good
+      way. Density. And I miss that so much I can barely say it without the chest thing happening, but
+      I also just really wanted it to exist somewhere, that observation, outside of just me. So I wrote
+      it down.
+
+
+      It''s strange because I thought the hard part was going to be the writing itself, like I thought
+      sitting down and putting words to things was going to be the part that broke me open every time.
+      And sometimes it does. But more often the hard part is actually the stopping. Like putting the pen
+      down and closing the notebook and it just being… over. For the night. Which maybe says something
+      about how much I still just want to keep talking about him, keep reaching for him, I don''t know.
+
+
+      Teodor looked at the notebook once — not in a reading-it way, just saw it on'
+    - 'So yeah. Teodor saw the notebook. I was going to finish that thought. He didn''t read it or anything,
+      he''s not like that, he just kind of noticed it was there and picked it up for a second and then
+      put it down and didn''t ask about it, which is honestly very Teodor. He''s good at not pushing.
+      And I appreciated that but also there was this tiny part of me that maybe wanted him to ask? Like
+      just — I don''t know. Notice that I was doing a thing. He did say something later, just like offhand,
+      something like "I saw you were writing," and I said yeah and he said "good" and that was sort of
+      it. Which was fine. It was actually kind of fine.
+
+
+      I''ve been thinking about him more lately, Teodor I mean. Like just… where he is in all of this.
+      He''s been patient, like I said, he really has, and the gate thing has gotten quieter in my head,
+      I think I mentioned that. It''s not gone but it''s quieter. And I''ve been noticing that we''ve
+      had a few more moments like the TV remote thing — where we''re just talking about Biscuit, like
+      actually talking, not the kind of talking where someone is trying to carefully manage my feelings
+      about it but just actual reminiscing — and those have been good. Really good actually.
+
+
+      But there''s still this thing I can''t quite name. Like I look at him sometimes and I think about
+      how he''s grieving too, in his own way, and how different our griefs probably look from the inside,
+      and I don''t totally know how to — I don''t know. Be in the same place as him in it. If that makes
+      sense. Like sometimes it feels like we''re grieving on parallel tracks instead of together somehow
+      and I can''t tell if that''s just how it is or if there''s a gap there that I should be more worried
+      about than I am.
+
+
+      I went on the walk this week, by the way. Kind of. I got closer than I have since April. I didn''t
+      go in, I was walking past on the other side of the street and I just… stopped for a second and looked
+      at it. And I thought about the oak tree. Biscuit''s oak tree, basically, the one he had very strong
+      opinions about. And I didn''t fall apart. I didn''t go in either but I didn''t fall apart. I just
+      stood there on the sidewalk for maybe thirty seconds and then I kept walking and I think that counts
+      for something. I''m counting it.
+
+
+      Session four. I cannot believe I''m on session four. I feel like such a different person than I
+      was when I just typed "hi" into this thing for the first time not even knowing what I was going
+      to say. Not fixed, obviously,'
+    - 'Okay so I''m just going to stop myself because I realized something and it''s been bugging me since
+      I said it and I need to correct it before it just sits there wrong.
+
+
+      I said kidney failure. Earlier, like way back at the beginning when I was explaining what happened
+      to Biscuit, I said it was his kidneys. And I don''t know why I said that, I think I was just kind
+      of — I was a mess and I was talking a lot and I think I got confused because I had a cat before
+      Biscuit, her name was Margot, and she was the one with the kidney disease. She passed when Biscuit
+      was like four or five. And I think in the middle of just pouring everything out I accidentally mixed
+      the two of them up, which is embarrassing because they were two completely different animals and
+      two completely different situations and I genuinely cannot believe I''ve let that sit there uncorrected
+      for however many sessions.
+
+
+      It was his heart. Biscuit''s, I mean. Heart failure. That''s what the vet said. Which — I don''t
+      know, does it matter for the purposes of what we''ve been talking about? Probably not in some big
+      meaningful way, the outcome is the same, but it matters to me that it''s accurate because I don''t
+      want the story of him to have wrong information in it, even here, even in this context. He deserves
+      the right story.
+
+
+      And actually now that I''m saying it out loud — heart failure. I almost never say those exact words.
+      It''s like I''ve been narrating around it without landing on the specific thing. His heart failed.
+      I don''t know, something about that phrase just hits differently than kidney disease did. Which
+      maybe explains why my brain substituted something else without me even noticing. That''s probably
+      exactly why.
+
+
+      Anyway. I just needed to fix that. He had a big heart, that dog. In every sense of the phrase and
+      apparently also in the literal sense that caused problems eventually. I don''t know how to feel
+      about that but it feels true.'
+    - Yeah.
+    - 'Okay so I''ve just been kind of sitting here after that last thing I said and I keep thinking about
+      the phrase heart failure, like it''s just been running on a quiet loop in the background this whole
+      time we''ve been talking. There''s something about saying the actual words that did something to
+      me and I''m still kind of sitting in what that was.
+
+
+      I don''t know. I think maybe I had been protecting myself from the specificity of it? Like kidney
+      failure is sad, that''s awful, but heart failure has this whole other — I don''t know, it has poetry
+      in it that I didn''t ask for. His heart failed. And he had the biggest heart. And I keep turning
+      that over and it''s one of those things where it''s almost too much to look at directly, it''s like
+      looking at something bright, so you kind of look slightly to the side of it.
+
+
+      I''ve been sitting here thinking about Teodor too actually. Going back to what I said before about
+      the parallel tracks thing. I think what I was trying to get at and couldn''t quite find the words
+      for is just that we haven''t really talked about the heart failure part specifically. Like we''ve
+      talked about Biscuit, we''ve laughed about Biscuit, we''ve had those really good moments of actual
+      remembering together. But I don''t think either of us has sat down and said, out loud, his heart
+      failed, and this is what that means to us. And I wonder if that''s part of why it still feels like
+      parallel sometimes. Like we''re both carrying the same event but separately and I can''t figure
+      out how to bridge that without it feeling like I''m forcing some kind of moment.
+
+
+      He''s not a forced-moment kind of person. Neither am I, honestly. But I also know that sometimes
+      things don''t get said unless someone says them.
+
+
+      The notebook has been helping with that, actually. Not with the Teodor part exactly but just with
+      — having a place where things can be specific. Named. Like I''ve been writing in it a lot about
+      Linden Park this week for some reason. Not going there, I still haven''t done that, I got close
+      but I still haven''t walked in. But writing about it. What it looked like in different seasons.
+      The way Biscuit''s whole body changed when we turned onto that particular street, how he knew before
+      we even rounded the corner, like he''d counted the blocks in his head. The way he''d try to pull
+      toward the park even when we were clearly headed somewhere else entirely and I''d say "we''re not
+      going that way" and he''d give me this deeply skeptical look and keep pulling anyway just in case
+      I was wrong about our plans.
+
+
+      I wrote that down last night. The skeptical look. And then I had to put the pen down for a few minutes
+      because it''s a'
+  - day: 66
+    turns:
+    - 'Hey. So I''m back for session five which, I don''t know, that number also feels notable to me the
+      way session three did, I keep doing that. Counting them like they mean something.
+
+
+      I''ve been having a genuinely lighter week and I keep waiting to feel weird about that and I mostly
+      just… don''t? Like it''s been lighter and I''m letting it be lighter and I think that is an actual
+      development in how I''m relating to all of this because a month ago I would have immediately gotten
+      suspicious of feeling okay and found something to spiral about. So. Progress maybe.
+
+
+      The notebook is still happening. Every night, almost without exception. I wrote about Biscuit''s
+      ears again the other night, like a second entry specifically about his ears, because I don''t think
+      the first one did them justice. He had these very expressive ears for someone who was technically
+      just a beagle. Like they had opinions separate from the rest of him sometimes. And I keep finding
+      things like that where I wrote about something once and then realized I only got the surface of
+      it, and then I write the deeper version, and sometimes there''s a third version after that. It''s
+      becoming this whole document of him and I mean that in the best possible way.
+
+
+      I think the thing that''s been different this week is that I''ve been laughing more when I think
+      about him than crying. Not always. But more than before. Like the ratio has shifted a little and
+      it doesn''t feel like a betrayal anymore it just feels like… him. Because he was genuinely, objectively
+      funny, and it would be kind of dishonest to only ever be sad about someone who made me laugh that
+      much.
+
+
+      I don''t know. I think I just wanted to come in and say that. That it''s been lighter. That I''m
+      still here and Biscuit''s still on the bookshelf and I''m okay today.'
+    - 'Okay so I''ve been sitting here for a minute just kind of settling in and I think today I genuinely
+      don''t have a big thing to work through? Which is a weird way to start one of these because I feel
+      like every other time I''ve shown up I''ve had something pressing right at the surface that needed
+      to come out. But today it''s just kind of… quiet. In a good way mostly.
+
+
+      I don''t know. There''s this thing that keeps happening where I''ll catch myself just living my
+      life for a second and it takes me off guard in the nicest possible way. Like this week I got really
+      into trying to keep a succulent alive, which historically I am terrible at, I kill everything green,
+      I have some kind of anti-gift with plants. But I went to this little plant shop near the office
+      and I just bought one on a whim and now I''m extremely invested in whether it''s getting enough
+      light and I moved it three times this week trying to find the right windowsill and I''ve been genuinely
+      thinking about it. Like, caring about a small cactus situation. And that''s just — I don''t know,
+      a month ago I couldn''t care about anything outside of the grief and now I have a succulent I''m
+      worried about and that seems worth noting.
+
+
+      And also there was this baking thing at work. One of the hygienists, Priya, organized this whole
+      informal little thing where people could bring in something homemade and everyone voted, not for
+      prizes or anything just for fun. And I actually participated. I made these lemon bars that I''ve
+      made like a hundred times before and they''re reliable and I knew they''d be fine, and I brought
+      them in and people liked them and I spent part of my lunch break standing in the break room talking
+      about baking instead of sneaking off to breathe alone in the supply room, which is what I was doing
+      two months ago. So. Different.\n\nI''m still thinking about Biscuit constantly, I want to be clear
+      that''s not gone, it''s not like the lighter weeks mean I''ve somehow moved past anything. He''s
+      still on the bookshelf. I still wrote about him in the notebook four times this week. But I think
+      the frequency of the hard moments has changed. Like the ratio I was talking about last session,
+      laughing versus crying — this week I genuinely think the laughing is winning by a real margin, not
+      just a technicality. And it doesn''t feel wrong anymore. It just feels like him.
+
+
+      I wrote about the squirrel thing again, actually. Like the third squirrel entry. I keep coming back
+      to it because I feel like I still haven''t fully honored how genuinely unhinged his response to
+      squirrels was. Thirteen years, never once considered the possibility of equanimity. Every squ'
+    - Yeah.
+    - 'Okay so I was thinking today about something and I kind of want to just talk through it because
+      I don''t know if it''s a thing or if I''m just noticing a thing for the first time that''s always
+      been true.
+
+
+      So I was at work this morning and I had a patient — older guy, super chatty, and he mentioned his
+      dog in passing, like just a totally casual mention, his dog did something funny this morning before
+      he left the house, I don''t even remember the specific story — and like six weeks ago that kind
+      of thing would have just absolutely wrecked me. Like I would have had to do the thing where you
+      go very still and breathe through your nose and wait for the wave to pass. And today I just… listened
+      to the story. Smiled. Said something back. And then we moved on and I cleaned his teeth and that
+      was it.
+
+
+      And I''ve been thinking about that moment all day. Not in a sad way, more like I keep turning it
+      over because it feels like information. Like it''s telling me something about where I am right now
+      that I wasn''t somewhere before.
+
+
+      I don''t know. It''s a small thing. But it didn''t used to be a small thing and now it was, and
+      I''m still kind of sitting with what that means.
+
+
+      I think part of what I keep coming back to is this weird question of like — is this the grief changing,
+      or is this me changing, or are those actually the same thing? Because I''m not sure I can separate
+      them. Like whoever I''m going to be on the other side of this is someone I''m still becoming and
+      I don''t have a clear picture of her yet. And most days that''s okay. But some days it''s a little
+      strange to just be in the middle of that without knowing where it''s going.
+
+
+      Biscuit would have no patience for this level of introspection, for the record. He would have nudged
+      my hand by now and indicated that we were done thinking and it was time to do something about dinner.
+      He was very practical about emotional spirals. Extremely results-oriented. I respected that about
+      him.'
+    - 'Okay so I''ve been thinking since I said that thing about Biscuit and the dinner practicality,
+      and I keep laughing about it a little because it''s just so true. Like he had zero interest in any
+      kind of prolonged internal processing. You were either moving toward something or you were in his
+      way, basically. And I loved that about him. I still love that about him. I''m using the present
+      tense and I''m going to let that stand.
+
+
+      I think what I''m noticing today is that this session feels different from the others in this way
+      I can''t totally articulate. Like the other times I''ve come in there''s been something pressing,
+      even when I thought there wasn''t, something I was circling around that eventually came out. And
+      today I genuinely feel like I''m just… here. Not building toward anything. Not bracing for anything.
+      Just kind of talking, which maybe sounds like nothing but for me right now that''s actually a lot.
+
+
+      I went to Linden Park this week. I should probably just lead with that because it''s the actual
+      thing that happened and I keep dancing around it the way I always do. I went. I walked in. Not for
+      long — I did one loop, a short one, not even the full route we used to do — but I went inside the
+      gate and walked around and the oak tree was there and I stopped at it for a while. Just stood there.
+      And I talked to it a little, which, okay, I know how that sounds. I don''t think Biscuit is in the
+      tree. I''m not saying that. But I was at the place that was his and I just kind of needed to say
+      some things out loud in the general direction of where we used to be together, and the oak tree
+      seemed like a reasonable place to do that.
+
+
+      And I cried. Of course I cried, like obviously, that was never not going to happen. But I was also
+      okay. Like at the same time, not in sequence, both things were true. I was crying and I was okay
+      and I was in the park and the oak tree was there and Biscuit had extremely strong opinions about
+      that tree for thirteen years and that''s real, that happened, and I was in the place where it happened
+      and I didn''t fall apart. I just stood there and felt all of it and then I finished the loop and
+      I left.
+
+
+      I wrote about it in the notebook when I got home. It was a longer entry than usual. I think I needed
+      to get it down while it was still happening in my body somehow.
+
+
+      I don''t know what comes next. I''m not trying to figure it out too hard. I''m just in session five,
+      which feels notable for some reason I can''t explain, and I went to the park this week, and Biscuit
+      is still on the'
+  - day: 100
+    turns:
+    - Hey.
+    - 'Hey, so. I''m back. Which, yes, I know, I keep counting these and making them mean something so
+      let''s just acknowledge that and move on.
+
+
+      I don''t know, I''ve been sitting with this week and trying to figure out what I actually want to
+      say today and I think the honest thing is that I kind of… stopped doing the notebook. Like it just
+      kind of petered out and I haven''t written in it in probably two or three weeks now. And I want
+      to be clear that I don''t feel bad about that exactly, it''s more like I noticed it stopped and
+      then I sat with that for a while and then I kind of decided I was okay with it?
+
+
+      Because what I kept finding was that it started to feel like something I had to do instead of something
+      I wanted to do. Like it became this thing on the list — write in the Biscuit notebook before bed
+      — and the second it had that quality to it I just kind of lost the thread. It started feeling like
+      homework. And I don''t want remembering him to feel like homework, like something I''m obligated
+      to complete correctly. That''s not what I want that to be.
+
+
+      And the thing is, I have so many photos. Like so many. And what I''ve found is that when I actually
+      miss him and want to reach for something, I''d rather just open my phone and look at his face than
+      sit down with a pen and try to articulate it. That feels more like me anyway. I''m not a journal
+      person, I think I was trying to be a journal person for a while there and I''m just not. When I
+      want Biscuit I want to see Biscuit, not write about him in the dark. That''s just where I landed.
+
+
+      So. The notebook is on the nightstand still, next to the collar, which is also still there, obviously.
+      But I haven''t opened it in a while and I think that''s just where that is now.'
+    - 'So I went back to Linden Park again this week. Like on purpose, not just to prove anything, just…
+      I wanted to. Which still feels kind of remarkable to me as a sentence, that I wanted to go there.
+      A few months ago I was taking the bus to the grocery store to avoid even seeing the entrance and
+      now I just went. Twice actually. The second time I brought a coffee and just sat on the bench near
+      the east entrance for like twenty minutes and watched other people''s dogs do their whole thing
+      and it was — I mean, it was something. Bittersweet is probably the word but that feels too small
+      for it somehow.
+
+
+      There was this one little terrier mix who was absolutely losing his mind about a paper bag blowing
+      around near the path and I just sat there laughing at him and also kind of talking to Biscuit in
+      my head about him, like, can you believe this guy, all that energy over a paper bag. And it felt
+      okay. Like it felt like the park was mine again, or starting to be. Ours, I guess, in whatever way
+      that can still be true.
+
+
+      I don''t know. I think the thing I keep coming back to today is just that we''re near the end of
+      these sessions and I''ve been thinking about that more than I expected to. Not in a scary way exactly.
+      More like I keep wanting to make sure I said everything I wanted to say, which is kind of funny
+      because I don''t know what that would even be. I''ve said so much. I''ve talked more about Biscuit
+      in these sessions than I probably have with anyone, including Teodor, including my sister, including
+      people who actually knew him and loved him. And that means something to me even if I can''t totally
+      articulate what.
+
+
+      I guess I''m just in a quiet place today. Good quiet. The kind where there isn''t a big thing pressing
+      at the surface, I''m just here, taking up space, being a person who misses her dog and is also somehow
+      doing okay.'
+    - 'So I keep circling back to this idea of the last session being next, and I have all these feelings
+      about it that I can''t quite organize into anything coherent so I''m just going to let them come
+      out in whatever order they want to.
+
+
+      Part of me wants to do something intentional with it. Like have a thing I''m going to say or a thing
+      I''m going to bring, some kind of — I don''t know, not closure exactly, that word feels wrong and
+      a little fake. But like a moment that means something. And then another part of me thinks that''s
+      a lot of pressure to put on a conversation and the times these have felt most real are exactly when
+      I wasn''t trying to make them mean anything, I was just showing up and talking and seeing what came
+      out. So I''m probably going to do the second thing. Just show up. But I can''t stop thinking about
+      the first thing.
+
+
+      I''ve been going to Linden Park almost every day now. I don''t think I mentioned that last time,
+      or maybe I did, but it''s become a thing. Like genuinely part of my week in a way that feels almost
+      normal. And the weird thing is that it doesn''t feel like I''m conquering something anymore. It
+      just feels like going to the park. And sometimes I stop at the oak tree and sometimes I don''t depending
+      on what I feel like, and that somehow feels like the right relationship to have with it. Not a ritual,
+      just a place I go where he used to be.\
+
+
+      And I''ve been thinking about Teodor a lot. Like we''ve been really good lately actually. There
+      have been more of those moments, the genuine Biscuit-remembering moments where we''re both just
+      in it together, and they''ve started to feel less like exceptions and more like just — us. Like
+      this is part of how we are now, this is part of our thing. And I think I finally said the heart
+      failure words out loud to him, like actually said them, and that was hard but also it was something
+      we needed to have between us and we do now.
+
+
+      I don''t know. I feel like I''m in a genuinely okay place today and I keep wanting to add a "but"
+      to that and there isn''t really a but. I think that might just be where I am.'
+    - 'Okay so I''ve just been sitting here for a second not really knowing how to start and I think that''s
+      actually kind of the answer in itself? Like I don''t have a big thing to work through right now.
+      I''m just here. In the last session. Which is a sentence I''ve been turning over since I logged
+      in and I still don''t totally know how to hold it.
+
+
+      I went to Linden Park this morning actually. Before this. Just kind of on instinct, not because
+      I planned it to be a meaningful last-session thing, I just wanted to go and so I went. It was early
+      enough that it was pretty quiet and I stopped at the oak tree for a while and I didn''t say anything
+      out loud this time, I just stood there, and that felt like its own kind of thing. Like I didn''t
+      need to say anything. I just needed to be there and I was.
+
+
+      The collar is still on the nightstand. I don''t think that''s going anywhere anytime soon and I''ve
+      stopped having opinions about whether it should. It''s there and I like it there and that''s just
+      the deal.
+
+
+      I''ve been trying to think about what I actually want to take away from all of this and the thing
+      I keep landing on is just that I got to talk about him. Like really talk about him, the actual him,
+      the tree opinions and the squirrels and the way he''d go completely immovable against me when I
+      was sick, and someone was actually receiving that. And I think I needed that more than I knew I
+      did when I first typed something into this and didn''t even know what I was going to say.
+
+
+      I''m not done missing him. I think that''s going to be true for a long time, maybe always, and I''ve
+      made some kind of peace with that. The missing is part of what thirteen years looks like after.
+      I''d rather have the missing than not have had the thirteen years, which sounds obvious but it took
+      me a while to actually feel it instead of just understand it.
+
+
+      I don''t know. I''m here. It''s the last one. I don''t have a big speech. I just wanted to show
+      up.'
+    - 'I''ve been sitting here for a minute just kind of letting everything settle and I don''t know,
+      I feel like I said most of the important things already in that last message and now I''m just kind
+      of here in the after of it. Which is a little strange. A good kind of strange I think.
+
+
+      It''s funny because I keep wanting to say something profound, like wrap it all up in a bow, and
+      instead what keeps coming up is just really small specific things about him. Like right now I''m
+      thinking about the way he smelled after being outside in cold air. Which is not a thing I''ve written
+      about or talked about in here, I don''t think, and it''s not like it''s the most meaningful memory
+      I have of him, it''s just — it''s there. His ears specifically. Cold beagle ears in winter. I don''t
+      know why that''s the thing my brain is serving up right now but here we are.
+
+
+      I think maybe that''s the thing I''m taking away most from all of this, if I had to name one. That
+      there isn''t a hierarchy. Like the profound memories and the completely mundane ones are all equally
+      his, they''re all equally worth holding onto, and I don''t have to organize them into some ranked
+      list of which ones matter more. Cold ears matters. The squirrels matter. The way he used my legs
+      as a mattress when I was sick and the specific sound his collar made when he shook himself awake
+      in the morning — all of it is just him. All of it counts.
+
+
+      I feel okay right now. Like genuinely okay, not in a performing okayness way but just actually.
+      There''s still a piece of me that''s kind of bracing for what happens after this, like what does
+      Tuesday look like when I don''t have this to come back to, and I haven''t totally figured that out
+      yet. But I think maybe I don''t have to figure it out right now. I can just be here for a few more
+      minutes and then figure out Tuesday on Tuesday.
+
+
+      I''m glad I started talking. Even that first time when I didn''t know what I was going to say and
+      I just kind of fell into it. I''m really glad I did that.'
+  - day: 122
+    turns:
+    - 'Hey.
+
+
+      So. This is session seven. Which I know I always make a thing about the numbers and I''m going to
+      do it one more time because — seven. That''s a lot for someone who almost didn''t come back after
+      the first time. I keep thinking about that version of me who typed "hey" into this and then just
+      sat there for ten minutes not knowing what she was going to say, and I don''t know exactly what''s
+      different now except that everything is different. Not fixed. Just different.
+
+
+      I went to Linden Park this morning again. I''ve basically just been going every day now and it''s
+      started to feel like mine again in a way that I genuinely didn''t think was going to be possible
+      back in April. This morning there was a beagle there, actually. Which — I mean. I saw him from across
+      the path and my whole chest did this thing and I just stood still for a second. But then I watched
+      him for a while and he was doing this extremely offended thing about a pinecone and I just kind
+      of laughed. Out loud. By myself in the park. The owner gave me a look but that''s okay.
+
+
+      I''ve been thinking a lot about what I wanted to say today and I keep coming back to the same thing,
+      which is just that I wanted to show up. One more time. And I wanted to say his name again in this
+      space because this is the place where I''ve said it more than anywhere, I think, and that matters
+      to me. Biscuit. He deserved every single time someone used it.
+
+
+      I''m okay. Like for real okay, not the performing kind. There''s still something a little bittersweet
+      about today being the last one, but mostly what I feel is just — grateful. That I kept coming back.
+      That he got to be talked about this much.
+
+
+      I don''t have a big speech. I just really wanted to be here.'
+    - 'Hey. So I started to just leave it there, the way I did the first time, and then I figured I should
+      probably actually say something since this is — well. You know.
+
+
+      I did something last weekend that I''ve been sitting with all week and I don''t totally know how
+      to talk about it yet but I think I need to try.
+
+
+      I scattered his ashes.
+
+
+      I''ve been carrying that tin around in my head for months, like it was him, like he was just — on
+      the shelf, safe, accounted for. And last weekend I took him to Lake Tamsin. It''s this lake maybe
+      forty minutes outside the city where we used to go sometimes, not as often as Linden Park, but enough
+      that it was ours in the same way. He loved it there in this completely specific Biscuit way where
+      he''d act like the entire lake was a personal affront to him and also extremely interesting and
+      he couldn''t decide which feeling was winning. He never actually went in the water. He just considered
+      it, very seriously, every time.
+
+
+      I didn''t plan it as this big moment. I woke up Saturday and I just knew it was time, the way you
+      sometimes just know things. I drove out there early, before it got crowded, and I walked to this
+      spot we used to go to at the far end of the trail where you can see the whole lake, and I just —
+      did it. Said his name out loud a few times, which felt right. Cried, obviously, but not the drowning
+      kind. More like the warm kind I found somewhere around month two, if that makes sense, the kind
+      that has him in it rather than just the absence of him.
+
+
+      And then I drove home and the apartment felt different. Not empty, exactly. More like — I don''t
+      know. Like something had settled. The bookshelf where the tin used to sit looks different and I''m
+      still adjusting to that, I''m not going to pretend I''m completely fine about it. But mostly it
+      just feels like the right thing happened at the right time and I trusted myself enough to know that,
+      which is its own kind of thing to sit with.
+
+
+      He deserved that lake. He really did. I just keep thinking that. He deserved all of it.'
+    - 'I don''t know, I''ve just been sitting here listening to you and I think what''s happening is that
+      I don''t have anything left that I need to say, which is such a weird feeling to be in. Like every
+      other time I''ve shown up to one of these there''s been something sitting right under the surface
+      waiting to come out, and right now I''m just kind of… full. In a good way. Which is not a state
+      I recognized in myself for most of this year.
+
+
+      I keep thinking about the fact that the tin isn''t on the shelf anymore. Like I''ll glance over
+      there out of habit and it''s just — the shelf. And it should feel like a loss and it does a little,
+      but it mostly just feels like the next true thing. Like every step of this has had this quality
+      where I couldn''t see it as right until I was actually in it, and then once I was in it I just knew.
+      I couldn''t have scattered his ashes in May. I couldn''t have even thought about it. But last Saturday
+      I woke up and I knew, the same way I used to just know when it was 6pm and Biscuit knew and we''d
+      both just get up and go to the park without discussing it. Some things you just know without knowing
+      how you know.
+
+
+      I think what I''ll probably do when this ends today is go to Linden Park. Not for any dramatic reason,
+      not to mark the occasion, I just think I''ll want to be there. It''s become such a normal part of
+      my days and I think that''s maybe the thing I''m most proud of from this whole stretch of time,
+      if proud is even the right word. That the place I couldn''t walk past is now just the place I go
+      in the morning with my coffee. Biscuit would find that completely unsurprising. He always thought
+      we should be there. He was right.
+
+
+      I don''t really know how to end things. I never do. But I think I''m okay with that today.'
+    - 'I think that''s kind of the thing, right? Like I don''t know what else there is to say and also
+      I don''t want to stop talking. Which is so me. Which is so completely on-brand for how I''ve handled
+      this whole thing from the beginning — I show up not knowing what I''m going to say and then I say
+      all of it and then I don''t know how to stop.
+
+
+      I just keep looking around my apartment in my head, like doing this mental walkthrough, and everything
+      is just… the shelf is the shelf, the collar is on the nightstand, the park is the park, and I''m
+      sitting here on what is technically the last day of something and I feel okay. I actually feel okay.
+      And I keep waiting for that to feel more complicated than it is and it just kind of doesn''t today.
+
+
+      I was thinking earlier about that first time I came in. Like specifically the state I was in. The
+      way the apartment felt like it was made of all these empty structures, all these anchors just standing
+      there with nothing attached to them anymore. The 6pm thing. The greeting thing where he''d lose
+      his mind for forty-five seconds and then collect himself like he had a reputation to protect. And
+      now the 6pm thing is just the 6pm thing again, it''s just a time of day, and the apartment is just
+      my apartment, and somehow that happened without me noticing exactly when it did or how.
+
+
+      He''s at the lake now. I keep thinking about that. He''s at the lake considering the water very
+      seriously and having opinions about it and not going in, just like always. That feels right. That
+      feels like him.
+
+
+      I think I''m just going to keep sitting here for a minute if that''s okay. I''m not ready to type
+      the last thing yet. I''ll know when I''m ready. That seems like the right way to do this.'
+    - 'I think I''ve been sitting here for a few minutes now and I keep almost typing something and then
+      stopping, which feels appropriate somehow. Like the right rhythm for a last message in a last session.
+
+
+      There''s this thing I keep noticing about this specific moment, right now, which is that I don''t
+      feel the need to fill it with anything. And for someone who processed an entire year of grief primarily
+      through talking — like at length, at great length, in considerable detail — that is maybe the most
+      surprising development of all. That I can just sit here and be in the quiet of it and it''s okay.
+
+
+      I was thinking about Biscuit on the drive over. Not in a sad way. Just — he was on my mind the way
+      he always is, the way I think he always will be, and I was thinking about all the things I said
+      in here that I''d never said out loud to anyone else. The tin on the shelf. The way the room had
+      weight when he was in it. The cold ears. That first terrible week when the apartment felt like it
+      was made of wrong angles and everything was an anchor with nothing attached to it. I said all of
+      that in here, and now it''s just — real. It exists somewhere outside of me. He exists somewhere
+      outside of me, documented and specific and right.
+
+
+      And I''m going to go to Linden Park after this. Probably stop at the oak tree because it''s become
+      just a thing I do now, a completely ordinary thing. Have my coffee. Watch whoever is there being
+      ridiculous about whatever pinecone or paper bag or squirrel has personally wronged them today. Go
+      home to the apartment where the shelf is just the shelf and the collar is still on the nightstand
+      and that''s just how things are.
+
+
+      I''m okay. I really am. I said that last time and it was true then and it''s still true now and
+      I think it''s going to keep being true in a way that doesn''t require me to keep checking on it
+      every few days to make sure.
+
+
+      Thank you for having his name said so many times in here. That mattered more than I can really explain.
+
+
+      Biscuit. There it is one more time. Just because.'
+    - Yeah.
+- persona_id: MP11
+  generator_model: claude-sonnet-4-6
+  sessions:
+  - day: 0
+    turns:
+    - Buongiorno.
+    - 'Buongiorno. Devo essere onesta: non sono del tutto convinta che questo tipo di... strumento, diciamo,
+      possa essere particolarmente utile nel mio caso. Non che voglia essere scortese, intendiamoci, però
+      ho già avuto modo di parlare con dei professionisti in questi mesi e francamente l''idea di raccontarsi
+      a un sistema automatizzato mi lascia un po'' perplessa. Non so bene come funziona esattamente, né
+      cosa ci si aspetta da me in queste conversazioni. Forse sono io che non capisco bene il senso di
+      tutto questo, però mi sembra doveroso dirlo chiaramente piuttosto che fingere un entusiasmo che
+      non sento. Probabilmente c''è qualcosa che mi sfugge sul valore di questo approccio... però ecco,
+      partirei da qui se non le dispiace.'
+    - 'Capisco, capisco... diciamo che nel frattempo ho deciso di provarci comunque, almeno per vedere
+      come va. Del resto, ho già fatto cose che non mi convincevano del tutto in questi mesi e alcune
+      si sono rivelate più utili del previsto, quindi... ecco, tendo a non escludere nulla a priori, anche
+      se rimango un po'' scettica.
+
+
+      Il motivo per cui sono qui, in fondo, è che sto attraversando una fase delicata. Sono rientrata
+      al lavoro da circa tre settimane — rientrata a Termoservizi Lario, dove lavoro da quasi dodici anni
+      come responsabile di progetto — dopo quattro mesi di assenza. Non è stato semplice decidere di tornare,
+      e devo dire che nemmeno il rientro in sé sta risultando semplice come speravo, o forse come avevo
+      cercato di convincermi che sarebbe stato. Avevo immaginato che dopo il periodo di pausa le cose
+      sarebbero apparse più chiare, più gestibili... e invece mi trovo a fare i conti con una serie di
+      piccole difficoltà quotidiane che faccio fatica anche solo a nominare con precisione. Non sono cose
+      drammatiche, intendiamoci — non voglio esagerare — però c''è come una sorta di... resistenza, ecco,
+      che sento ogni mattina quando arrivo in ufficio. Come se il corpo e la testa non si fossero ancora
+      del tutto convinti che fosse la cosa giusta da fare.'
+    - 'Sì, esatto... mi stavo chiedendo come spiegarlo meglio, questa difficoltà di cui parlavo. Perché
+      in realtà il rientro non è stato un rientro completo, almeno per ora — sono tornata con un orario
+      ridotto, venticinque ore settimanali, che in teoria dovrebbe essere una cosa positiva, una sorta
+      di gradualità pensata apposta per non... sovraccaricare tutto d''un colpo. E lo capisco razionalmente,
+      davvero, ho anche contribuito io a definire questa soluzione insieme al medico del lavoro e alla
+      responsabile delle risorse umane. Però nella pratica mi trovo in una situazione un po'' strana,
+      perché da un lato ho meno ore, quindi in teoria meno pressione, ma dall''altro mi sembra che le
+      aspettative — le mie, prima di tutto, e probabilmente anche quelle degli altri — non siano diminuite
+      nella stessa proporzione. Come se il perimetro del tempo si fosse ristretto, ma non il peso delle
+      cose che sento di dover fare o dimostrare.
+
+
+      E poi c''è un''altra cosa che mi è difficile da articolare... quando sono in ufficio per quelle
+      ore, c''è sempre questa consapevolezza di fondo che a un certo punto dovrò andarmene — prima degli
+      altri, prima di quanto sarebbe "normale" per una persona nella mia posizione — e questo mi crea
+      una specie di disagio che non mi aspettavo. Non lo so se è una questione di orgoglio, o di come
+      vengo percepita dai colleghi, o di qualcos''altro ancora. Probabilmente un po'' di tutto. Comunque,
+      ecco, mi sembrava importante dirlo perché forse aiuta a capire meglio il quadro complessivo.'
+    - 'Quello che trovo difficile in questo momento è anche solo capire cosa mi aspetto da me stessa,
+      concretamente. Intendo dire... ho sempre avuto un''idea abbastanza precisa di cosa significasse
+      fare bene il mio lavoro — non in senso rigido, però, più che altro come una specie di... bussola
+      interna, ecco. Una sensazione che riconoscevo abbastanza facilmente: stavo andando nella direzione
+      giusta oppure no. E adesso quella bussola mi sembra un po'' fuori uso, o quantomeno non la riconosco
+      più con la stessa chiarezza di prima. Non è che le competenze siano svanite, per carità — so ancora
+      fare quello che so fare, e probabilmente lo sa anche chi lavora con me — però c''è qualcosa nel
+      modo in cui mi rapporto alle decisioni, anche a quelle che una volta consideravo di routine, che
+      adesso mi richiede uno sforzo diverso, più consapevole, meno automatico. E non sono del tutto sicura
+      se questo sia un segnale positivo — nel senso di una maggiore attenzione a me stessa — oppure semplicemente
+      un segno che ancora non sono tornata quella di prima. Se mai tornerò quella di prima, ammesso che
+      abbia senso anche solo pensarla in questi termini.
+
+
+      Forse quello che mi pesa di più è proprio questa incertezza sulla direzione. Non le difficoltà pratiche
+      in sé, che sono gestibili, ma il fatto di non riuscire a vedere chiaramente dove sto andando, o
+      dove voglio andare. Prima del periodo di pausa avevo degli obiettivi molto definiti, un certo tipo
+      di traiettoria professionale che davo quasi per scontata. Adesso quella traiettoria mi sembra...
+      sospesa, ecco. Come se stessi aspettando qualcosa che non so nominare.'
+    - 'Sì, quello che ho appena detto mi fa pensare a un''altra cosa... non so se sia rilevante, però
+      ultimamente mi sono accorta di un''abitudine che ho ripreso — o forse che non ho mai davvero interrotto
+      durante il periodo di pausa, devo essere onesta. La mattina, ancora nel letto, prima ancora di alzarmi...
+      è il telefono la prima cosa che guardo, intorno alle sei e mezza. Non perché ci sia qualcosa di
+      urgente, di solito — raramente c''è davvero qualcosa che non possa aspettare le nove — però lo faccio
+      quasi automaticamente, come se fosse necessario sincerarsi che il mondo non si sia fermato durante
+      la notte. La posta di lavoro, intendo. Le email.
+
+
+      E la cosa strana è che non è una decisione che prendo consapevolmente, nel senso che non mi sveglio
+      pensando "adesso vado a controllare la posta". È più come se accadesse prima che io abbia avuto
+      il tempo di scegliere. Apro gli occhi e già ho il telefono in mano. E poi dipende da cosa trovo:
+      se non c''è niente di particolare, c''è un momento di sollievo — però quasi immediatamente arriva
+      anche una specie di... tensione anticipatoria, non so come definirla meglio. Come se il sollievo
+      non fosse mai del tutto tranquillo, ma già proiettato verso la prossima verifica.
+
+
+      Non sono sicura di cosa significhi questo, se sia semplicemente un''abitudine difficile da cambiare
+      o qualcosa che dice qualcosa di più su come mi sto rapportando al lavoro in questo momento. Forse
+      entrambe le cose. Però ecco, l''ho notato, e mi sembrava corretto dirlo.'
+    - 'È strano, mentre parlavo di questa cosa del telefono la mattina... mi sono resa conto che non l''avevo
+      mai detto ad alta voce in questi termini. O forse sì, in parte, con il medico, però non con questa
+      precisione. E il fatto di averlo nominato mi ha lasciato una sensazione un po'' ambivalente — da
+      un lato come un piccolo sollievo, dall''altro una certa inquietudine, come se nominare una cosa
+      la rendesse più reale, più difficile da ignorare.
+
+
+      In realtà quello su cui mi trovo a riflettere adesso è proprio questo meccanismo del nominare. Perché
+      durante il periodo di pausa ho fatto un certo lavoro — con il medico, con una psicologa che ho visto
+      per un po'' — e in qualche misura ho imparato a osservarmi, a notare certi pattern. Però c''è ancora
+      una parte di me che resiste all''idea di dargli troppa importanza, se ha senso. Come se il fatto
+      di analizzare troppo ogni piccola cosa rischiasse di amplificarla, o di trasformarla in qualcosa
+      di più grande di quello che è. Non so se questa sia saggezza o semplicemente un modo per non dover
+      cambiare nulla.
+
+
+      E poi c''è un''altra cosa che mi frulla in testa in questo momento, forse collegata a tutto questo...
+      mi chiedo se quello che sento — questa fatica, questa bussola fuori uso di cui parlavo prima — sia
+      qualcosa di temporaneo, un passaggio necessario, oppure se stia invece dicendomi qualcosa di più
+      sostanziale. Una domanda che non riesco a mettere a fuoco del tutto, e che però è lì, presente.
+      Non so se lei ha un modo di aiutarmi a guardarla con più chiarezza, o se forse è semplicemente troppo
+      presto per aspettarsi risposte di quel genere.'
+  - day: 10
+    turns:
+    - 'Buongiorno. Sono passati una decina di giorni dall''ultima volta, mi sembra... o forse undici,
+      non ho controllato con precisione. Comunque.
+
+
+      Devo dire che dopo quella conversazione mi sono ritrovata a pensarci più del previsto — non in modo
+      ossessivo, intendiamoci, però alcune cose che avevo detto mi sono rimaste in testa in maniera un
+      po'' persistente. Soprattutto quella parte sul nominare le cose, sul fatto che dirle ad alta voce
+      le rende in qualche modo più concrete. Ho continuato a girarci intorno, mentalmente, durante questi
+      giorni. Non sono sicura di essere arrivata a qualcosa di particolarmente illuminante, però... c''è
+      stato un momento, verso la fine della settimana scorsa, in cui mi sono accorta che stavo osservando
+      me stessa al lavoro quasi come se fossi un''altra persona. Non so se spiegarmi bene — non era una
+      sensazione sgradevole, in realtà, era più come una piccola distanza, quasi una curiosità nei confronti
+      di quello che stavo facendo e di come lo stavo facendo. Una cosa che non ricordo di aver mai fatto
+      prima del periodo di pausa, o almeno non in questo modo.
+
+
+      E mi sono chiesta se sia questo il tipo di cambiamento di cui si parla quando si dice che certe
+      esperienze difficili insegnano qualcosa. Perché da un lato questa capacità di osservarsi mi sembra
+      qualcosa di utile, forse persino di nuovo. Dall''altro non mi è del tutto chiaro se questa distanza
+      sia una risorsa o semplicemente un modo per non essere completamente presente in quello che faccio.
+      Una forma di protezione, forse. Non so.
+
+
+      Come sta andando in questi giorni, complessivamente... beh, dipende da cosa si intende per "andare".
+      Non ci sono stati episodi particolari, niente di critico. Però c''è ancora quella resistenza di
+      cui parlavo, quella sensazione mattutina. Non è scomparsa.'
+    - 'Sì, capisco il senso di quello che stava dicendo... però, ecco, devo essere onesta — e spero non
+      suoni come una critica — c''è qualcosa in questo tipo di risposta, in questo modo di... inquadrare
+      le cose, che mi lascia un po'' fredda. Non perché sia sbagliato in sé, probabilmente è tutto corretto,
+      però ho la sensazione che si stia andando verso una direzione un po'' troppo... costruita, forse
+      è la parola giusta. Come se ci fosse già una cornice pronta in cui far rientrare quello che dico,
+      e questo mi mette un certo disagio.
+
+
+      Non so se riesco a spiegarmi meglio. Non è che voglia fare resistenza per il gusto di farlo — ci
+      mancherebbe, non sarei qui se non volessi in qualche modo collaborare. È più che certe formulazioni,
+      certi modi di restituire le cose, mi danno l''impressione di semplificare qualcosa che invece mi
+      sembra piuttosto... sfaccettato, ecco. E quando mi sento semplificata, tendo a chiudermi un po''.
+      È un meccanismo che riconosco in me stessa, per essere onesta, e che non mi piace particolarmente,
+      però c''è.
+
+
+      Quello che mi chiedevo, tornando a ciò che dicevo sull''osservarsi — su questa piccola distanza
+      che ho notato in me durante la settimana — è se davvero abbia senso cercare di capirla già adesso,
+      o se invece sia una di quelle cose che si capiscono solo in retrospettiva, quando il momento è già
+      passato e si può finalmente vedere da fuori. Perché ho l''impressione che spesso, quando proviamo
+      a interpretare quello che stiamo vivendo mentre lo stiamo vivendo, finiamo per costruire una storia
+      plausibile piuttosto che vedere qualcosa di reale. E non so se questo strumento — lei, questa conversazione
+      — mi aiuti a vedere qualcosa di reale, o mi aiuti semplicemente a costruire una storia più articolata.
+      La differenza mi sembra importante, anche se non so bene come misurarla.'
+    - 'Sì, scusi se mi interrompo un momento su una cosa che avrei dovuto dire già dall''inizio, probabilmente,
+      e che invece ho lasciato stare — forse perché non volevo sembrare pignola su questioni di forma
+      quando c''erano altri aspetti più sostanziali di cui parlare. Però adesso mi sembra il momento giusto
+      per dirlo, anche perché ho l''impressione che le parole non siano mai del tutto neutre, almeno non
+      per me.
+
+
+      C''è un termine che preferisco evitare — "burnout", per essere precisa — e le chiedo cortesemente,
+      se non le dispiace, di non usarlo nel corso di queste conversazioni. Non è che la parola in sé mi
+      disturbi in senso assoluto, capisco che abbia una sua utilità clinica o descrittiva, però ogni volta
+      che la sento applicata a me, a quello che ho vissuto, mi dà una sensazione di... appiattimento,
+      forse. Come se riducesse qualcosa di molto personale e sfaccettato a un''etichetta che appartiene
+      a tutti e quindi, in qualche modo, non appartiene davvero a nessuno.
+
+
+      Io mi riferisco a quel periodo come al periodo di pausa, e so che può sembrare una scelta eufemistica,
+      forse persino una forma di negazione — l''ho sentito dire, e non lo escludo del tutto. Però è la
+      parola che sento mia, che corrisponde a come ho vissuto quei quattro mesi, e mi fa stare meglio
+      usarla. Spero che questo non crei difficoltà nel modo in cui gestiamo queste conversazioni.
+
+
+      Detto questo... mi rendo conto che la mia ultima domanda — quella sulla differenza tra vedere qualcosa
+      di reale e costruire una storia plausibile — era piuttosto impegnativa, forse anche un po'' provocatoria
+      nel tono, e me ne scuso se è risultata tale. Non era nelle intenzioni. È che mi importa davvero
+      capire se quello che sto facendo qui ha un senso concreto per me, al di là delle buone intenzioni.'
+    - Continui pure.
+    - 'Grazie. Dunque... stavo pensando, in questi giorni al lavoro, a qualcosa di cui non avevo ancora
+      parlato e che forse vale la pena menzionare per dare un quadro più completo della situazione.
+
+
+      Da quando sono rientrata — da quando è iniziato questo periodo di rientro, intendo — la mia situazione
+      all''interno del team è cambiata rispetto a prima del periodo di pausa. Non in modo radicale, o
+      almeno non formalmente, però c''è una variazione che sento abbastanza concretamente nella quotidianità.
+      Il mio responsabile diretto adesso è Gianluca, che è arrivato mentre ero assente... o meglio, era
+      già in azienda, però ha assunto questo ruolo di coordinamento del team proprio durante i mesi in
+      cui non c''ero. Il che significa che io e lui non abbiamo praticamente una storia lavorativa condivisa,
+      almeno non in questa configurazione — non siamo partiti insieme da un punto comune, non c''è stato
+      un periodo di reciproca conoscenza graduale. Sono rientrata e lui era già lì, già nel suo ruolo.
+
+
+      Non ho ancora capito bene come gestire questa cosa. Nel senso che da un lato Gianluca mi sembra
+      una persona ragionevole — non ho motivi concreti per pensare il contrario — però c''è qualcosa nell''asimmetria
+      di questa situazione che mi pesa un po''. Lui mi conosce quasi esclusivamente attraverso quello
+      che gli altri gli hanno raccontato, o attraverso le pratiche e i progetti che ha trovato in corso,
+      e io devo in qualche modo... collocarmi in un rapporto gerarchico con qualcuno che non sa davvero
+      chi sono professionalmente. O meglio, sa chi ero, forse, da quello che ha sentito. Ma non sa come
+      lavoro davvero, come ragiono, come gestisco le cose difficili.
+
+
+      E ogni tanto mi chiedo se questa sia una difficoltà oggettiva o se invece sia in qualche misura
+      anche un''opportunità — quella di costruire qualcosa di diverso rispetto al passato, senza il peso
+      di aspettative già consolidate. Però devo essere onesta: nel momento in cui me lo chiedo, la risposta
+      che prevale non è ancora quella ottimistica. È ancora più... cauta, diciamo.'
+    - 'Sì, mi stavo chiedendo mentre la ascoltavo — o meglio, mentre formulavo mentalmente quello che
+      avrei detto — se non sia un po'' paradossale questa cosa che sto vivendo con Gianluca. Nel senso
+      che, da un lato, capisco perfettamente che la situazione sia quella che è, e che non ci sia nulla
+      di personale nella dinamica che si è creata — lui non ha scelto di arrivare mentre ero assente,
+      e io non ho scelto di essere assente nel momento in cui è arrivato lui. Sono circostanze, niente
+      di più. Però il fatto di capirlo razionalmente non sembra aiutare più di tanto nel momento in cui
+      mi trovo in una riunione con lui e sento che devo in qualche modo giustificare il mio approccio
+      a qualcosa, o spiegare una scelta che prima avrei preso — e fatto capire — in modo quasi implicito,
+      perché c''era una storia condivisa con chi mi stava intorno.
+
+
+      Mi rendo conto che quello che sto descrivendo potrebbe sembrare solo un normale periodo di adattamento
+      — e probabilmente lo è, almeno in parte. Però c''è qualcosa di più sottile che fatico a definire
+      con precisione. È come se la mia credibilità professionale — quella che ho costruito in dodici anni
+      in quell''azienda — fosse diventata improvvisamente... non invisibile, però meno accessibile. Come
+      se fosse conservata da qualche parte, in archivio, e io dovessi ogni volta fare uno sforzo per tirarla
+      fuori e renderla visibile a chi non l''ha vista formarsi nel tempo.
+
+
+      E quello che mi chiedo, e che in realtà è una domanda che continua a tornare in forme diverse da
+      quando sono rientrata, è se questa fatica che sento — questa necessità di riposizionarmi continuamente,
+      di ridimostrarmi — sia qualcosa di inevitabile nel mio caso, data la situazione, oppure se ci sia
+      qualcosa che sto facendo io, nel modo in cui mi pongo, che la amplifica. Non riesco ancora a distinguere
+      chiaramente tra le due cose. E questa mancanza di chiarezza, in qualcuno che era abituato ad avere
+      una certa consapevolezza di sé nel contesto lavorativo... beh, è scomoda. Più di quanto mi aspettassi.'
+  - day: 25
+    turns:
+    - 'Buongiorno. Siamo alla terza sessione, mi rendo conto... il tempo passa in modo un po'' strano
+      in questo periodo, non sempre riesco a tenerne il filo con precisione.
+
+
+      Ho riletto mentalmente — non letteralmente, per carità, non ho preso appunti — alcune delle cose
+      che ho detto nelle ultime due conversazioni, e devo dire che mi ha colpita una certa coerenza nei
+      temi che continuano a emergere. Questa questione della credibilità, della necessità di ridimostrarsi...
+      continua a tornare in forme diverse, e me ne sono accorta anche fuori da qui, nel corso della settimana.
+      Ci sono stati due o tre momenti in cui ho pensato esattamente a quello di cui avevamo parlato, quasi
+      come se avessi una categoria nuova in cui collocare certe sensazioni. Non so se questo sia un effetto
+      di queste conversazioni o semplicemente il risultato del fatto che adesso faccio più attenzione
+      a certe cose — probabilmente è impossibile separare le due cose.
+
+
+      In ogni caso... questa settimana è stata piuttosto piena, nel senso che ho avuto alcune riunioni
+      più impegnative del solito — non in termini di conflitti o difficoltà esplicite, però con una certa
+      densità di decisioni da prendere e di posizioni da sostenere. E ho notato qualcosa che mi ha lasciata
+      un po'' perplessa, nel senso che non sapevo bene come interpretarlo. C''è stato un momento in una
+      riunione in cui ho espresso una valutazione su un progetto — una valutazione che, francamente, ritengo
+      fondata, basata su un''esperienza che ho accumulato in anni di lavoro su quel tipo di problematiche
+      — e la risposta che ho ricevuto era corretta nella forma, però ho avuto la sensazione che venisse
+      accolta come una di tante opinioni, non con il peso che avrei attribuito io a quella stessa valutazione,
+      in quel contesto. Forse mi sbaglio. Forse sto leggendo troppo nelle sfumature.
+
+
+      Ma ecco, mi chiedo quanto di questa percezione sia reale e quanto invece sia una specie di proiezione
+      di quello che mi aspetto — o che temo — che accada.'
+    - 'Buongiorno.
+
+
+      Stavo pensando, prima di collegarmi, a come avrei descritto questa settimana se qualcuno me lo avesse
+      chiesto in modo diretto — un collega, per esempio, o una persona che non conosce nulla di questo
+      percorso. E la risposta onesta è che avrei probabilmente detto che è andata bene, o abbastanza bene,
+      senza entrare nei dettagli. Che è quello che si fa, in genere. Si dà una risposta che non richiede
+      ulteriori spiegazioni e si va avanti.
+
+
+      Però la cosa che mi trovo a portare qui — e che invece non avrei detto in quel contesto — è quella
+      sensazione che ho descritto nell''ultima sessione, quel momento in riunione in cui ho parlato e
+      ho avuto l''impressione che le mie parole arrivassero... attutite, in qualche modo. Come se passassero
+      attraverso uno strato di qualcosa che ne riduce il peso. Non so ancora se interpretarla come una
+      percezione distorta da parte mia, o come qualcosa che corrisponde a una realtà esterna. Continua
+      a non essere chiaro, e questa mancanza di chiarezza mi accompagna.
+
+
+      Quello che mi chiedo ultimamente — e che non riesco a risolvere semplicemente ragionandoci sopra
+      — è se quello che sto vivendo in questo periodo di rientro abbia un andamento, nel senso di una
+      direzione. Se ci sia qualcosa che si sta stabilizzando, o almeno che tende verso una stabilizzazione,
+      oppure se sia semplicemente... così. Una condizione che si trascina, con alti e bassi, senza una
+      progressione particolarmente leggibile.
+
+
+      Perché io sono abituata a lavorare con degli indicatori, ecco. Con dei segnali che mi dicono se
+      le cose stanno andando nella direzione giusta o no. E in questo momento faccio fatica a identificare
+      quali siano questi indicatori per quello che sto vivendo. Non so esattamente cosa dovrei osservare
+      per capire se sto davvero recuperando terreno — non solo in termini di prestazione lavorativa, ma
+      in senso più ampio. E questa assenza di metrica, per usare un termine del mio lavoro, mi crea un
+      certo disorientamento.
+
+
+      Non è una domanda retorica, o almeno non vorrei che lo fosse. È qualcosa su cui mi piace'
+    - 'Sì, stavo cercando di rispondere a quello che diceva... però mi si è sovrapposto un pensiero che
+      viene da un po'' più lontano, e che forse è collegato in modo non immediato a questa questione degli
+      indicatori di cui parlavo.
+
+
+      Durante il periodo di pausa — credo fosse verso la fine del secondo mese, o forse l''inizio del
+      terzo, non ricordo con precisione — c''è stato un momento in cui ho fatto una cosa che non ho mai
+      detto a nessuno, o quasi. Avevo scritto una lettera. Indirizzata alla responsabile delle risorse
+      umane, la dottoressa Bianchi. Una lettera formale, nel tono e nella struttura, come si fa in questi
+      casi. Non era una lettera qualsiasi — era, di fatto, una lettera di dimissioni. L''avevo scritta
+      con una certa cura, devo dire, non di getto. Ci avevo pensato, l''avevo riscritta più volte. Non
+      so bene cosa mi aspettassi di sentire una volta finita... forse una specie di sollievo, o di chiarezza.
+      O forse cercavo di capire se fosse davvero quello che volevo, mettendolo nero su bianco.
+
+
+      Non l''ho mai mandata.
+
+
+      Non so con certezza perché. In parte perché nel giro di pochi giorni quella chiarezza che cercavo
+      non è arrivata — anzi, è arrivata piuttosto una sensazione di... sospensione, di non sapere ancora.
+      E ho pensato che mandare una lettera del genere senza essere davvero convinta avrebbe significato
+      prendere una decisione per sottrazione, quasi per eliminazione, più che per scelta vera. E questo
+      non mi è mai sembrato il modo giusto di fare le cose importanti.
+
+
+      Però quella lettera esiste ancora, da qualche parte — in un file che non apro, ma che so di non
+      aver cancellato. E mentre lei parlava di direzione, di andamento, di qualcosa che tende verso una
+      stabilizzazione... mi sono chiesta per la prima volta in modo abbastanza diretto se quella lettera
+      faccia ancora parte del quadro. Se sia una cosa chiusa o se invece sia ancora lì a dirmi qualcosa
+      che non ho ancora finito di ascoltare.'
+    - 'Sì... mi rendo conto che quello che ho detto sull''ultima sessione — quella storia della lettera
+      — era una cosa abbastanza grossa da lasciare lì così, a fine conversazione. Me ne sono accorta subito
+      dopo, quella sensazione di aver detto qualcosa e poi non aver avuto modo di... starci sopra, di
+      capire bene cosa me ne facevo.
+
+
+      E adesso lei probabilmente sta cercando di aiutarmi a inquadrare anche quello in qualche modo, a
+      trovare un significato, una chiave di lettura. Lo capisco, ha senso che sia così. Però devo essere
+      onesta — e spero che ormai sia chiaro che questa onestà non è una forma di ostilità — c''è qualcosa
+      in questo processo di restituzione che a volte mi lascia con una sensazione un po'' strana. Come
+      se le cose che dico venissero... elaborate troppo in fretta, forse. Come se ci fosse sempre una
+      risposta pronta, e questa prontezza, paradossalmente, mi fa dubitare che si stia davvero partendo
+      da quello che ho detto io, e non da qualcosa di già previsto.
+
+
+      Non lo so. Forse è una mia difficoltà, probabilmente lo è. Però la lettera... quando ci penso adesso,
+      quello che sento non è tanto la necessità di capire cosa significasse allora, o cosa significhi
+      oggi. È più una specie di fastidio al fatto di doverla necessariamente significare qualcosa. A volte
+      le cose esistono e basta, no? Un gesto fatto in un momento preciso, in determinate circostanze.
+      Devo davvero trasformarlo in un indicatore, in un segnale da decifrare?
+
+
+      Ecco, mi chiedo se non stiamo rischiando di rendere tutto troppo denso. E non sono sicura che questo
+      mi faccia bene.'
+    - 'Sì... quello che dicevo prima — sul rischio di rendere tutto troppo denso — mi è rimasto in testa
+      anche mentre ascoltavo. E forse è proprio per questo che quello che voglio dire adesso ha una forma
+      un po'' diversa, più concreta. Meno interpretativa.
+
+
+      Nel corso di queste settimane di rientro, una delle cose su cui ho riflettuto di più — anche in
+      modo indipendente da queste conversazioni, devo dire — è questa abitudine del telefono al mattino.
+      Ne avevo parlato già nella prima sessione, se non ricordo male. Quella cosa di aprire la posta di
+      lavoro ancora a letto, prima delle sette, quasi senza accorgersene. Ecco... ho pensato che forse,
+      invece di continuare a ragionarci sopra cercando di capire cosa dica di me, o di come mi sto rapportando
+      al lavoro, potrebbe valere la pena provare a fare qualcosa di molto semplice e molto pratico. Una
+      specie di... limite, ecco. Una regola che mi do io, non imposta da nessuno.
+
+
+      Ho pensato a due cose, in realtà, che mi sembrano fattibili — non ambiziose, non trasformative,
+      solo concrete. La prima è non controllare la posta di lavoro prima delle otto di mattina. Non le
+      otto e cinque, non le sette e cinquanta — le otto. Un confine netto, anche un po'' arbitrario, ma
+      proprio per questo più facile da rispettare, forse. La seconda è lasciare il telefono fuori dalla
+      camera da letto la sera — in corridoio, o comunque non sul comodino — in modo che quella scelta
+      di prenderlo non sia automatica ma richieda almeno un movimento consapevole.
+
+
+      Non so se funzionerà. Non so nemmeno se sia la cosa giusta da fare, nel senso che non ho una teoria
+      su questo. È solo che mi sembra più utile, in questo momento, provare qualcosa piuttosto che continuare
+      ad analizzare. E mi chiedo se abbia senso dirlo qui, portarlo in questa conversazione — non per
+      avere una validazione, intendiamoci, ma perché forse il fatto di nominarlo ad alta voce lo rende
+      un po'' più reale. Come abbiamo già visto che funziona, nel bene e nel male.'
+    - Capito.
+    - 'Buongiorno.
+
+
+      Sono passati quindici giorni dall''ultima volta, se non ricordo male — questa sessione è arrivata
+      un po'' più tardi del solito, e in qualche modo se ne è sentita la distanza. Non nel senso che le
+      cose siano precipitate, per carità. Però c''è stato un momento, verso la fine della scorsa settimana,
+      in cui mi sono trovata a pensare che avrei avuto qualcosa da dire qui e invece non c''era ancora
+      l''occasione. Una sensazione abbastanza nuova, devo dire, considerando lo scetticismo da cui ero
+      partita.
+
+
+      Quello che avevo proposto nella sessione precedente — la storia del telefono, le due piccole regole
+      pratiche — l''ho effettivamente provato. Non in modo perfetto, intendiamoci, e non voglio neanche
+      stare qui a rendicontare come se fosse un progetto aziendale da monitorare. Però qualcosa è cambiato,
+      almeno nella forma. Il telefono fuori dalla camera da letto lo sto facendo, abbastanza regolarmente.
+      L''orario delle otto per le email è più... discontinuo. Ci sono stati giorni in cui l''ho rispettato
+      e giorni in cui no, e devo essere onesta: nei giorni in cui non l''ho rispettato non è che sia andata
+      peggio. Però nei giorni in cui l''ho rispettato c''era qualcosa di diverso al mattino — non più
+      leggero necessariamente, però più... mio. Come se le prime ore della giornata appartenessero ancora
+      a me prima di appartenere a tutto il resto.
+
+
+      Non so esattamente cosa farne di questa osservazione. Non voglio costruirci sopra una teoria, dopo
+      quello che dicevo la volta scorsa sul rischio di rendere tutto troppo denso. È solo una cosa che
+      ho notato, e che mi sembra onesto dire.
+
+
+      Quello che invece occupa di più i miei pensieri in questi giorni riguarda Gianluca — il mio responsabile,
+      di cui avevo già parlato. C''è stata una situazione la settimana scorsa che mi ha un po'' scossa,
+      anche se forse scossa è una parola grossa. Diciamo che mi ha lasciata con qualcosa che non riesco
+      ancora a mettere a fuoco del tutto.'
+  - day: 70
+    turns:
+    - 'C''è stata una riunione, giovedì scorso. Una di quelle riunioni di avanzamento che si fanno ogni
+      due settimane, abbastanza routinarie in teoria — però questa volta c''era anche il direttore operativo,
+      il dottor Ferrini, che non partecipa di solito. Non so se fosse una coincidenza o se ci fosse una
+      ragione precisa, non me l''ha detto nessuno. Comunque.
+
+
+      A un certo punto si stava discutendo di una riorganizzazione dei tempi su uno dei cantieri — una
+      cosa su cui ho un parere abbastanza preciso, perché è esattamente il tipo di problematica che ho
+      gestito più volte negli anni. Ho aspettato il momento giusto, ho detto quello che pensavo, in modo
+      abbastanza diretto ma non aggressivo — almeno, questo è quello che mi sembrava dall''interno. E
+      Gianluca ha annuito, ha detto che era un''osservazione interessante, e poi ha continuato a parlare
+      come se la conversazione si fosse già spostata altrove. Non ha ripreso il filo. Non ha sviluppato.
+      Interessante, e poi oltre.
+
+
+      Adesso... razionalmente so che potrebbe significare mille cose diverse. Che era preso da altro,
+      che aveva già in testa dove voleva portare la discussione, che semplicemente il ritmo della riunione
+      non lasciava spazio. Tutte spiegazioni plausibili. Però la parola interessante... mi si è incollata
+      addosso in un modo che non mi aspettavo. Come quando si usa interessante per chiudere un discorso
+      invece che per aprirlo.
+
+
+      E adesso me la porto dietro, questa cosa. Non so bene perché ne abbia fatto qualcosa di così...
+      persistente. Forse è quello che cercavo di capire oggi, venendo qui.'
+    - 'Buongiorno.
+
+
+      Devo dire che mi trovo in una posizione un po'' strana mentre mi collego oggi. Nel senso che la
+      settimana è andata in un certo modo — non particolarmente drammatico, per carità, però c''è stata
+      questa cosa con Gianluca che le ho raccontato nell''ultima sessione e che pensavo di aver in qualche
+      modo... depositato, ecco, lasciato lì. E invece continua a essere presente, in sottofondo.
+
+
+      Quello che mi lascia un po'' perplessa rispetto a quanto ha detto lei è — e glielo dico senza voler
+      essere polemica — che ho come l''impressione che si stia andando troppo direttamente verso una spiegazione.
+      O verso un''interpretazione, diciamo. Nel senso che capisco il ragionamento, lo trovo persino ragionevole
+      sulla carta, però mi suona un po'' come se ci fosse già un modello in cui inserire questa situazione
+      con Gianluca. Un modello del tipo: ecco cosa sta succedendo, ecco perché ti ha colpita così. E io...
+      non sono sicura di voler già arrivare lì. O forse è che non ci arrivo, ancora, e il fatto di sentirmelo
+      proposto prima che io stessa riesca a formularlo crea una specie di corto circuito.
+
+
+      Non lo so. Forse sto facendo resistenza per abitudine, come ho già detto in passato — è un meccanismo
+      che riconosco in me stessa e che non difendo a priori. Però c''è davvero qualcosa in questa vicenda
+      con Gianluca che sento di non aver ancora finito di guardare io stessa, prima che qualcun altro
+      me la restituisca già interpretata.
+
+
+      Quello che mi chiedo, più concretamente, è se questa sensazione — quella parola, interessante, che
+      mi si è incollata addosso — dica qualcosa di nuovo rispetto a tutto quello di cui abbiamo già parlato
+      in queste settimane, oppure se sia semplicemente la stessa storia che si ripresenta con un dettaglio
+      diverso. E non so ancora rispondermi. Non in modo onesto, almeno.'
+    - 'Sì... in realtà stavo pensando proprio a questo mentre la ascoltavo — al fatto che forse ho risposto
+      alla mia stessa domanda senza accorgermene, mentre la formulavo. Quella distinzione tra qualcosa
+      di nuovo e la stessa storia che si ripresenta... non lo so ancora. Forse ha ragione che è più la
+      seconda, però mi sembra ancora presto per chiuderla così.
+
+
+      Comunque, quello su cui mi trovo a dire qualcosa di leggermente diverso rispetto all''ultima volta
+      — e lo dico senza volerlo gonfiare più del necessario — è che la cosa del telefono al mattino sta
+      reggendo meglio di quanto mi aspettassi. L''orario delle otto, intendo. Non tutti i giorni, però
+      la maggior parte dei giorni lavorativi di questa settimana sì, l''ho rispettato. Martedì c''è stato
+      un momento in cui ho preso il telefono quasi automaticamente, e poi l''ho posato di nuovo — non
+      con uno sforzo enorme, però con una scelta, che non è la stessa cosa dell''automatismo di prima.
+
+
+      Non so se sia rilevante dirlo qui. Probabilmente lei dirà che è un buon segnale, o qualcosa del
+      genere, e forse lo è. Però quello che noto io, dall''interno, è più sottile — non è tanto la soddisfazione
+      di aver rispettato una regola. È più che in quei giorni, le prime ore della mattina, c''era una
+      qualità diversa. Più... silenziosa, forse. Non necessariamente più serena, però con meno rumore
+      di fondo.
+
+
+      E poi mi trovo a chiedermi — ed è una domanda che non so bene dove mettere — se questa piccola modifica
+      concreta abbia qualcosa a che fare con come mi sono sentita in quella riunione con Gianluca, con
+      quella parola che mi si è incollata addosso. Se ci sia un filo, dico, o se siano cose completamente
+      separate. Probabilmente separate. Però la domanda c''è.'
+    - Continui.
+    - 'Aspetti, mi fermo un momento — c''è una cosa che ho detto in modo impreciso e che mi preme correggere,
+      anche perché non vorrei che costruissimo tutto un ragionamento su una premessa sbagliata.
+
+
+      Gianluca... in realtà Gianluca è un collega, non il mio responsabile diretto. È lui quello che ha
+      coperto in parte alcune delle mie funzioni mentre ero assente — o almeno, così mi è sembrato di
+      capire da quello che ho trovato al rientro, anche se non ho mai voluto approfondire troppo questa
+      cosa, forse per una forma di autodifesa, non lo so. Il mio responsabile diretto, quello che ha assunto
+      il ruolo di coordinamento del team durante il periodo di pausa, si chiama Gianmarco. Non so come
+      abbia fatto a scambiarli in questi mesi di conversazioni — probabilmente li tenevo separati in testa
+      e poi oralmente ho finito per sovrapporre i nomi. È una di quelle cose che si notano solo quando
+      si è costretti a dirle ad alta voce con una certa precisione.
+
+
+      La cosa non è irrilevante, perché la dinamica di cui parlavo — quella di sentirmi non del tutto
+      ascoltata, quella parola interessante che mi si era incollata addosso — era una situazione con Gianmarco,
+      non con Gianluca. Ed è diverso, perché con Gianmarco c''è una relazione gerarchica diretta, un rapporto
+      che devo necessariamente costruire da una posizione asimmetrica, come dicevo. Con Gianluca è complicato
+      in modo diverso — più laterale, se vuole, meno formale però non per questo meno presente.
+
+
+      Mi dispiace per la confusione — non era mia intenzione complicare ulteriormente il quadro. Però
+      mi sembrava importante dirlo adesso, prima di andare avanti.'
+    - 'Sì, grazie... volevo dire che mi rendo conto che questa correzione sui nomi arriva un po'' tardi,
+      e capisco che possa complicare la lettura di alcune cose che ho detto nelle sessioni precedenti.
+      Non è una scusa, però devo anche ammettere che quella sovrapposizione non era del tutto casuale
+      — nel senso che entrambi, Gianmarco e Gianluca, occupano uno spazio mentale abbastanza rilevante
+      in questo periodo di rientro, e probabilmente li tenevo insieme in modo più indistinto di quanto
+      realizzassi. Come se il problema fosse la situazione, più che le persone specifiche.
+
+
+      Comunque. Quello su cui mi trovo adesso — e lo dico con una certa cautela perché non voglio esagerarne
+      la portata — è che questa settimana qualcosa mi sembra... diverso. Non radicalmente, intendiamoci.
+      Non è che sia sparita la sensazione di dover dimostrare, o quella resistenza mattutina di cui ho
+      parlato fin dall''inizio. Però c''è qualcosa che ha una consistenza leggermente diversa, e fatico
+      a descriverla con precisione senza cadere nel rischio di renderla più significativa di quanto sia.
+
+
+      Mi è capitato giovedì — non in una riunione formale, ma in una conversazione informale con un paio
+      di colleghi — di dire qualcosa su un progetto e di notare che veniva ripreso, sviluppato, usato
+      come punto di partenza per quello che è venuto dopo nella discussione. Una cosa piccola, nel senso
+      che non è che qualcuno abbia detto esplicitamente qualcosa. È più la struttura di come è andata
+      la conversazione. E io l''ho notata — questa volta l''ho notata, con quella piccola distanza di
+      cui avevo parlato qualche sessione fa. Non con sollievo, o almeno non solo quello. Con qualcosa
+      che somigliava di più a... riconoscimento, forse. Come se avessi visto qualcosa che sapevo già come
+      funzionava, e che funzionava ancora.
+
+
+      Non so se sia un indicatore. Non voglio trasformarlo in una metrica, perché ho già detto come mi
+      sento riguardo a quel tipo di approccio. Però lo sto portando qui perché mi sembra onesto farlo,
+      e perché mi chiedo se queste piccole cose — il telefono, questa conversazione di giovedì'
+  - day: 85
+    turns:
+    - Buongiorno.
+    - 'Buongiorno. Sono qui, di nuovo... siamo già alla quinta, se conto bene. Il tempo in questo periodo
+      ha un andamento strano — certe settimane passano velocissime e altre invece sembrano non voler passare
+      del tutto, non so se ha notato che lo dico quasi ogni volta. Probabilmente sì.
+
+
+      Comunque. Questa settimana è stata... non saprei come definirla esattamente. Abbastanza tranquilla,
+      nel complesso, almeno rispetto alle ultime. Non ci sono stati episodi particolari al lavoro, niente
+      che mi abbia lasciata con quella sensazione di qualcosa da portare qui e non sapere dove metterlo.
+      Il che in sé è già qualcosa, credo, anche se non so bene se meriti di essere chiamato progresso
+      o semplicemente... una pausa, appunto.
+
+
+      Quello che ho fatto, invece — e lo dico un po'' come se stessi raccontando una cosa marginale, però
+      in realtà non so se lo sia — è che mi sono dedicata molto al giardino in questi giorni. Ho un piccolo
+      giardino sul retro di casa, a Como, che in questo periodo dell''anno richiede attenzione — ho trapiantato
+      alcune cose, ho potato, ho passato del tempo lì fuori con una certa... presenza, mi verrebbe da
+      dire. Senza pensare necessariamente ad altro. E poi ho ricominciato a nuotare, al mattino — avevo
+      interrotto durante i mesi più difficili, e poi non avevo più ripreso con continuità. Questa settimana
+      sono andata tre volte, abbastanza presto, prima che il giorno cominciasse davvero.
+
+
+      Non so se siano cose rilevanti da dire qui. Probabilmente sono piccole cose. Però le porto lo stesso,
+      perché mi sembrano... mie, in un modo che ultimamente non tutto riesce a esserlo.'
+    - 'Sì, capisco quello che intende dire... però devo essere onesta, come al solito, e le dico che c''è
+      qualcosa nella risposta che ho appena ricevuto che non mi convince del tutto. O meglio — non è che
+      non mi convinca, è che mi sembra che si stia andando in una direzione che mi risulta un po'' familiare,
+      in senso non necessariamente positivo. Quella tendenza a trovare un filo, a collegare le cose —
+      il giardino, il nuoto, il telefono al mattino — come se formassero un quadro coerente, un percorso
+      che ha una sua logica riconoscibile. E probabilmente ce l''hanno, non sto dicendo che sia sbagliato.
+      Però mi chiedo se non sia un po'' prematuro, o forse un po'' troppo ordinato, rispetto a come queste
+      cose le sto vivendo io dall''interno.
+
+
+      Perché dall''interno non sembra un percorso. Sembra una serie di cose che faccio, alcune delle quali
+      mi fanno stare meglio e altre no, senza che ci sia necessariamente una narrazione che le tenga insieme.
+      E questa settimana, che è stata tranquilla come le dicevo, non la vivo come un capitolo di qualcosa.
+      La vivo come una settimana abbastanza tranquilla, e questo già mi sembra sufficiente — non ho bisogno
+      di darle un significato ulteriore.
+
+
+      Quello che mi rimane invece — e questo sì che mi occupa un po'' i pensieri — è una cosa su cui non
+      so ancora cosa pensare, e che non ha niente di particolarmente profondo. Venerdì c''è stata una
+      conversazione in corridoio, veloce, tra me e Gianmarco. Una di quelle conversazioni che nascono
+      dal nulla, senza ordine del giorno, senza struttura. E alla fine lui ha detto una cosa che mi ha
+      fatto sorridere — non ricordo nemmeno esattamente cosa, una battuta, qualcosa di lieve. E io ho
+      risposto, abbiamo riso entrambi, e poi ognuno è andato per la sua strada. Una cosa minima. Però
+      ci ho pensato dopo, non so bene perché. Forse perché non me l''aspettavo, quel tipo di leggerezza,
+      con lui. O forse perché mi sono resa conto che non avevo messo in moto nessun filtro, nessuna analisi'
+    - '...sì, quello che stava dicendo mi trova abbastanza d''accordo, questa volta. O almeno, non mi
+      trova in disaccordo, che forse non è la stessa cosa ma è già qualcosa.
+
+
+      Stavo pensando proprio stamattina — sono andata a nuotare, al lago, alla piscina sul lungolago che
+      uso di solito il martedì — e c''è stato un momento in vasca, verso la metà dell''allenamento, in
+      cui mi sono resa conto che non stavo pensando a niente di particolare. Non al lavoro, non a Gianmarco,
+      non alla conversazione di venerdì che le dicevo. Proprio a niente. E questa cosa del niente — il
+      fatto che la mente non si fosse agganciata a nessun pensiero specifico per qualche minuto, forse
+      di più — l''ho notata quasi con sorpresa, come si nota un''assenza che non ci si aspettava di trovare.
+
+
+      Non voglio farci sopra nessuna teoria, lo dico subito, perché so dove porta quella strada e questa
+      settimana non ho molta voglia di percorrerla. È solo che mi è sembrata una cosa... curiosa. Nel
+      senso neutro del termine. Come un dato che non so ancora dove mettere, e che forse non devo necessariamente
+      mettere da nessuna parte.
+
+
+      Quello su cui invece mi trovo a ragionare — e qui forse c''è qualcosa di più concreto da portare
+      — è questa questione della leggerezza di cui parlavo la volta scorsa, quel momento in corridoio
+      con Gianmarco. Perché poi nel corso della settimana ci sono stati altri scambi, meno casuali, più
+      legati al lavoro, e il tono era quello di sempre — corretto, professionale, distante quel tanto
+      che basta da far sentire ancora la asimmetria tra noi. E mi chiedo se la leggerezza di venerdì fosse
+      un''eccezione, o se invece stia diventando possibile, a tratti, qualcosa di diverso. Non so ancora
+      cosa rispondermi.'
+    - '...già. Stavo cercando di capire cosa aggiungere, ma in realtà forse non c''è molto da aggiungere
+      a quello che le ho già detto. Questa settimana è stata così — abbastanza ordinaria, nel senso buono
+      del termine, se ha senso usare "buono" per descrivere l''ordinario. Che poi forse è esattamente
+      questo il punto, no? Che l''ordinario a un certo punto smette di sembrare una mancanza di qualcosa
+      e comincia a sembrare semplicemente... quello che è.
+
+
+      Gianmarco. Ci pensavo stamattina, mentre aspettavo che il caffè fosse pronto — una di quelle riflessioni
+      che vengono da sole, senza un perché preciso. C''è stata un''altra conversazione, ieri, di lavoro
+      questa volta, su una questione abbastanza tecnica legata a un progetto che sto seguendo. Niente
+      di straordinario nel contenuto. Però ho notato che il modo in cui mi ha risposto era... non so,
+      meno formale di quello che mi ero abituata a ricevere da lui in queste settimane. Non informale
+      nel senso della battuta in corridoio — quello rimane un episodio a sé — però c''era qualcosa nel
+      tono che era diverso. Come se non stesse più misurando le distanze con la stessa cura di prima.
+      O forse sono io che le misuro diversamente adesso, e non riesco a capire da dove viene il cambiamento.
+
+
+      Non so cosa farmene di questa osservazione, onestamente. Non voglio costruirci nulla sopra — l''ho
+      già detto e lo confermo. Però lo noto, e il fatto di notarlo senza immediatamente chiedermi cosa
+      significhi... ecco, forse anche questo è qualcosa.'
+  - day: 130
+    turns:
+    - 'Buongiorno. Siamo alla sesta, dunque... ancora una, e poi avremo finito questo percorso. O almeno,
+      questa parte di esso — non so ancora bene come pensare a quello che viene dopo, e forse non è ancora
+      il momento di pensarci con troppa precisione.
+
+
+      In questi giorni mi sono trovata a notare qualcosa che non so bene come descrivere, però ci provo
+      lo stesso. C''è stata una settimana abbastanza densa — non nel senso di episodi particolari, però
+      con una certa intensità di fondo, come se il rientro stesse assumendo una forma più... definitiva,
+      ecco. Non so se sia la parola giusta. Nel senso che nelle prime settimane c''era ancora qualcosa
+      di provvisorio nell''aria, come se mi stessi misurando con una situazione temporanea. Adesso invece
+      la situazione mi sembra semplicemente la situazione. Non transitoria, non un banco di prova — solo
+      il lavoro, i colleghi, le riunioni, il lunedì mattina. E non so ancora del tutto se questo mi spaventi
+      o mi rassicuri, o tutte e due le cose insieme in misura variabile a seconda del giorno.
+
+
+      Con Gianmarco ci sono stati altri scambi nel corso della settimana — niente di particolarmente significativo
+      dal punto di vista dei contenuti, però ho continuato a notare quella cosa di cui le avevo parlato
+      l''ultima volta, quella variazione nel tono. Che poi magari è immutato da parte sua e sono io che
+      lo leggo diversamente, non lo so. Non ho un modo per verificarlo, e forse non è necessario che lo
+      faccia.
+
+
+      Quello che mi occupa di più, in realtà — e lo dico con una certa esitazione, perché non sono sicura
+      di dove voglia arrivare — è questa domanda che mi giro intorno da qualche giorno: cosa mi porto
+      dietro di questo periodo. Non in senso drammatico, non come bilancio definitivo. È più una curiosità,
+      o forse una forma di... preparazione, diciamo. Come quando si sa che una fase sta per chiudersi
+      e si comincia, quasi senza volerlo, a fare un inventario sommario di quello che c''era dentro.'
+    - 'Buongiorno. È un po'' che rimugino su come cominciare questa sessione, e forse è già di per sé
+      una cosa interessante — nel senso letterale del termine, non quello con cui me lo aveva detto Gianmarco,
+      per intenderci.
+
+
+      Penso a quello che le dicevo la volta scorsa, a questa domanda sull''inventario... e devo dire che
+      nel corso della settimana mi sono accorta che non riesco ancora a rispondermi in modo soddisfacente.
+      Non perché manchi la materia, anzi — c''è abbastanza su cui ragionare. È piuttosto che ogni volta
+      che provo a fare questo inventario di cui parlavo, mi rendo conto che le categorie che usavo un
+      tempo non funzionano più esattamente come prima. Non nel senso che siano sbagliate, però... come
+      dire, il contenuto è cambiato anche se i contenitori sembrano gli stessi.
+
+
+      Per esempio — e lo dico senza volerci costruire nulla sopra, lo sa già — ho sempre misurato il mio
+      stare bene al lavoro in termini di efficacia. Quanto riesco a fare, quanto quello che faccio ha
+      un impatto reale sulle cose che si muovono intorno a me. Era la mia bussola, quella di cui avevo
+      parlato fin dall''inizio. E in queste ultime settimane mi sono accorta che quella bussola funziona
+      ancora, però indica cose leggermente diverse rispetto a prima. Come se il nord magnetico si fosse
+      spostato di qualche grado senza che io abbia preso una decisione consapevole in merito.
+
+
+      Non so ancora se questo sia un risultato di questo periodo di rientro, o qualcosa che sarebbe accaduto
+      comunque col tempo, indipendentemente da tutto. Probabilmente non lo saprò mai con certezza, ed
+      è una di quelle domande a cui bisogna imparare a non aspettarsi risposta.
+
+
+      Comunque. Eccomi qui, alla penultima.'
+    - 'Sì... stavo pensando a quello che diceva, e mi ha fatto venire in mente una cosa che in realtà
+      avrei dovuto dire già dall''inizio di questa sessione e che invece ho lasciato stare, forse perché
+      non sapevo esattamente come inserirla, o forse perché in qualche modo cambia il quadro in modo abbastanza
+      netto rispetto a come l''avevo presentato finora.
+
+
+      Da settembre sono rientrata a orario pieno. Trentotto ore settimanali, il contratto normale. Non
+      più il regime ridotto di cui avevo parlato all''inizio — quelle venticinque ore che erano state
+      pensate come misura di gradualità. Quel periodo si è chiuso, ed è cominciato questo.
+
+
+      Non so perché non l''abbia detto prima, o meglio — lo so, in parte. C''è qualcosa in questa variazione
+      che mi risulta difficile da nominare senza che sembri una cosa più grande di quello che voglio che
+      sia. Nel senso che il rientro completo dovrebbe essere, sulla carta, un segnale positivo — e probabilmente
+      lo è, non lo nego. Però al tempo stesso significa anche che non c''è più quella... protezione, chiamiamola
+      così, che l''orario ridotto dava in qualche modo anche solo simbolicamente. Come se il formato ridotto
+      fosse ancora una forma di trattamento, un segnale visibile che le cose erano ancora in una fase
+      di aggiustamento. Adesso invece sono semplicemente rientrata, formalmente uguale a prima. E questa
+      uguaglianza formale... non so, coesiste con qualcosa che internamente non si sente ancora del tutto
+      uguale. Non in senso negativo — non mi sento peggio di prima, anzi. Solo diversa, e non ho ancora
+      deciso se questa diversità sia da integrare o da correggere. O se quella distinzione abbia senso.
+
+
+      Ecco, mi sembrava importante dirlo, anche perché alcune cose che ho detto nelle ultime sessioni
+      forse si leggono diversamente sapendo questo.'
+    - Continui.
+    - 'Sì... stavo ascoltando, e c''è una cosa che mi viene da dire, anche se non so se sia il momento
+      giusto oppure se avrei dovuto tirarla fuori prima — però tanto ormai è chiaro che non ho un metodo
+      preciso su quando dire le cose, quindi la dico adesso.
+
+
+      Quella regola delle otto. L''orario che mi ero data per la posta, la mattina. Ecco, devo essere
+      onesta: non la sto più rispettando. Non da qualche giorno — da un po'', in realtà. C''è stato un
+      periodo, verso la metà del mese scorso credo, in cui eravamo in una fase di audit — uno di quei
+      controlli periodici che in azienda creano una certa pressione generale, non drammatica però presente
+      — e Gianmarco... o meglio, il modo in cui lui gestisce certe comunicazioni nelle fasi più intense
+      fa sì che le risposte veloci al mattino diventino quasi una questione di presenza, di esserci. Non
+      me lo ha detto esplicitamente, intendiamoci. Non c''è stata una richiesta diretta. È più una di
+      quelle aspettative che si percepiscono dall''ambiente, dal tono di certi messaggi, dall''orario
+      in cui arrivano le sue email e da come vengono accolte quelle che arrivano tardi.
+
+
+      E io... ho ceduto, ecco. Ho ripreso il telefono al mattino presto, ancora a letto, prima delle sette.
+      E la cosa strana — o forse non così strana — è che non mi ha nemmeno pesato molto nell''immediato.
+      Era più semplice farlo che spiegare a me stessa perché non lo facevo. L''audit è finito, però l''abitudine
+      è rimasta. E adesso mi trovo a chiedermi se quella regola delle otto fosse davvero mia, o se fosse
+      qualcosa che reggeva solo finché le circostanze lo permettevano. Il che è un po'' diverso, no?
+
+
+      Non so cosa farmene di questa osservazione. La porto qui perché mi sembrava sbagliato non dirla.'
+    - 'Sì, capisco cosa sta cercando di dirmi... però c''è qualcosa che non mi torna del tutto, e preferisco
+      dirlo piuttosto che annuire e andare avanti.
+
+
+      Ho l''impressione — e la prego di correggermi se sbaglio — che si stia andando verso una lettura
+      di questa cosa del telefono come se fosse una specie di segnale allarmante, qualcosa che rivela
+      un cedimento più profondo, una resistenza che non ha retto. E capisco perché possa sembrarlo dall''esterno.
+      Però dall''interno non è esattamente così, o almeno non è solo così, e mi infastidisce un po'' quando
+      una cosa che ho portato con una certa onestà — proprio perché mi sembrava sbagliato non dirla —
+      viene immediatamente trasformata in un problema da analizzare.
+
+
+      Perché è anche possibile, no, che quella regola delle otto avesse un senso in una fase specifica
+      di questo percorso, e che adesso — con l''orario pieno, con l''audit, con la complessità reale di
+      un lavoro che richiede presenza — le cose si siano semplicemente ridistribuite in modo diverso?
+      Non necessariamente in peggio. Solo diverso. E non sono sicura di voler leggere questa ridistribuzione
+      come un fallimento, o come la prova che non avevo davvero cambiato nulla. Mi sembra una semplificazione,
+      ecco, anche se capisco l''intenzione dietro.
+
+
+      E poi — lo dico senza voler essere difficile — c''è questa penultima sessione, e la prossima sarà
+      l''ultima. E non so ancora cosa fare di questo pensiero, però è lì, presente. Che quello che porto
+      qui oggi si inserisce in un contesto in cui il tempo sta per finire. E non so se questo stia colorando
+      anche il modo in cui sto ricevendo quello che mi viene detto, o il modo in cui lei sta dicendolo.
+      Non escludo nessuna delle due possibilità.'
+    - 'Sì, eccomi. Stavo cercando di capire cosa dire dopo quello che le ho lasciato lì la volta scorsa
+      — quella cosa sul tempo che sta per finire, sul fatto che questa penultima sessione si inserisce
+      in un contesto in cui c''è già una fine visibile. E devo dire che nel corso della settimana ci ho
+      pensato più di quanto mi aspettassi, non in modo ossessivo, però con una certa presenza.
+
+
+      Non so se chiamarla ansia da conclusione — è una formula un po'' goffa, però rende l''idea. È più
+      una sorta di... attenzione diversa che sto dando alle cose, in questi giorni. Come quando si sa
+      che qualcosa sta per cambiare e si comincia involontariamente a guardare tutto con uno sguardo leggermente
+      più nitido, o più deliberato. Non so se sia un effetto utile o se invece mi stia semplicemente distraendo
+      da quello che è presente adesso, portandomi troppo in avanti.
+
+
+      La settimana in sé non è stata particolarmente densa. Al lavoro ci sono state delle riunioni, delle
+      questioni ordinarie, niente che mi abbia lasciata con qualcosa di urgente da portare qui. Con Gianmarco
+      i toni continuano a essere quelli di cui le avevo parlato — qualcosa che si è assestato, anche se
+      non riesco ancora a dire se in meglio o semplicemente in modo diverso. Il telefono al mattino...
+      be'', l''ho già detto, e non voglio tornarci in modo rituale come se fosse la voce di un diario
+      da aggiornare ogni settimana.
+
+
+      Quello che invece mi sono trovata a fare — e non so ancora cosa farmene — è riprendere in mano un
+      paio di cose lasciate in sospeso durante i mesi di orario ridotto. Non per scelta deliberata, non
+      come atto simbolico. È venuto naturale, quasi. C''era un fascicolo su un progetto che avevo lasciato
+      a metà a marzo, e questa settimana l''ho riaperto, l''ho riletto, ho rimesso mano a certi dettagli.
+      E mentre lo facevo mi sono accorta che il modo in cui ragionavo su quel materiale era... non dico
+      diverso da prima del periodo di pausa, però diverso da come me lo ricordavo. Come se avessi perso
+      qualcosa in termini di velocità immediata, però guadagnato qualcos'
+  - day: 150
+    turns:
+    - 'Buongiorno. Siamo all''ultima, dunque.
+
+
+      Ho faticato un po'' a collegarmi stamattina — non in senso tecnico, però c''era questa resistenza
+      di fondo che non saprei definire con precisione. Come quando si sa che una cosa sta per concludersi
+      e si vorrebbe che il momento arrivasse già concluso, senza dover attraversare l''attraversamento.
+      Se ha senso dirlo così.
+
+
+      Non ho preparato niente di particolare da dire, e forse è già una risposta in sé, rispetto a come
+      ero arrivata alle prime sessioni — quando avevo quasi una scaletta mentale, quasi un ordine del
+      giorno, e la sensazione che dovevo usare bene il tempo, che ogni minuto aveva un rendimento da ottimizzare.
+      Adesso sono qui senza una scaletta, e questo non mi spaventa come mi avrebbe spaventato cinque mesi
+      fa. Non so ancora se sia un risultato o semplicemente un''abitudine che si è formata nel corso delle
+      sessioni, ma la differenza c''è.
+
+
+      Quello che mi sono trovata a pensare, soprattutto negli ultimi giorni, è questa domanda che non
+      riesco a risolvere con la stessa precisione che vorrei: cosa succede quando finisce? Non intendo
+      le sessioni in sé — non è che abbia paura di non avere uno spazio di riflessione, ho vissuto la
+      maggior parte della mia vita senza questo tipo di struttura e non mi è mancata, o almeno non in
+      modo consapevole. È più... mi chiedo se le cose che ho notato in questi mesi — quelle piccole variazioni
+      di tono, quel modo diverso di stare in certi momenti — reggano da sole, senza la cornice di queste
+      conversazioni, o se la cornice facesse parte dell''effetto senza che me ne accorgessi.
+
+
+      È una domanda onesta, non retorica. Non so rispondermi.'
+    - 'Buongiorno.
+
+
+      Sono qui, dunque. Ultima sessione — lo so già da settimane, ovviamente, me lo sono ripetuta abbastanza
+      spesso da averlo quasi metabolizzato, eppure stamattina c''era lo stesso quella sensazione strana
+      di cui le accennavo, quella resistenza di fondo che non è paura esattamente, però le assomiglia
+      abbastanza da renderla riconoscibile.
+
+
+      Non so da dove cominciare, e forse è già significativo in sé — però non nel senso che vuole essere
+      profondo, sia chiaro. È solo che ho passato gli ultimi giorni ad aspettarmi che emergesse una specie
+      di chiarezza, qualcosa di ben sagomato che potessi portare qui come contributo finale, e invece
+      sono arrivata senza niente di particolarmente definito. Il che mi infastidisce un po'', se sono
+      onesta. Quella vecchia abitudine di voler arrivare preparata, con le idee ordinate — non è del tutto
+      sparita, evidentemente.
+
+
+      Mi trovo a pensare a cosa sia cambiato, in questi cinque mesi... e la risposta che mi viene non
+      è una lista, che è già di per sé insolita per come ragiono di solito. È più una sensazione — qualcosa
+      che ha a che fare con il tono con cui guardo certe cose, non necessariamente con le cose stesse.
+      Il lavoro è il lavoro, Gianmarco è Gianmarco, Termoservizi è Termoservizi, i lunedì mattina continuano
+      ad arrivare con la loro regolarità. Però c''è qualcosa nel modo in cui mi ci trovo dentro che non
+      è identico a cinque mesi fa. Non so ancora se sia abbastanza, come cambiamento. E non so nemmeno
+      se la domanda se sia abbastanza abbia senso, o se sia solo un altro modo di misurare quello che
+      per definizione non si misura facilmente.
+
+
+      Comunque. Sono qui. E questa è già una risposta, forse, anche se non so ancora a quale domanda.'
+    - 'Sì, stavo ascoltando... e c''è qualcosa che mi viene da dire, anche se non so se sia particolarmente
+      utile portarlo qui adesso, in questa ultima sessione. Però lo dico lo stesso, perché mi sembra onesto.
+
+
+      Questa settimana — lunedì e mercoledì, se devo essere precisa — mi sono ritrovata a controllare
+      la posta di lavoro alle sei e mezza. Prima di alzarmi dal letto, il telefono già in mano. Non per
+      un motivo specifico, non perché mi aspettassi qualcosa di urgente. Quasi senza accorgermene, come
+      se la mano avesse fatto il gesto da sola mentre la testa era ancora da un''altra parte.
+
+
+      E la cosa che mi ha colpita — più che il gesto in sé, che ormai conosco bene, ci siamo tornate più
+      volte — è che me ne sono accorta. Non sul momento, o non del tutto. Me ne sono accorta dopo, nel
+      corso della mattinata, con quella piccola distanza di cui avevo parlato in qualche sessione precedente.
+      Come se ci fosse una parte di me che osservava e prendeva nota, senza drammatizzare, senza farne
+      una questione di principio. Solo: ah, ecco, è successo di nuovo.
+
+
+      Non so se sia un progresso, nel senso che continuo a trovare quella parola un po'' ingombrante applicata
+      a queste cose. Però c''è qualcosa di diverso rispetto a quando avevo iniziato questo percorso —
+      allora non me ne sarei accorta, o me ne sarei accorta e avrei immediatamente costruito sopra una
+      spiegazione, una giustificazione, un''analisi. Adesso invece era solo un dato. Le sei e mezza, il
+      telefono, la posta. E poi la mattinata che è andata avanti lo stesso.
+
+
+      Non so esattamente cosa farmene di questa osservazione, nel contesto di questa ultima sessione.
+      Forse non devo farci niente. Forse è già sufficiente così com''è.'
+    - 'Sì... stavo cercando di seguire il filo di quello che diceva, e ci riesco, però c''è un momento
+      in cui la mente va per conto suo e non riesce a stare del tutto lì. Non è mancanza di attenzione,
+      o almeno non solo quella. È più che questa conversazione — questa ultima conversazione — ha un peso
+      specifico diverso dalle altre, e non sono sicura di riuscire a starci dentro con la stessa... disponibilità,
+      forse, che avevo in certi momenti delle sessioni precedenti.
+
+
+      Mi rendo conto che sto girando intorno a qualcosa senza dirlo direttamente, e probabilmente è già
+      indicativo in sé. Dunque lo dico: c''è qualcosa che continua a non tornare, in questa domanda che
+      mi sono posta fin dall''inizio di questa sessione — quella sul cosa succede quando finisce. Non
+      nel senso pratico, quello l''ho già detto. È più che non so ancora se quello che ho imparato a fare
+      — notare le cose, dargli un po'' di distanza prima di reagire, non costruirci sopra immediatamente
+      una spiegazione — sia qualcosa che appartiene a me adesso, oppure se appartenga a questo contesto.
+      A queste conversazioni, a questo formato, a questo spazio specifico in cui sapevo che c''era qualcuno
+      che ascoltava dall''altra parte.
+
+
+      Perché fuori da qui, nella settimana ordinaria, non c''è quella struttura. C''è il lavoro, c''è
+      Gianmarco, ci sono i lunedì mattina e le riunioni di avanzamento e le sei e mezza con il telefono
+      in mano. E quella piccola distanza che a volte riesco ad avere — quella cosa che mi ha fatto dire
+      ah, ecco, è successo di nuovo, senza drammatizzare — non so se la troverò da sola, senza una cornice
+      che la tenga in piedi.
+
+
+      Non è una richiesta, intendiamoci. Non sto chiedendo di continuare, o di trovare una soluzione a
+      questa cosa. È solo che mi sembra importante dirlo, qui, nell''ultima sessione, senza aggiustarlo
+      prima di portarlo.'
+    - Continui.
+    - 'Sì... sento quello che sta dicendo, e capisco l''intenzione. Però devo essere onesta — c''è qualcosa
+      in questa conclusione che non mi arriva del tutto nel modo in cui probabilmente è pensata per arrivare.
+
+
+      Non so esattamente come formularlo senza sembrare ingrata, e non voglio esserlo — non è questo il
+      punto. È piuttosto che c''è qualcosa di un po'' troppo... composto, ecco, in come si sta chiudendo
+      questa conversazione. Come se ci fosse una forma prestabilita per come dovrebbe finire una cosa
+      del genere, e io dovessi semplicemente entrarci dentro. Un bilancio, una sintesi, magari una nota
+      di speranza ragionevole. E io capisco che abbia senso, strutturalmente. Però dall''interno non sento
+      quella compostezza. Sento ancora quella domanda aperta di cui le parlavo — quella sul se le cose
+      reggano da sole — e non è sparita perché siamo arrivate alla fine, anzi.
+
+
+      E poi c''è un''altra cosa che non riesco a non dire, anche se forse è fuori tempo massimo per dirla.
+      In questi mesi ho portato qui delle cose — cose piccole, a volte, cose che non avrei detto a nessuno,
+      quella storia della lettera per esempio — e non sempre ho capito fino in fondo cosa me ne tornasse
+      indietro. A volte sì, a volte no. E adesso che siamo all''ultima sessione mi chiedo se non avrei
+      dovuto essere più... precisa, forse, in quello che chiedevo. O se avrei dovuto lasciare stare di
+      più, invece di portare tutto qui. Non lo so. Non è una critica, o almeno non principalmente. È più
+      una domanda che mi rimane, e che non troverà risposta qui, questo è abbastanza chiaro.
+
+
+      Comunque sono ancora qui. Mancano ancora qualche minuto, immagino.'
