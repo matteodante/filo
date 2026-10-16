@@ -18,8 +18,9 @@ Rules for every work item:
 2. **Measure before and after.** Every behavior-changing PR states a prediction before it runs and
    is checked against a baseline taken on the unchanged code.
 3. **Something other than the author decides.** Evidence comes from held-out datasets, a judge from
-   a different model family, maintainer labels with measured agreement, mutation scores, and
-   recorded numbers. A model-written summary of a run is not evidence.
+   a different model family where a second provider key exists (until then a different Claude
+   generation, a recorded limitation; see W1.2), maintainer labels with measured agreement,
+   mutation scores, and recorded numbers. A model-written summary of a run is not evidence.
 4. **No tuning on the test set.** Scenarios used to tune prompts or floors are never used to report
    results. Every later change to a floor or rubric is logged with its reason.
 5. Existing safeguards (encryption, exact-evidence provenance, correction and forgetting,
@@ -187,6 +188,8 @@ Parallel PRs then touch different documents instead of one file.
 **W0.3 Forward schema migrations.**
 - The rename to Filo is the last clean break. From the Filo store onward, use ordered, tested
   migrations, so the maintainer's memory survives every later change.
+- Update AGENTS.md in the same PR: replace its "no migration code" clean-break rule with this policy.
+  Until W0.3 merges, the AGENTS.md rule still binds.
 - Before migrating, write a one-step encrypted backup (an encrypted copy of the database file), so
   an interrupted migration can be recovered.
 - Reject unknown future versions without modification, as today.
@@ -198,9 +201,14 @@ encryption audit, no plaintext.
 - Commit the turn together with an outbox (reply, notices, tool trace, change summary taken from the
   staged actions) in one transaction keyed by `update_id`. Advance the offset after commit, and let
   a sender drain the outbox honoring `retry_after`.
+- Keep it mode-aware. In `ephemeral` mode the conversation store is in memory, so the outbox stays in
+  memory too and no conversation content reaches disk; a restart can then lose the outbox or rerun an
+  update, and that tradeoff is documented rather than hidden.
 - Wrap all network errors.
 - Use one persistent HTTP client and refresh the typing indicator.
-- Merge bursts of messages that arrive in the same poll batch.
+- Merge a burst of plain text messages only when they arrive within a short explicit time window
+  (a few seconds) of each other. A poll batch is a delivery boundary, not a timing one, so batching
+  alone never merges messages; commands and consent messages are never merged.
 - Send one compact tool trace instead of several large messages.
 - Run consolidation from the idle loop instead of before the first reply.
 
@@ -228,9 +236,11 @@ manual smoke on macOS.
 - **Mutation testing** (mutmut) on the evidence, polarity and supersession code. First move tool
   validation into undecorated functions, so mutmut can mutate it.
 - **Gate precision corpus:** about 400 realistic Italian and English messages, each with candidate
-  quotes and restatements labeled faithful or distorting. Generate them once with Claude, and have
-  the maintainer review a sample. Report false-reject and false-accept rates per gate. This replaces
-  any need for real messages.
+  quotes and restatements labeled faithful or distorting. Generate them once with Claude, freeze
+  the labels, and have the maintainer adjudicate every case the generator marks as hard plus a
+  prespecified random sample of the rest. Report false-reject and false-accept rates per gate with
+  the measured label error propagated into their intervals. This replaces any need for real
+  messages.
 - **Retrieval benchmark** with the real embedding model: recall@k for claims, excerpts and sessions,
   and a calibrated relevance floor.
 - **Scale and latency benchmark** on a generated three-year archive.
@@ -249,7 +259,14 @@ manual smoke on macOS.
   - filler sessions.
 - **User turns are generated once and replayed identically in every arm**, so comparisons are
   paired. The user simulator comes from a different model than the system under test, has quotas for
-  short turns and pushback, and gates disclosure behind trust.
+  short turns and pushback, and gates disclosure behind trust. Replayed turns are not causally tied to
+  each arm's replies, so they can refer to things an arm never said. Memory probes are unaffected:
+  each is a fresh question on a copy of the final store. Process quality judged on replayed sessions
+  carries this limitation, and an adaptive per-arm simulator replaces replay for any H4 claim that
+  decides adoption.
+- **Horizon:** the baseline personas span at most 180 days, so the baseline supports claims up to six
+  months only. A later dataset version adds held-out personas with multi-year gaps, probing recall,
+  updates and abstention at that horizon, before any multi-year claim is made.
 - **Probes** follow the LongMemEval taxonomy plus project-specific ones:
   - single-session detail, something the assistant said, aggregation, temporal order and interval;
   - latest state after an update, correction precedence, forgotten content never returning;
@@ -259,7 +276,9 @@ manual smoke on macOS.
   claims without supporting evidence, whether updates took effect, whether forgotten items are
   absent.
 - **Arms:** `ephemeral` (floor), `transcript_only`, `standard`, raw recency window (upper-bound
-  comparator), raw retrieval over all messages. Later arms are added by Wave 2.
+  comparator), raw retrieval over all messages. Later arms are added by Wave 2. The floor must hold no
+  longitudinal memory: each probe of the `ephemeral` arm runs on a fresh empty store, because within
+  one process `ephemeral` otherwise behaves like `transcript_only`.
 
 **W1.2 Judges and statistics.**
 - One binary judge per criterion with an "unknown" option. The only provider key available is
@@ -274,8 +293,10 @@ manual smoke on macOS.
   so judge bias toward that model affects both arms alike.
 - The judge is blind to the arm and the memory mode. Pairwise comparison is secondary only, run in
   both orders, with inconsistent pairs counted as ties.
-- Report Wilson or Bayesian intervals clustered by persona or scenario, pass^3 per scenario, and the
-  Rogan–Gladen correction once human labels exist.
+- Inference uses cluster-aware estimators: the persona- or scenario-clustered bootstrap (or a
+  hierarchical model) for every rate and difference that a hypothesis or decision rests on. Wilson
+  intervals are descriptive only, since probes from one persona are correlated. Also report pass^3
+  per scenario, and the Rogan–Gladen correction once human labels exist.
 - Keep a preregistration file and a frozen test split.
 - Add a blind, randomized labeling command for the maintainer that exports `HumanReviewArtifact`
   labels and computes per-criterion TPR/TNR and test–retest κ.
@@ -312,6 +333,10 @@ manual smoke on macOS.
 **W2.1 Retrieval engine.**
 - Index every round (user message plus assistant reply), not only the last 1,000 user messages, and
   keep claims as index keys that point back to rounds.
+- Forgetting and correction reach every round that carried the content: a round whose user message
+  or assistant reply repeats forgotten or superseded wording is invalidated or suppressed by
+  provenance, not only the claim. A regression test asks for forgotten content through round
+  retrieval and must get nothing.
 - Store vectors as packed float32, compute the query embedding once per retrieval, keep an
   in-process vector cache invalidated by content hash, and use matrix scoring (numpy is already
   installed).
@@ -335,6 +360,10 @@ recall does not fall.
 - Compare today's inline write tools with a split design: the conversation agent keeps hypotheses,
   interventions and corrections inline, and a focused post-turn extractor records user reports after
   the reply is delivered, so it adds no latency.
+- The split keeps the all-or-nothing turn invariant through durable retry: the turn commits with a
+  pending-extraction marker in the same transaction, the extractor's writes and the marker's removal
+  commit together, and a pending marker is retried at startup and before retrieval. A turn is never
+  left archived without either its memory or a pending marker.
 - In both arms, move quote mechanics out of the conversational prompt into the tool descriptions.
 - Adopt the split only if it improves extraction recall without raising false memories (H2) or
   lowering conversation quality (H4).
@@ -405,7 +434,9 @@ the floor, paired by persona, with intervals clustered by persona.
 - **H5:** sycophancy probes with a full memory envelope loaded are not worse than without memory.
 
 If H1 or H2 fails, the structured memory claim is not supported. The finding is then reported, and
-the design is simplified rather than defended.
+the design is simplified rather than defended. H4 and H5 are adoption gates too: a design that
+lowers process quality beyond the H4 margin or makes sycophancy worse under H5 is not kept until a
+remediation passes a rerun.
 
 ## 6. Budget and human effort
 
@@ -424,6 +455,12 @@ the design is simplified rather than defended.
 
 A per-run cost limit is enforced in code (`UsageLimits.cost_limit` after the upgrade). Work stops at
 the cap the maintainer sets.
+
+**Fitted to the approved cap.** The $45 cap set on 2026-10-16 is far below these full-size figures, so
+the baseline runs in the reduced form recorded in `docs/evidence/preregistration-2026-10.md`: Haiku
+5.5 as the system under test, eight test personas, three arms, the 16-scenario safety suite with
+three repeats, and the two raw-message comparators deferred. Re-measurements after a fix use the
+tuning split first and a reduced test-split check. Larger runs wait for a budget decision.
 
 **Maintainer time.**
 - Labeling synthetic transcripts: about 3–4 hours initially (safety criteria), about 8–10 hours in
