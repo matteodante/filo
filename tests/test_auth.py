@@ -9,7 +9,7 @@ from io import BytesIO
 from pathlib import Path
 from urllib.error import HTTPError
 
-import httpx
+import httpx2
 import pytest
 
 import filo.auth as auth
@@ -219,18 +219,18 @@ def test_unauthorized_response_triggers_exactly_one_refresh_and_retry(tmp_path: 
 
     seen: list[tuple[str, str]] = []
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(request: httpx2.Request) -> httpx2.Response:
         seen.append((request.headers["Authorization"], request.headers["chatgpt-account-id"]))
         if request.headers["Authorization"] == f"Bearer {_token('stale')}":
-            return httpx.Response(401)
-        return httpx.Response(200, json={"ok": True})
+            return httpx2.Response(401)
+        return httpx2.Response(200, json={"ok": True})
 
     async def call(rejecting: bool) -> int:
-        transport = httpx.MockTransport(
-            (lambda _request: httpx.Response(401)) if rejecting else handler
+        transport = httpx2.MockTransport(
+            (lambda _request: httpx2.Response(401)) if rejecting else handler
         )
         tokens = auth.CodexTokenSource(store, refresh=refresh)
-        async with httpx.AsyncClient(auth=auth.CodexAuth(tokens), transport=transport) as client:
+        async with httpx2.AsyncClient(auth=auth.CodexAuth(tokens), transport=transport) as client:
             response = await client.post("https://codex.invalid/responses", json={"input": "x"})
         return response.status_code
 
@@ -343,8 +343,8 @@ def test_repeated_unauthorized_responses_refresh_only_once(tmp_path: Path) -> No
     tokens = auth.CodexTokenSource(store, refresh=refresh)
 
     async def calls() -> list[int]:
-        transport = httpx.MockTransport(lambda _request: httpx.Response(401))
-        async with httpx.AsyncClient(auth=auth.CodexAuth(tokens), transport=transport) as client:
+        transport = httpx2.MockTransport(lambda _request: httpx2.Response(401))
+        async with httpx2.AsyncClient(auth=auth.CodexAuth(tokens), transport=transport) as client:
             return [
                 (await client.post("https://codex.invalid/responses")).status_code for _ in range(3)
             ]
@@ -412,8 +412,8 @@ def test_a_second_process_does_not_refresh_a_token_issued_after_rejection(
         return _credential("fresh", expires_at=10**10, refresh=f"refresh-{len(spent)}")
 
     async def rejected_request(tokens: auth.CodexTokenSource) -> int:
-        transport = httpx.MockTransport(lambda _request: httpx.Response(401))
-        async with httpx.AsyncClient(auth=auth.CodexAuth(tokens), transport=transport) as client:
+        transport = httpx2.MockTransport(lambda _request: httpx2.Response(401))
+        async with httpx2.AsyncClient(auth=auth.CodexAuth(tokens), transport=transport) as client:
             return (await client.post("https://codex.invalid/responses")).status_code
 
     listener = auth.CodexTokenSource(store, refresh=refresh)

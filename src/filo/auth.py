@@ -13,14 +13,14 @@ import sys
 import threading
 import time
 import webbrowser
-from collections.abc import AsyncGenerator, Callable, Generator, Iterator
+from collections.abc import AsyncGenerator, Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-import httpx
+import httpx2
 from pydantic import BaseModel, Field
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -209,13 +209,15 @@ class CodexTokenSource:
             return credential
 
 
-class CodexAuth(httpx.Auth):
+class CodexAuth(httpx2.Auth):
     """Set the current ChatGPT token on each request and retry once after a 401."""
 
     def __init__(self, tokens: CodexTokenSource) -> None:
         self._tokens = tokens
 
-    def auth_flow(self, request: httpx.Request) -> Generator[httpx.Request, httpx.Response, None]:
+    def auth_flow(
+        self, request: httpx2.Request
+    ) -> Generator[httpx2.Request, httpx2.Response, None]:
         credential = self._tokens.current()
         _authorize(request, credential)
         response = yield request
@@ -227,8 +229,8 @@ class CodexAuth(httpx.Auth):
             yield request
 
     async def async_auth_flow(
-        self, request: httpx.Request
-    ) -> AsyncGenerator[httpx.Request, httpx.Response]:
+        self, request: httpx2.Request
+    ) -> AsyncGenerator[httpx2.Request, httpx2.Response]:
         # Store reads, lock waits, and refreshes block, so they run in a worker
         # thread instead of stalling the event loop that streams the reply.
         credential = await asyncio.to_thread(self._tokens.current)
@@ -242,13 +244,13 @@ class CodexAuth(httpx.Auth):
             yield request
 
 
-def _authorize(request: httpx.Request, credential: CodexCredential) -> None:
+def _authorize(request: httpx2.Request, credential: CodexCredential) -> None:
     request.headers["Authorization"] = f"Bearer {credential.access_token}"
     request.headers["chatgpt-account-id"] = credential.account_id
 
 
 @contextmanager
-def _exclusive_lock(path: Path) -> Iterator[None]:
+def _exclusive_lock(path: Path) -> Generator[None]:
     descriptor = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
         if sys.platform == "win32":
@@ -304,10 +306,10 @@ def codex_model(store: MemoryStore, model_name: str) -> OpenAIResponsesModel:
             # each run. Turns run on different event loops (the TUI uses a new
             # worker thread per turn), and a pooled connection bound to a closed
             # loop fails, so no connection is kept alive between requests.
-            http_client=httpx.AsyncClient(
+            http_client=httpx2.AsyncClient(
                 auth=CodexAuth(tokens),
-                timeout=httpx.Timeout(600, connect=5),
-                limits=httpx.Limits(max_keepalive_connections=0),
+                timeout=httpx2.Timeout(600, connect=5),
+                limits=httpx2.Limits(max_keepalive_connections=0),
             ),
         ),
         settings=settings,

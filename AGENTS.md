@@ -449,13 +449,28 @@ chmodding, or reading anything in it.
 
 The normal end-user installation is a copy-paste bootstrap from GitHub: `install.sh` supports macOS
 and Linux, while `install.ps1` supports Windows PowerShell. The installer published for a release
-downloads that exact immutable tag's source archive, installs a pinned uv bootstrap only when uv is
-absent, uses uv-managed Python 3.12 to install `filo-cli` as an isolated user tool, exposes
+downloads that exact immutable tag's source archive, runs only the pinned, verified uv version,
+uses uv-managed Python 3.12 to install `filo-cli` as an isolated user tool, exposes
 `filo` on the user's PATH, runs interactive `filo setup`, and then runs `filo doctor`. It requires
 no administrator privileges, existing Python, or Git checkout. Running the installer from a newer
 release updates the alpha without deleting encrypted application state or the shared Hugging Face
 model cache. `uv tool uninstall filo-cli` removes the application command but intentionally
 leaves user data in place.
+
+Every installation path installs the tested versions. `uv tool install` does not read `uv.lock`, so
+the installers, the documented checkout installation, the release wheel check, and the CI wheel
+smoke tests first run `uv export --frozen --no-dev --no-emit-project --no-hashes` and pass the
+result as `--constraints`. Hashes are not enforced. The non-Linux `torch` pin is removed from those
+constraints, because the locked release has no wheel for Intel Macs or macOS 13, so torch outside
+Linux resolves from PyPI as it did before. On Linux, `torch` is a direct dependency whose
+`[tool.uv.sources]` entry resolves it from the PyTorch CPU index, so `uv.lock`, `uv sync`, and
+source installations carry the CPU build: the embedding model runs on the CPU, and the default
+Linux build adds several gigabytes of unused CUDA libraries. A wheel carries no sources, so the
+Linux wheel checks pass `--torch-backend cpu`. `filo.auth` imports `httpx2`, the client PydanticAI
+uses for OpenAI-compatible providers, so `httpx2` is declared directly; `httpx` arrives only
+transitively for google-genai and huggingface-hub, and Filo does not import it. Anthropic requests
+set `max_tokens` explicitly, since PydanticAI otherwise requests the model's whole maximum output,
+beyond the context output reserve.
 
 Once a Filo release exists, the public README uses `main` only as a small latest-alpha bootstrap
 channel; that script always
@@ -464,7 +479,10 @@ Questionary setup inside a fresh `script(1)` pseudoterminal because `prompt_tool
 a `/dev/tty` descriptor reopened after a pipe with `kqueue`. Linux launches setup directly, and
 Windows PowerShell retains its console input.
 
-Both installers download uv directly from its immutable GitHub release when it is absent. They first
+Both installers use a uv already on PATH only when it reports exactly the pinned version, because
+the installation relies on uv features that older packaged releases lack. Otherwise they download uv
+directly from its immutable GitHub release: into `~/.local/bin` when no uv is present, or into the
+installer's temporary directory, for that installation only, when another version is. They first
 require the release checksum manifest to match its repository-pinned SHA-256 digest and then require
 the selected platform archive to match the digest in that verified manifest. They install the
 verified binaries without delegating to another network bootstrap. They select uv's MIT license,
@@ -557,7 +575,7 @@ Conversation-time embedding loads use only the verified local revision.
 After `filo auth login`, omitting `--model` selects `codex:gpt-5.6-sol`. An explicit model can be
 selected with `--model codex:<model-id>`. Access and refresh tokens are encrypted in the same local
 store and are never included in exports. The provider attaches the current token to every request
-through an `httpx` auth flow rather than a fixed API key, so the Telegram listener and the TUI keep
+through an `httpx2` auth flow rather than a fixed API key, so the Telegram listener and the TUI keep
 working across token expiry: the encrypted store is read on every request, so a logout or a new
 login applies to running processes; the token is refreshed within 60 seconds of expiry and, after a
 401, refreshed once and the request retried once. A token obtained because of a 401 is marked as
