@@ -140,7 +140,9 @@ filo doctor
 ```
 
 The supported first-alpha provider is a personal ChatGPT Plus/Pro account through the experimental
-`codex:` OAuth path. Setup also lists the models of an OpenAI-compatible `local:` server when one is
+`codex:` OAuth path. A running chat or Telegram listener renews the ChatGPT token on its own before
+it expires or after a rejected request, and picks up `filo auth logout` or a new login without a
+restart. Setup also lists the models of an OpenAI-compatible `local:` server when one is
 reachable, so conversations can stay on your own hardware; set `FILO_LOCAL_BASE_URL` when that
 server is not on `http://localhost:8080/v1`. That path carries no support claim, and the remaining
 PydanticAI providers stay technical escape hatches. Telegram checks private-chat type and numeric

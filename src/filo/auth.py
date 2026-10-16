@@ -2,17 +2,26 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import contextlib
+import errno
 import json
 import math
+import os
+import sys
+import threading
 import time
 import webbrowser
-from collections.abc import Callable
+from collections.abc import AsyncGenerator, Callable, Generator, Iterator
+from contextlib import contextmanager
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from pydantic import BaseModel
+import httpx
+from pydantic import BaseModel, Field
 from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -28,13 +37,18 @@ DEVICE_VERIFICATION_URI = f"{AUTH_BASE_URL}/codex/device"
 CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 JWT_CLAIM = "https://api.openai.com/auth"
 SECRET_NAME = "openai-codex"
+LOCK_NAME = "codex-auth.lock"
+REFRESH_MARGIN_SECONDS = 60
 
 
 class CodexCredential(BaseModel):
-    access_token: str
-    refresh_token: str
+    access_token: str = Field(repr=False)
+    refresh_token: str = Field(repr=False)
     expires_at: int
     account_id: str
+    # Stored with the credential so every process honors it: a token obtained
+    # because of a 401 is never refreshed again after another 401.
+    issued_after_rejection: bool = False
 
 
 class AuthError(RuntimeError):
@@ -43,7 +57,14 @@ class AuthError(RuntimeError):
 
 class _HTTPError(AuthError):
     def __init__(self, status: int, body: str) -> None:
-        super().__init__(f"OpenAI authentication failed ({status}): {body}")
+        # The body stays out of the message: a token endpoint response must
+        # never reach a log through an exception string.
+        code = _error_code(body)
+        super().__init__(
+            f"OpenAI authentication failed (HTTP {status}"
+            + (f", {code})" if code else ")")
+            + ". Run `filo auth login` if this persists."
+        )
         self.status = status
         self.body = body
 
@@ -98,7 +119,10 @@ def login_codex(
             _required_str(result, "authorization_code"),
             _required_str(result, "code_verifier"),
         )
-        save_credential(store, credential)
+        # A running listener may be refreshing the previous login; writing
+        # under its lock keeps that refresh from overwriting this one.
+        with credential_lock(store):
+            save_credential(store, credential)
         return credential
     raise AuthError("ChatGPT login timed out after 15 minutes.")
 
@@ -113,29 +137,179 @@ def save_credential(store: MemoryStore, credential: CodexCredential) -> None:
 
 
 def logout_codex(store: MemoryStore) -> None:
-    store.delete_secret(SECRET_NAME)
+    with credential_lock(store):
+        store.delete_secret(SECRET_NAME)
+
+
+def credential_lock(store: MemoryStore) -> contextlib.AbstractContextManager[None]:
+    """Serialize a credential change with any refresh in another process."""
+    return _exclusive_lock(store.directory / LOCK_NAME)
+
+
+class CodexTokenSource:
+    """Hand out a current access token, refreshing it at most once across processes.
+
+    The refresh token rotates on every use, so the Telegram listener and an
+    interactive chat must not both spend it. Refreshes run under an exclusive
+    lock file next to the encrypted store, and the store is re-read after the
+    lock is acquired so a process that waited reuses the other one's result.
+    """
+
+    def __init__(
+        self,
+        store: MemoryStore,
+        *,
+        clock: Callable[[], float] = time.time,
+        refresh: Callable[[str], CodexCredential] | None = None,
+    ) -> None:
+        self._store = store
+        self._clock = clock
+        self._refresh = refresh or _refresh
+        self._lock_path = store.directory / LOCK_NAME
+        self._thread_lock = threading.Lock()
+        self.current()
+
+    def current(self) -> CodexCredential:
+        # Read the store on every request so a logout or a new login made by
+        # another process takes effect on the next turn.
+        stored = load_credential(self._store)
+        if stored is None:
+            raise AuthError("Not logged in. Run `filo auth login` first.")
+        if not self._expiring(stored):
+            return stored
+        return self._refreshed(stored)
+
+    def after_rejection(self, rejected: CodexCredential) -> CodexCredential | None:
+        """Return a different credential after a 401, or None when retrying cannot help.
+
+        A token that was itself obtained because of a 401 and is rejected again
+        points at a problem a refresh does not fix, so it is not refreshed again:
+        each refresh rotates the refresh token.
+        """
+        if rejected.issued_after_rejection:
+            return None
+        return self._refreshed(rejected, after_rejection=True)
+
+    def _expiring(self, credential: CodexCredential) -> bool:
+        return credential.expires_at <= self._clock() + REFRESH_MARGIN_SECONDS
+
+    def _refreshed(
+        self, stale: CodexCredential, *, after_rejection: bool = False
+    ) -> CodexCredential:
+        with self._thread_lock, _exclusive_lock(self._lock_path):
+            stored = load_credential(self._store)
+            if stored is None:
+                raise AuthError("Not logged in. Run `filo auth login` first.")
+            if stored != stale and not self._expiring(stored):
+                return stored
+            credential = self._refresh(stored.refresh_token)
+            if after_rejection:
+                credential = credential.model_copy(update={"issued_after_rejection": True})
+            save_credential(self._store, credential)
+            return credential
+
+
+class CodexAuth(httpx.Auth):
+    """Set the current ChatGPT token on each request and retry once after a 401."""
+
+    def __init__(self, tokens: CodexTokenSource) -> None:
+        self._tokens = tokens
+
+    def auth_flow(self, request: httpx.Request) -> Generator[httpx.Request, httpx.Response, None]:
+        credential = self._tokens.current()
+        _authorize(request, credential)
+        response = yield request
+        if response.status_code != 401:
+            return
+        replacement = self._tokens.after_rejection(credential)
+        if replacement is not None:
+            _authorize(request, replacement)
+            yield request
+
+    async def async_auth_flow(
+        self, request: httpx.Request
+    ) -> AsyncGenerator[httpx.Request, httpx.Response]:
+        # Store reads, lock waits, and refreshes block, so they run in a worker
+        # thread instead of stalling the event loop that streams the reply.
+        credential = await asyncio.to_thread(self._tokens.current)
+        _authorize(request, credential)
+        response = yield request
+        if response.status_code != 401:
+            return
+        replacement = await asyncio.to_thread(self._tokens.after_rejection, credential)
+        if replacement is not None:
+            _authorize(request, replacement)
+            yield request
+
+
+def _authorize(request: httpx.Request, credential: CodexCredential) -> None:
+    request.headers["Authorization"] = f"Bearer {credential.access_token}"
+    request.headers["chatgpt-account-id"] = credential.account_id
+
+
+@contextmanager
+def _exclusive_lock(path: Path) -> Iterator[None]:
+    descriptor = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+
+            while True:
+                try:
+                    msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError as error:
+                    # msvcrt reports a lock held elsewhere as EACCES or
+                    # EDEADLOCK; anything else is a real failure.
+                    if error.errno not in {errno.EACCES, errno.EDEADLOCK}:
+                        raise
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+    finally:
+        os.close(descriptor)
 
 
 def codex_model(store: MemoryStore, model_name: str) -> OpenAIResponsesModel:
-    credential = load_credential(store)
-    if credential is None:
-        raise AuthError("Not logged in. Run `filo auth login` first.")
-    if credential.expires_at <= int(time.time()) + 60:
-        credential = _refresh(credential.refresh_token)
-        save_credential(store, credential)
+    tokens = CodexTokenSource(store)
+    # Fail at startup rather than on the first message when login is needed.
+    tokens.current()
     settings = OpenAIResponsesModelSettings(
         openai_store=False,
         openai_reasoning_effort="medium",
         openai_text_verbosity="low",
         extra_headers={
             "OpenAI-Beta": "responses=experimental",
-            "chatgpt-account-id": credential.account_id,
             "originator": "filo-cli",
         },
     )
     return OpenAIResponsesModel(
         model_name,
-        provider=OpenAIProvider(base_url=CODEX_BASE_URL, api_key=credential.access_token),
+        provider=OpenAIProvider(
+            base_url=CODEX_BASE_URL,
+            # Replaced on every request by CodexAuth with the current token.
+            api_key="codex-oauth",
+            # The provider does not own a client passed in, so this one outlives
+            # each run. Turns run on different event loops (the TUI uses a new
+            # worker thread per turn), and a pooled connection bound to a closed
+            # loop fails, so no connection is kept alive between requests.
+            http_client=httpx.AsyncClient(
+                auth=CodexAuth(tokens),
+                timeout=httpx.Timeout(600, connect=5),
+                limits=httpx.Limits(max_keepalive_connections=0),
+            ),
+        ),
         settings=settings,
     )
 
