@@ -34,6 +34,7 @@ from therapist import telegram_service
 from therapist.auth import (
     AuthError,
     codex_model,
+    credential_lock,
     load_credential,
     login_codex,
     logout_codex,
@@ -416,7 +417,10 @@ def _main(argv: Sequence[str] | None = None) -> int:
         if not confirmed:
             print("Cancelled.")
             return 1
-        store.delete_all()
+        # A refresh in flight in a running listener would otherwise save the
+        # ChatGPT credential back after it was deleted.
+        with credential_lock(store):
+            store.delete_all()
         print("Local conversation and memory data deleted.")
         return 0
     return 2

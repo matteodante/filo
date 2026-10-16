@@ -14,6 +14,7 @@ import pytest
 
 import therapist.auth as auth
 from therapist.auth import CodexCredential
+from therapist.cli import main
 from therapist.memory import MemoryStore
 
 
@@ -238,7 +239,7 @@ def test_unauthorized_response_triggers_exactly_one_refresh_and_retry(tmp_path: 
     assert seen == [(f"Bearer {_token('stale')}", "stale"), (f"Bearer {_token('fresh')}", "fresh")]
 
     assert asyncio.run(call(rejecting=True)) == 401
-    assert spent == ["refresh", "refresh-1"]  # one refresh per rejected request, never a loop
+    assert spent == ["refresh"]  # the stored token came from a 401, so no further rotation
 
 
 def test_codex_model_sends_current_token_through_auth_flow(tmp_path: Path) -> None:
@@ -256,6 +257,7 @@ _RACE = """
 import sys, time
 from pathlib import Path
 import therapist.auth as auth
+from therapist.cli import main
 from therapist.memory import MemoryStore
 
 directory, counter, go, access = sys.argv[1:5]
@@ -396,3 +398,62 @@ def test_login_waits_for_a_refresh_holding_the_lock(
 
     assert not login.is_alive()
     assert auth.load_credential(store).account_id == "new-login"  # type: ignore[union-attr]
+
+
+def test_a_second_process_does_not_refresh_a_token_issued_after_rejection(
+    tmp_path: Path,
+) -> None:
+    store = MemoryStore(tmp_path)
+    auth.save_credential(store, _credential("stale", expires_at=10**10))
+    spent: list[str] = []
+
+    def refresh(token: str) -> CodexCredential:
+        spent.append(token)
+        return _credential("fresh", expires_at=10**10, refresh=f"refresh-{len(spent)}")
+
+    async def rejected_request(tokens: auth.CodexTokenSource) -> int:
+        transport = httpx.MockTransport(lambda _request: httpx.Response(401))
+        async with httpx.AsyncClient(auth=auth.CodexAuth(tokens), transport=transport) as client:
+            return (await client.post("https://codex.invalid/responses")).status_code
+
+    listener = auth.CodexTokenSource(store, refresh=refresh)
+    chat = auth.CodexTokenSource(store, refresh=refresh)  # separate state, as in another process
+
+    assert asyncio.run(rejected_request(listener)) == 401
+    assert asyncio.run(rejected_request(chat)) == 401
+    assert asyncio.run(rejected_request(listener)) == 401
+
+    assert spent == ["refresh"]
+    assert auth.load_credential(store).issued_after_rejection  # type: ignore[union-attr]
+
+
+def test_delete_data_waits_for_an_in_flight_refresh(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path)
+    auth.save_credential(store, _credential("account", expires_at=0))
+    refreshing = threading.Event()
+    release = threading.Event()
+
+    def slow_refresh(token: str) -> CodexCredential:
+        refreshing.set()
+        release.wait(10)
+        return _credential("account", expires_at=10**10, refresh="rotated")
+
+    tokens: list[auth.CodexTokenSource] = []
+    refresher = threading.Thread(
+        target=lambda: tokens.append(auth.CodexTokenSource(store, refresh=slow_refresh))
+    )
+    refresher.start()
+    assert refreshing.wait(10)
+    deleter = threading.Thread(
+        target=main, args=(["--data-dir", str(tmp_path), "delete-data", "--yes"],)
+    )
+    deleter.start()
+    deleter.join(timeout=0.5)
+    assert deleter.is_alive()  # blocked on the refresh lock
+
+    release.set()
+    refresher.join(10)
+    deleter.join(10)
+
+    assert not deleter.is_alive()
+    assert auth.load_credential(store) is None

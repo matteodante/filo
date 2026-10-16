@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import errno
 import json
 import math
@@ -45,6 +46,9 @@ class CodexCredential(BaseModel):
     refresh_token: str = Field(repr=False)
     expires_at: int
     account_id: str
+    # Stored with the credential so every process honors it: a token obtained
+    # because of a 401 is never refreshed again after another 401.
+    issued_after_rejection: bool = False
 
 
 class AuthError(RuntimeError):
@@ -117,7 +121,7 @@ def login_codex(
         )
         # A running listener may be refreshing the previous login; writing
         # under its lock keeps that refresh from overwriting this one.
-        with _exclusive_lock(store.directory / LOCK_NAME):
+        with credential_lock(store):
             save_credential(store, credential)
         return credential
     raise AuthError("ChatGPT login timed out after 15 minutes.")
@@ -133,8 +137,13 @@ def save_credential(store: MemoryStore, credential: CodexCredential) -> None:
 
 
 def logout_codex(store: MemoryStore) -> None:
-    with _exclusive_lock(store.directory / LOCK_NAME):
+    with credential_lock(store):
         store.delete_secret(SECRET_NAME)
+
+
+def credential_lock(store: MemoryStore) -> contextlib.AbstractContextManager[None]:
+    """Serialize a credential change with any refresh in another process."""
+    return _exclusive_lock(store.directory / LOCK_NAME)
 
 
 class CodexTokenSource:
@@ -158,7 +167,6 @@ class CodexTokenSource:
         self._refresh = refresh or _refresh
         self._lock_path = store.directory / LOCK_NAME
         self._thread_lock = threading.Lock()
-        self._issued_after_rejection: set[str] = set()
         self.current()
 
     def current(self) -> CodexCredential:
@@ -178,16 +186,16 @@ class CodexTokenSource:
         points at a problem a refresh does not fix, so it is not refreshed again:
         each refresh rotates the refresh token.
         """
-        if rejected.access_token in self._issued_after_rejection:
+        if rejected.issued_after_rejection:
             return None
-        credential = self._refreshed(rejected)
-        self._issued_after_rejection.add(credential.access_token)
-        return credential
+        return self._refreshed(rejected, after_rejection=True)
 
     def _expiring(self, credential: CodexCredential) -> bool:
         return credential.expires_at <= self._clock() + REFRESH_MARGIN_SECONDS
 
-    def _refreshed(self, stale: CodexCredential) -> CodexCredential:
+    def _refreshed(
+        self, stale: CodexCredential, *, after_rejection: bool = False
+    ) -> CodexCredential:
         with self._thread_lock, _exclusive_lock(self._lock_path):
             stored = load_credential(self._store)
             if stored is None:
@@ -195,6 +203,8 @@ class CodexTokenSource:
             if stored != stale and not self._expiring(stored):
                 return stored
             credential = self._refresh(stored.refresh_token)
+            if after_rejection:
+                credential = credential.model_copy(update={"issued_after_rejection": True})
             save_credential(self._store, credential)
             return credential
 
