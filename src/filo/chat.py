@@ -7,6 +7,7 @@ import math
 import re
 import threading
 from collections.abc import AsyncIterable, Callable
+from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -40,6 +41,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models import Model
 
+from filo.failures import ContextFull
 from filo.memory import (
     FORMULATION_FIELDS,
     MIN_FORGET_QUOTE_WORDS,
@@ -376,6 +378,7 @@ class ChatSession:
         *,
         memory_mode: MemoryMode = MemoryMode.STANDARD,
         memory_writing: MemoryWriting = MemoryWriting.INLINE,
+        deletion_epoch: Callable[[], int] | None = None,
     ) -> None:
         if locale not in protocol.locales:
             raise ValueError(f"Locale not supported by protocol: {locale}")
@@ -395,6 +398,21 @@ class ChatSession:
             self.context_window_tokens * CONTEXT_OUTPUT_RESERVE_RATIO
         )
         self.input_token_budget = self.context_window_tokens - self.output_token_reserve
+        # The last message whose turn failed, kept in process memory only for /retry, with the
+        # store's deletion counter at that time. A failed turn archives nothing, so retrying it
+        # is a fresh turn; after a local deletion the message may mention what was removed, so
+        # it is dropped instead. The counter is the persistent store's, also in ephemeral mode.
+        self._deletion_epoch = deletion_epoch or memory.telegram_output_epoch
+        self._failed: tuple[str, int] | None = None
+
+    @property
+    def failed_text(self) -> str | None:
+        if self._failed is not None and self._failed[1] != self._deletion_epoch():
+            self._failed = None
+        return None if self._failed is None else self._failed[0]
+
+    def discard_failed(self) -> None:
+        self._failed = None
 
     def respond(
         self,
@@ -406,6 +424,23 @@ class ChatSession:
         """Run one turn; ``on_commit`` runs inside the turn's storage transaction."""
         if text.lstrip().startswith("/"):
             raise ValueError("Commands must be handled outside the conversation.")
+        try:
+            turn = self._respond(text, now, on_event, on_commit)
+        except Exception:
+            self._failed = None
+            with suppress(Exception):  # Without a known counter, nothing is kept for /retry.
+                self._failed = (text, self._deletion_epoch())
+            raise
+        self._failed = None
+        return turn
+
+    def _respond(
+        self,
+        text: str,
+        now: datetime | None,
+        on_event: Callable[[TurnStreamEvent], None] | None,
+        on_commit: Callable[[ChatTurn], None] | None,
+    ) -> ChatTurn:
         self.extract_pending()
         session = self._current_session(now)
         context = self.memory.retrieve_case_context(
@@ -420,7 +455,7 @@ class ChatSession:
         notice: str | None = None
         if estimated_tokens > self.input_token_budget:
             if not history:
-                raise ValueError("This message does not fit the configured model context window.")
+                raise ContextFull("This message does not fit the configured model context window.")
             self._consolidate(session, now, end_reason=SessionEndReason.CONTEXT_LIMIT)
             session = self.memory.start_session(now)
             context = self.memory.retrieve_case_context(
@@ -433,7 +468,7 @@ class ChatSession:
             context_json = _bounded_context_json(context)
             estimated_tokens = _estimate_context_tokens(instructions, context_json, history, text)
             if estimated_tokens > self.input_token_budget:
-                raise ValueError("This message does not fit the configured model context window.")
+                raise ContextFull("This message does not fit the configured model context window.")
             notice = self._context_rollover_notice()
 
         available_claims = _context_claims(context)
@@ -1248,6 +1283,7 @@ class ChatSession:
         )
 
     def end(self, now: datetime | None = None) -> SessionRecord | None:
+        self.discard_failed()
         self.extract_pending()  # Consolidation should see this session's reports.
         session = self.memory.active_session()
         if session is None:

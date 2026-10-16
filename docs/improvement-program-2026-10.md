@@ -207,6 +207,8 @@ Parallel PRs then touch different documents instead of one file.
 
 *Check:* install size and time, embedding latency per message, recall@k against the torch baseline.
 
+*Outcome:* measured and not adopted (#58): equal recall, but no saving in time, disk or latency.
+
 **W0.3 Forward schema migrations.**
 - The rename to Filo is the last clean break. From the Filo store onward, use ordered, tested
   migrations, so the maintainer's memory survives every later change.

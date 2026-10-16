@@ -581,6 +581,7 @@ def test_bot_configures_commands_only_for_allowlisted_chat(
         "sessions",
         "interventions",
         "privacy",
+        "retry",
         "end",
     }
     assert calls[2][0] == "setMyDescription"

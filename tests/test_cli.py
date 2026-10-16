@@ -2,18 +2,22 @@ import errno
 import json
 import os
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from urllib.error import URLError
 
 import pytest
-from pydantic_ai import ModelRequest, ModelResponse, UserPromptPart
+from pydantic_ai import Embedder, ModelRequest, ModelResponse, UserPromptPart
+from pydantic_ai.embeddings import TestEmbeddingModel
 from pydantic_ai.messages import TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models import infer_model
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
+import filo.auth as auth
 from filo.chat import (
     MAX_REQUEST_OUTPUT_TOKENS,
     TurnStreamEvent,
@@ -37,7 +41,9 @@ from filo.cli import (
     build_parser,
     main,
 )
-from filo.memory import MemoryKind, MemoryStore, UserReport
+from filo.failures import SetupProblem
+from filo.memory import MemoryKind, MemoryMode, MemoryStore, UserReport
+from filo.process_lock import exclusive_lock
 
 
 def test_guided_setup_advertises_only_the_supported_chatgpt_provider(
@@ -489,7 +495,7 @@ def test_crisis_command_shows_static_resources_after_a_model_failure(
         calls.append(text)
         raise RuntimeError("provider unavailable")
 
-    session = SimpleNamespace(respond=respond, locale="it-IT")
+    session = SimpleNamespace(respond=respond, locale="it-IT", memory_mode=MemoryMode.STANDARD)
 
     assert _chat(session, store) == 0  # type: ignore[arg-type]
 
@@ -584,6 +590,42 @@ def test_plain_chat_does_not_persist_rejected_draft_in_redirected_output(
     output = capsys.readouterr().out  # type: ignore[attr-defined]
     assert "rejected draft" not in output
     assert output.count("filo> Validated reply.") == 1
+
+
+def test_plain_chat_retries_the_failed_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.consent_version = "alpha-4"
+    store.save_app_state(state)
+    inputs = iter(["/retry", "Busy week.", "/retry", "/quit"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    received: list[str] = []
+
+    def respond(text: str, *, on_event: object) -> SimpleNamespace:
+        received.append(text)
+        if len(received) == 1:
+            session.failed_text = text
+            raise auth.LoginRequired("Not logged in.")
+        session.failed_text = None
+        return SimpleNamespace(text=f"Reply to {text}", notice=None)
+
+    session = SimpleNamespace(
+        respond=respond,
+        locale="en-US",
+        extract_pending=lambda: 0,
+        failed_text=None,
+        memory_mode=MemoryMode.STANDARD,
+    )
+    assert _chat(session, store) == 0  # type: ignore[arg-type]
+
+    output = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert received == ["Busy week.", "Busy week."]
+    assert output.count("Nothing to retry.") == 1
+    assert "filo auth login" in output
+    assert "filo> Reply to Busy week." in output
+    assert store.last_failure()["kind"] == "login"  # type: ignore[index]
 
 
 def test_plain_chat_survives_a_database_error_during_extraction(
@@ -715,6 +757,46 @@ def test_doctor_does_not_create_memory(tmp_path: Path) -> None:
 
     assert main(["--data-dir", str(data_dir), "doctor"]) == 0
     assert not data_dir.exists()
+
+
+def test_doctor_reports_login_service_and_last_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
+    store = _paired_telegram(tmp_path)
+    auth.save_credential(
+        store,
+        auth.CodexCredential(
+            access_token="synthetic-access",
+            refresh_token="synthetic-refresh",
+            expires_at=int(datetime.now(UTC).timestamp()) - 60,
+            account_id="account",
+        ),
+    )
+    store.record_failure("usage_limit", "ModelHTTPError")
+    monkeypatch.setattr(
+        "filo.cli.telegram_service.status",
+        lambda: SimpleNamespace(installed=True, running=False, detail=""),
+    )
+
+    assert main(["--data-dir", str(tmp_path), "doctor"]) == 0
+
+    output = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert "ChatGPT login: access token expired at" in output
+    assert "refreshes on the next request" in output
+    assert "Telegram service: installed but not running" in output
+    assert "Last failed turn: usage_limit (ModelHTTPError) at" in output
+    assert "synthetic-access" not in output
+
+
+def test_doctor_without_login_or_failures(tmp_path: Path, capsys: object) -> None:
+    MemoryStore(tmp_path)
+
+    assert main(["--data-dir", str(tmp_path), "doctor"]) == 0
+
+    output = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert "ChatGPT login: not logged in" in output
+    assert "Last failed turn: none recorded" in output
+    assert "Telegram service" not in output
 
 
 def test_context_window_override_is_bounded() -> None:
@@ -914,6 +996,55 @@ def test_telegram_fails_closed_without_channel_credentials(
     assert "Run `filo setup`" in capsys.readouterr().out  # type: ignore[attr-defined]
 
 
+def _paired_telegram(path: Path) -> MemoryStore:
+    store = MemoryStore(path)
+    store.save_secret("telegram_bot_token", b"synthetic-token")
+    state = store.load_app_state()
+    state.telegram_allowed_user_id = 42
+    store.save_app_state(state)
+    return store
+
+
+def test_a_second_telegram_listener_exits_with_a_clear_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
+    _paired_telegram(tmp_path)
+    monkeypatch.setattr("filo.cli._conversation", lambda *_: pytest.fail("must not start"))
+
+    with exclusive_lock(tmp_path / "telegram-poller.lock"):
+        assert main(["--data-dir", str(tmp_path), "telegram"]) == 2
+
+    assert "already running" in capsys.readouterr().out  # type: ignore[attr-defined]
+
+
+def test_telegram_listener_starts_despite_missing_setup_and_reports_it_per_turn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _paired_telegram(tmp_path)  # no login, no default model, no semantic memory
+    channels: list[Any] = []
+    monkeypatch.setattr("filo.cli.TelegramChannel.run", lambda channel: channels.append(channel))
+
+    assert main(["--data-dir", str(tmp_path), "telegram"]) == 0
+
+    (channel,) = channels
+    assert channel.session.model.model_name == DEFAULT_CODEX_MODEL.removeprefix("codex:")
+    with pytest.raises(SetupProblem, match="filo setup"):
+        channel.store._embedder.embed_query_sync("work calls")
+
+    # Once setup is complete, the same running listener embeds without a restart.
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.embedding_model = DEFAULT_EMBEDDING_MODEL
+    store.save_app_state(state)
+    with pytest.raises(SetupProblem, match="filo memory model install"):
+        channel.store._embedder.embed_query_sync("work calls")
+    monkeypatch.setattr(
+        "filo.cli._default_embedder",
+        lambda **_: Embedder(TestEmbeddingModel(dimensions=8)),
+    )
+    assert len(channel.store._embedder.embed_query_sync("work calls").embeddings[0]) == 8
+
+
 def test_setup_stops_when_semantic_memory_cannot_be_prepared(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -922,6 +1053,33 @@ def test_setup_stops_when_semantic_memory_cannot_be_prepared(
     assert main(["--data-dir", str(tmp_path), "setup"]) == 2
     assert not (tmp_path / "filo.db").exists()
     assert not (tmp_path / "memory.key").exists()
+
+
+def test_setup_does_not_pair_while_a_listener_polls_the_bot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
+    selections = iter(["test", "en-US", True])
+    monkeypatch.setattr("filo.cli._prepare_semantic_memory", lambda: True)
+    monkeypatch.setattr(
+        "filo.cli.questionary.select",
+        lambda *args, **kwargs: SimpleNamespace(ask=lambda: next(selections)),
+    )
+    monkeypatch.setattr(
+        "filo.cli.questionary.text",
+        lambda *args, **kwargs: SimpleNamespace(ask=lambda: kwargs["default"]),
+    )
+    monkeypatch.setattr(
+        "filo.cli.questionary.password",
+        lambda *args, **kwargs: SimpleNamespace(ask=lambda: "secret-bot-token"),
+    )
+    monkeypatch.setattr("filo.cli._pair_telegram_user", lambda _token: pytest.fail("must not poll"))
+    tmp_path.mkdir(exist_ok=True)
+
+    with exclusive_lock(tmp_path / "telegram-poller.lock"):
+        assert main(["--data-dir", str(tmp_path), "setup"]) == 2
+
+    assert "listener is running" in capsys.readouterr().out  # type: ignore[attr-defined]
+    assert MemoryStore(tmp_path).load_secret("telegram_bot_token") is None
 
 
 def test_setup_saves_encrypted_defaults_used_by_telegram(
