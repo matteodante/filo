@@ -325,15 +325,23 @@ def run_persona(
     today: datetime | None = None,
     judge_process_quality: bool = True,
     log: Callable[[str], None] = print,
+    checkpoints: Path | None = None,
 ) -> list[ArmResult]:
     pack = ProtocolPack.load(PROTOCOL)
     anchor = timeline_anchor(persona, today or datetime.now(UTC))
     probe_time = anchor + timedelta(days=persona.probe_day)
     results: dict[str, ArmResult] = {}
     for arm in arms:
+        directory = workdir / persona.id / arm
+        checkpoint = checkpoints / f"{persona.id}-{arm}.json" if checkpoints else None
+        if checkpoint is not None and checkpoint.exists():
+            # A finished arm survives an interrupted run; only unfinished arms are paid again.
+            results[arm] = ArmResult(**json.loads(checkpoint.read_text(encoding="utf-8")))
+            log(f"{persona.id} {arm}: resumed from checkpoint")
+            continue
         result = ArmResult(persona.id, arm)
         results[arm] = result
-        directory = workdir / persona.id / arm
+        shutil.rmtree(directory, ignore_errors=True)  # an interrupted attempt
         if arm != "ephemeral":
             log(f"{persona.id} {arm}: replaying {len(turns.sessions)} sessions")
             replay_history(persona, turns, arm, sut, pack, directory, embedder, anchor, result)
@@ -358,6 +366,9 @@ def run_persona(
                 result.process.append(
                     {"session": index, **{k: v.model_dump() for k, v in verdicts.items()}}
                 )
+        if checkpoint is not None:
+            checkpoint.parent.mkdir(parents=True, exist_ok=True)
+            checkpoint.write_text(json.dumps(result.__dict__, default=str), encoding="utf-8")
     context = ground_truth(persona, turns, anchor)
     reference_arm = results.get("standard") or next(iter(results.values()))
     for arm, result in results.items():
@@ -450,7 +461,6 @@ def main(argv: list[str] | None = None) -> int:
     for persona in personas:
         turns = generated.for_persona(persona.id)
         assert turns is not None
-        shutil.rmtree(output / "stores" / persona.id, ignore_errors=True)  # an interrupted attempt
         results = run_persona(
             persona,
             turns,
@@ -460,6 +470,7 @@ def main(argv: list[str] | None = None) -> int:
             embedder,
             output / "stores",
             judge_process_quality=not args.no_process_judging,
+            checkpoints=output / "checkpoints",
         )
         write_jsonl(output / "memory.jsonl", [result.__dict__ for result in results])
         print(f"spent so far ${ledger.spent_usd:.2f}")
