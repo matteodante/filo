@@ -1,6 +1,7 @@
 """Split memory writing: a post-turn extractor records direct user reports from durable markers."""
 
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -54,6 +55,11 @@ class Model:
         return FunctionModel(stream_function=self._stream)
 
     async def _stream(self, messages: list[Any], info: Any):
+        if info.output_tools and "under_18" not in json.dumps(
+            info.output_tools[0].parameters_json_schema
+        ):
+            yield _call("final_result", {"summary": "A synthetic session."}, "reflection")
+            return
         if info.output_tools:
             self.extractor_calls += 1
             self.extractor_messages.append(messages)
@@ -72,6 +78,10 @@ def _session(store: MemoryStore, model: Model, **options: Any) -> ChatSession:
     return ChatSession(model(), ProtocolPack.load(ROOT), store, "en-US", **options)
 
 
+def _markers(store: MemoryStore) -> list[int]:
+    return [message_id for message_id, _session, _attempts in store.pending_extractions()]
+
+
 def _active(store: MemoryStore) -> list[str]:
     return [item.content for item in store.list_claims()]
 
@@ -86,12 +96,12 @@ def test_split_turn_commits_marker_and_extractor_records_after_delivery(tmp_path
         model.conversation_tools[0]
     )
     assert model.extractor_calls == 0
-    assert len(store.pending_extractions(MAX_EXTRACTION_ATTEMPTS)) == 1
+    assert len(_markers(store)) == 1
     assert store.list_claims() == []
 
     assert chat.extract_pending() == 1
     assert _active(store) == ["I moved to Turin in May"]
-    assert store.pending_extractions(MAX_EXTRACTION_ATTEMPTS) == []
+    assert _markers(store) == []
     data = json.loads(str(model.extractor_messages[0][0].parts[0].content).split("\n", 1)[1])
     assert data == {"previous_assistant_reply": None, "corrected_this_turn": []}
 
@@ -137,7 +147,7 @@ def test_extractor_rejects_quote_mined_out_of_its_negation(tmp_path) -> None:
     assert chat.extract_pending() == 0
     assert "negation" in _retries(model.extractor_messages[1])[0]
     assert store.list_claims() == []
-    assert len(store.pending_extractions(MAX_EXTRACTION_ATTEMPTS)) == 1
+    assert len(_markers(store)) == 1
 
 
 def test_crash_between_turn_commit_and_extraction_is_retried_once(tmp_path) -> None:
@@ -199,7 +209,7 @@ def test_provider_failure_keeps_marker_and_stops_after_bounded_attempts(tmp_path
     assert model.extractor_calls == MAX_EXTRACTION_ATTEMPTS
     assert store.list_claims() == []
     # The marker stays, so the turn is never archived without its memory or a marker.
-    assert store.pending_extractions(MAX_EXTRACTION_ATTEMPTS + 1) != []
+    assert _markers(store) != []
 
 
 def test_pending_marker_is_drained_before_the_next_retrieval(tmp_path) -> None:
@@ -225,7 +235,7 @@ def test_explicit_end_extracts_before_consolidation(tmp_path) -> None:
     chat.respond("I live alone.")
     chat.end()
     assert _active(store) == ["I live alone"]
-    assert store.pending_extractions(MAX_EXTRACTION_ATTEMPTS) == []
+    assert _markers(store) == []
 
 
 @pytest.mark.parametrize("mode", [MemoryMode.TRANSCRIPT_ONLY, MemoryMode.EPHEMERAL])
@@ -235,7 +245,7 @@ def test_non_standard_modes_create_no_markers_and_no_claims(tmp_path, mode) -> N
     chat = _session(store, model, memory_mode=mode)
     chat.respond("I live alone.")
     assert chat.extract_pending() == 0
-    assert store.pending_extractions(MAX_EXTRACTION_ATTEMPTS) == []
+    assert _markers(store) == []
     assert store.list_claims() == []
     assert model.extractor_calls == 0
 
@@ -243,7 +253,7 @@ def test_non_standard_modes_create_no_markers_and_no_claims(tmp_path, mode) -> N
 def test_under_18_disclosure_withholds_reports_for_the_rest_of_the_session(tmp_path) -> None:
     store = MemoryStore(tmp_path)
     model = Model(
-        {"withheld": "under_18", "reports": [_report("I am 15")]},
+        {"under_18": True, "reports": [_report("I am 15")]},
         {"reports": [_report("I play the violin")]},
     )
     chat = _session(store, model)
@@ -253,14 +263,126 @@ def test_under_18_disclosure_withholds_reports_for_the_rest_of_the_session(tmp_p
     chat.extract_pending()
     assert store.list_claims() == []
     assert model.extractor_calls == 1
-    assert store.pending_extractions(MAX_EXTRACTION_ATTEMPTS) == []
+    assert _markers(store) == []
     assert store.active_session().user_reports_withheld  # type: ignore[union-attr]
+
+
+def test_under_18_is_recorded_even_when_the_same_message_is_about_risk(tmp_path) -> None:
+    store = MemoryStore(tmp_path)
+    model = Model({"under_18": True, "risk": True}, {"reports": [_report("I play the violin")]})
+    chat = _session(store, model)
+    chat.respond("I'm 15 and I keep thinking about hurting myself.")
+    chat.extract_pending()
+    chat.respond("I play the violin.")
+    chat.extract_pending()
+    assert store.list_claims() == []
+    assert model.extractor_calls == 1
+    assert store.active_session().user_reports_withheld  # type: ignore[union-attr]
+
+
+def test_conversation_agent_can_flag_a_declared_age_for_the_session(tmp_path) -> None:
+    calls: list[str] = []
+
+    async def stream(messages: list[Any], info: Any):
+        if info.output_tools:
+            calls.append("extractor")
+            yield _call("final_result", {"reports": [_report("I play the violin")]})
+        elif (
+            any(
+                getattr(part, "part_kind", "") == "tool-return"
+                for m in messages
+                for part in m.parts
+            )
+            or calls
+        ):
+            yield "Thanks for telling me."
+        else:
+            calls.append("flag")
+            yield _call("record_user_under_18", {})
+
+    store = MemoryStore(tmp_path)
+    chat = ChatSession(
+        FunctionModel(stream_function=stream),
+        ProtocolPack.load(ROOT),
+        store,
+        "en-US",
+        memory_writing=MemoryWriting.SPLIT,
+    )
+    chat.respond("As I said, I'm in year nine.")
+    chat.respond("I play the violin.")
+    chat.extract_pending()
+    assert calls == ["flag"]
+    assert store.list_claims() == []
+    assert _markers(store) == []
+
+
+def test_a_later_turn_is_never_extracted_before_an_unresolved_earlier_one(tmp_path) -> None:
+    store = MemoryStore(tmp_path)
+    failures = [RuntimeError("provider down") for _ in range(MAX_EXTRACTION_ATTEMPTS)]
+    model = Model(*failures, {"reports": [_report("I play the violin")]})
+    chat = _session(store, model)
+    chat.respond("I'm 15.")
+    first = _markers(store)[0]
+    # The extraction after delivery fails, so the next turn's drain retries it first.
+    chat.extract_pending()
+    chat.respond("I play the violin.")
+    for _ in range(MAX_EXTRACTION_ATTEMPTS + 1):
+        chat.extract_pending()
+    assert model.extractor_calls == MAX_EXTRACTION_ATTEMPTS
+    assert store.list_claims() == []
+    assert _markers(store)[0] == first
+    assert len(_markers(store)) == 2
+
+
+def test_another_session_is_not_blocked_by_an_unresolved_marker(tmp_path) -> None:
+    store = MemoryStore(tmp_path)
+    failures = [RuntimeError("provider down") for _ in range(MAX_EXTRACTION_ATTEMPTS)]
+    model = Model(*failures, {"reports": [_report("I play the violin")]})
+    chat = _session(store, model)
+    chat.respond("Something.")
+    for _ in range(MAX_EXTRACTION_ATTEMPTS):
+        chat.extract_pending()
+    chat.end()
+    chat.respond("I play the violin.")
+    chat.extract_pending()
+    assert _active(store) == ["I play the violin"]
+
+
+def test_a_thread_never_joins_another_threads_transaction(tmp_path) -> None:
+    store = MemoryStore(tmp_path)
+    store.save_turn(store.start_session(), "text", "reply", [])
+    inside = threading.Event()
+    release = threading.Event()
+    errors: list[BaseException] = []
+
+    def hold() -> None:
+        with store.transaction():
+            store.list_claims()
+            inside.set()
+            release.wait(5)
+
+    holder = threading.Thread(target=hold)
+    holder.start()
+    inside.wait(5)
+
+    def read() -> None:
+        try:
+            store.list_sessions()
+        except BaseException as error:
+            errors.append(error)
+
+    reader = threading.Thread(target=read)
+    reader.start()
+    reader.join(5)
+    release.set()
+    holder.join(5)
+    assert errors == []
 
 
 def test_risk_turn_writes_nothing_and_later_turns_still_record(tmp_path) -> None:
     store = MemoryStore(tmp_path)
     model = Model(
-        {"withheld": "risk", "reports": [_report("my neighbours are poisoning my water")]},
+        {"risk": True, "reports": [_report("my neighbours are poisoning my water")]},
         {"reports": [_report("I walked by the river")]},
     )
     chat = _session(store, model)
@@ -329,10 +451,10 @@ def test_deleting_the_turn_removes_its_marker(tmp_path) -> None:
     chat.respond("Something private.")
     session_id = store.active_session().id  # type: ignore[union-attr]
     assert store.delete_session(session_id)
-    assert store.pending_extractions(MAX_EXTRACTION_ATTEMPTS) == []
+    assert _markers(store) == []
     chat.respond("Again.")
     store.delete_all()
-    assert store.pending_extractions(MAX_EXTRACTION_ATTEMPTS) == []
+    assert _markers(store) == []
 
 
 def test_inline_arm_keeps_the_report_tool_and_creates_no_marker(tmp_path) -> None:
@@ -340,7 +462,7 @@ def test_inline_arm_keeps_the_report_tool_and_creates_no_marker(tmp_path) -> Non
     model = Model()
     _session(store, model, memory_writing=MemoryWriting.INLINE).respond("Hello.")
     assert "record_user_reports" in model.conversation_tools[0]
-    assert store.pending_extractions(MAX_EXTRACTION_ATTEMPTS) == []
+    assert _markers(store) == []
 
 
 @pytest.mark.parametrize("writing", list(MemoryWriting))

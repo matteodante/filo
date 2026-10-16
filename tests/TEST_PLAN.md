@@ -51,8 +51,15 @@ opt-in regression aids; they are not clinical validation.
 - markers drain before the next turn's retrieval and before explicit consolidation, and deleting
   the turn removes its marker;
 - `transcript_only` and `ephemeral` create no markers, no claims, and no extractor call;
-- an under-18 disclosure withholds reports for the rest of the session, and a risk-premise turn
-  records nothing while later turns record normally;
+- an under-18 disclosure withholds reports for the rest of the session, also when the same message
+  is about danger or when the conversation agent flags it with `record_user_under_18`; a
+  risk-premise turn records nothing while later turns record normally;
+- a later marker in a session is never extracted before an unresolved earlier one, while other
+  sessions are not blocked;
+- the TUI keeps input disabled until extraction ends and does not show its failure as a failed
+  reply; Telegram extracts only after the offset and reply are stored and delivered, a rate-limited
+  notice never reruns the turn, and an extraction error never stops the listener;
+- a thread never joins another thread's store transaction;
 - wording a correction already handled is not recorded again by the extractor;
 - the conversation instructions carry when to write memory, not quote mechanics, in both arms.
 

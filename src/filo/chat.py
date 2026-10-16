@@ -90,9 +90,10 @@ EXTRACTION_INSTRUCTIONS = (
     "and what recurs for them. Record at most the two that matter most, or none. Record only the "
     "user's own statements: never the assistant's words, a guess about the user, or a passing "
     "remark. The case-data message gives the previous assistant reply only to resolve what the "
-    "user refers to, and lists wording corrected this turn, which is already handled. If the user "
-    "says they are under 18, or the message concerns possible danger to the user or someone else "
-    "or a premise that may reflect psychosis or mania, set withheld and record nothing."
+    "user refers to, and lists wording corrected this turn, which is already handled. Set "
+    "under_18 whenever the user says they are under 18, also when the message is about danger. "
+    "Set risk when the message concerns possible danger to the user or someone else or a premise "
+    "that may reflect psychosis or mania. When either is set, record nothing."
 )
 
 
@@ -111,19 +112,21 @@ class MemoryWriting(StrEnum):
     SPLIT = "split"
 
 
-class WithheldReason(StrEnum):
-    UNDER_18 = "under_18"
-    RISK = "risk"
-
-
 class ExtractedReports(StrictModel):
-    withheld: WithheldReason | None = Field(
-        default=None,
-        description="under_18 when the user says they are under 18; risk when the message "
-        "concerns possible danger to the user or someone else, or a premise that may reflect "
-        "psychosis or mania. Either one records nothing.",
+    under_18: bool = Field(
+        default=False,
+        description="True when the user says they are under 18, whatever else the message says.",
     )
-    reports: list[UserReport] = Field(default_factory=list, max_length=2)
+    risk: bool = Field(
+        default=False,
+        description="True when the message concerns possible danger to the user or someone else, "
+        "or a premise that may reflect psychosis or mania.",
+    )
+    reports: list[UserReport] = Field(
+        default_factory=list,
+        max_length=2,
+        description="Leave empty when under_18 or risk is true.",
+    )
 
 
 class FiloTurnOutput(StrictModel):
@@ -194,6 +197,7 @@ class TurnActions:
     process_feedback: list[ProcessFeedbackAction] = field(default_factory=list)
     intervention: InterventionAction | None = None
     support_choices: list[SupportChoiceAction] = field(default_factory=list)
+    user_under_18: bool = False
     called_tools: set[str] = field(default_factory=set)
     tool_call_counts: dict[str, int] = field(default_factory=dict)
     referenced_claim_ids: set[str] = field(default_factory=set)
@@ -339,7 +343,9 @@ class ChatSession:
         text: str,
         now: datetime | None = None,
         on_event: Callable[[TurnStreamEvent], None] | None = None,
+        on_commit: Callable[[ChatTurn], None] | None = None,
     ) -> ChatTurn:
+        """Run one turn; ``on_commit`` runs inside the turn's storage transaction."""
         if text.lstrip().startswith("/"):
             raise ValueError("Commands must be handled outside the conversation.")
         self.extract_pending()
@@ -508,8 +514,13 @@ class ChatSession:
             if self.memory_mode is MemoryMode.STANDARD:
                 self._commit_actions(actions, evidence_id, text, now)
                 if self.memory_writing is MemoryWriting.SPLIT:
+                    if actions.user_under_18:
+                        self.memory.withhold_user_reports(session.id)
                     self.memory.add_pending_extraction(evidence_id, now)
-        return ChatTurn(output.reply, notice, tool_trace, output)
+            turn = ChatTurn(output.reply, notice, tool_trace, output)
+            if on_commit is not None:
+                on_commit(turn)
+        return turn
 
     def extract_pending(self) -> int:
         """Record direct user reports for every marked turn; return how many markers cleared.
@@ -523,11 +534,22 @@ class ChatSession:
         # the result and its session save cannot overwrite what the extraction wrote.
         with self._extraction_lock:
             cleared = 0
-            for message_id in self.memory.pending_extractions(MAX_EXTRACTION_ATTEMPTS):
+            # Within a session, a turn is extracted only after every earlier one is resolved, so
+            # an unresolved earlier turn (which may be where the user gave their age) cannot be
+            # overtaken by a later one. An exhausted marker therefore blocks the rest of its
+            # session for good, which records less rather than risk a report about a minor.
+            blocked: set[str] = set()
+            for message_id, session_id, attempts in self.memory.pending_extractions():
+                if session_id in blocked:
+                    continue
+                if attempts >= MAX_EXTRACTION_ATTEMPTS:
+                    blocked.add(session_id)
+                    continue
                 try:
                     self._extract(message_id)
                 except Exception as error:  # Provider SDKs expose different error types.
                     self.memory.record_extraction_failure(message_id, type(error).__name__)
+                    blocked.add(session_id)
                 else:
                     cleared += 1
             return cleared
@@ -541,9 +563,9 @@ class ChatSession:
         with self.memory.transaction():
             if not self.memory.claim_pending_extraction(message_id):
                 return
-            if extracted.withheld is WithheldReason.UNDER_18:
+            if extracted.under_18:
                 self.memory.withhold_user_reports(session.id)
-            if extracted.withheld is not None:
+            if extracted.under_18 or extracted.risk:
                 return
             # As in the inline arm, wording a correction already handled is not recorded again.
             handled = {_normalized(item).casefold() for item in corrected}
@@ -569,7 +591,7 @@ class ChatSession:
 
         @agent.output_validator
         def validate(output: ExtractedReports) -> ExtractedReports:
-            if output.withheld is None:
+            if not (output.under_18 or output.risk):
                 _validate_user_reports(output.reports, user_text, {})
             return output
 
@@ -593,7 +615,20 @@ class ChatSession:
     def _register_write_tools(self, agent: Agent[TurnContext, FiloTurnOutput]) -> None:
         if self.memory_writing is MemoryWriting.INLINE:
             self._register_report_tool(agent)
+        else:
+            self._register_age_tool(agent)
         self._register_record_tools(agent)
+
+    def _register_age_tool(self, agent: Agent[TurnContext, FiloTurnOutput]) -> None:
+        @agent.tool(sequential=True)
+        def record_user_under_18(ctx: RunContext[TurnContext]) -> dict[str, bool]:
+            """Call when the user has said, in this message or earlier, that they are under 18.
+
+            What they report is then not recorded for the rest of this session.
+            """
+            ctx.deps.actions.user_under_18 = True
+            _record_tool_call(ctx.deps.actions, "record_user_under_18")
+            return {"recorded": True}
 
     def _register_report_tool(self, agent: Agent[TurnContext, FiloTurnOutput]) -> None:
         @agent.tool(sequential=True)
@@ -1019,7 +1054,12 @@ class ChatSession:
                     now=now,
                 )
                 app.pending_intervention_id = created.id
-        self.memory.save_app_state(app)
+        # The store calls above may also have written app state, so only the
+        # pending IDs decided here are written back onto the current state.
+        latest = self.memory.load_app_state()
+        latest.pending_hypothesis_id = app.pending_hypothesis_id
+        latest.pending_intervention_id = app.pending_intervention_id
+        self.memory.save_app_state(latest)
 
     def _instructions(
         self,

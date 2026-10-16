@@ -1020,3 +1020,44 @@ def test_setup_does_not_persist_provider_secret_when_later_cancelled(
     store = MemoryStore(tmp_path)
     assert store.load_secret("openai_api_key") is None
     assert store.load_app_state().default_model is None
+
+
+def test_setup_keeps_listener_state_written_while_it_waits_at_a_prompt(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    store = MemoryStore(tmp_path)
+    store.save_secret("telegram_bot_token", b"secret-bot-token")
+    state = store.load_app_state()
+    state.telegram_allowed_user_id = 42
+    state.telegram_update_offset = 5
+    store.save_app_state(state)
+    selections = iter(["test", "en-US", True, False])
+
+    def listener_writes_meanwhile(*args: object, **kwargs: object) -> object:
+        running = MemoryStore(tmp_path)
+        current = running.load_app_state()
+        current.telegram_update_offset = 99
+        current.telegram_consent_version = "listener-consent"
+        running.save_app_state(current)
+        return type("Prompt", (), {"ask": lambda _: kwargs["default"]})()
+
+    monkeypatch.setattr("filo.cli._prepare_semantic_memory", lambda: True)  # type: ignore[attr-defined]
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        "filo.cli.questionary.select",
+        lambda *args, **kwargs: type("Prompt", (), {"ask": lambda _: next(selections)})(),
+    )
+    monkeypatch.setattr("filo.cli.questionary.text", listener_writes_meanwhile)  # type: ignore[attr-defined]
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        "filo.cli.questionary.password",
+        lambda *args, **kwargs: type("Prompt", (), {"ask": lambda _: ""})(),
+    )
+    monkeypatch.delenv("FILO_MODEL", raising=False)  # type: ignore[attr-defined]
+    monkeypatch.delenv("FILO_LOCALE", raising=False)  # type: ignore[attr-defined]
+
+    assert main(["--data-dir", str(tmp_path), "setup"]) == 0
+
+    state = MemoryStore(tmp_path).load_app_state()
+    assert state.default_model == "test"
+    assert state.telegram_allowed_user_id == 42
+    assert state.telegram_update_offset == 99
+    assert state.telegram_consent_version == "listener-consent"

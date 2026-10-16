@@ -73,6 +73,12 @@ and `filo delete-data` propagate to derived semantic entries, formulation links,
 excerpts, intervention content, and pending IDs where applicable. `filo export` returns decrypted
 JSON; a file export is plaintext and must be protected.
 
+Telegram replies, tool traces, and change summaries that Telegram has not yet accepted are kept
+encrypted in a local queue table until delivery, and appear in `filo export` while pending. Every
+deletion above, claim forgetting, and corrections discard all of them rather than sending content
+that may quote deleted records; retention discards those queued before the cutoff that removed
+data. In `ephemeral` mode they stay in process memory only and are lost if the listener stops.
+
 Local deletion cannot delete data already held by a model provider or Telegram, or copies in
 exports, backups, terminal capture, screenshots, or system-level logs. Delete Telegram messages or
 the chat separately. Provider deletion must be handled under that provider's controls.

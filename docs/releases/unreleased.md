@@ -65,6 +65,10 @@ they record what shipped.
   that still contains `thera.db` is refused before Filo creates, chmods, or reads anything in it.
 - An existing database without the `filo-1` marker is now rejected even when it has a `state`
   table, and a fresh store creates its tables and marker in one transaction.
+- The `filo-1` baseline stays open until the first Filo release: schema additions made before it,
+  such as the encrypted `telegram_outbox` table, amend `filo-1` directly because no store carrying
+  that marker exists outside development. From the first Filo release on, every schema change ships
+  a forward migration.
 - Until the first Filo release, the README documents the checkout installation, because the
   bootstrap installers still pin the pre-rename `v0.3.1` tag.
 - Removed the outdated TUI screenshot, which still showed the old name and tool set.

@@ -59,12 +59,11 @@ from filo.memory import (
     MemoryError as MemoryStoreError,
 )
 from filo.protocol import ProtocolError, ProtocolPack
-from filo.telegram import TelegramBot, TelegramChannel, TelegramError
+from filo.telegram import TELEGRAM_SECRET, TelegramBot, TelegramChannel, TelegramError
 
 PACKAGE_PROTOCOL = Path(__file__).resolve().parent / "protocols" / "transdiagnostic"
 REPOSITORY_PROTOCOL = Path(__file__).resolve().parents[2] / "protocols" / "transdiagnostic"
 DEFAULT_PROTOCOL = PACKAGE_PROTOCOL if PACKAGE_PROTOCOL.is_dir() else REPOSITORY_PROTOCOL
-TELEGRAM_SECRET = "telegram_bot_token"
 DEFAULT_CODEX_MODEL = "codex:gpt-5.6-sol"
 DEFAULT_EMBEDDING_REPO = "Qwen/Qwen3-Embedding-0.6B"
 DEFAULT_EMBEDDING_REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
@@ -512,6 +511,7 @@ def _install_telegram_service(args: argparse.Namespace) -> Path | str:
 
 def _setup(store: MemoryStore, args: argparse.Namespace) -> int:
     state = store.load_app_state()
+    loaded = state.model_copy(deep=True)
     install_background = False
     try:
         model = _select_model()
@@ -610,7 +610,14 @@ def _setup(store: MemoryStore, args: argparse.Namespace) -> int:
                 store.save_secret(*provider_secret)
             if token_payload:
                 store.save_secret(TELEGRAM_SECRET, token_payload)
-            store.save_app_state(state)
+            # Setup can sit at a prompt for minutes while a listener keeps
+            # writing its offset and consent, so only the fields setup changed
+            # are applied to the state as it is now.
+            current = store.load_app_state()
+            for field in type(state).model_fields:
+                if getattr(state, field) != getattr(loaded, field):
+                    setattr(current, field, getattr(state, field))
+            store.save_app_state(current)
     except (EOFError, KeyboardInterrupt):
         print("\nSetup cancelled.")
         return 1
