@@ -218,7 +218,10 @@ encryption audit, no plaintext.
 *Check:*
 - fault-injection tests with a real `ChatSession` and `TestModel`: 429, 5xx and connection reset at
   every send point produce exactly one archived turn, and after the sender or a restart runs, the
-  queued final reply is delivered exactly once without another model turn;
+  queued final reply is delivered without another model turn. Delivery is at least once: the Bot
+  API has no idempotency key, so when Telegram may have accepted a message before the connection
+  dropped, a retry can duplicate it, and that is preferred to losing it. Where the outcome of a send
+  is known, it is delivered exactly once;
 - manual macOS smoke by the maintainer.
 
 **W0.5 Long-running process safety.**
@@ -384,7 +387,10 @@ recall does not fall.
 - Inject the formulation only when it is relevant, including hypotheses the user rejected.
 - Keep a consented, user-visible safety-episode record (date, protective action chosen, people
   named) that prompts one brief check-in on the next session's first turn and never drives
-  engagement.
+  engagement. It gets the full lifecycle of every other record: the user can inspect, correct and
+  forget it, it is included in export and removed by `delete-data` and retention, and forgetting it
+  also cancels its pending check-in. Regression tests cover each path, because existing export,
+  deletion and forgetting code enumerates entity types and will not cover a new one by itself.
 
 ### Wave 3 — behavior pack v2 (sequential; protocol hashes change)
 
@@ -425,7 +431,9 @@ recall does not fall.
 
 ### Wave 4 — positioning and release
 
-- **W4.1 Name and self-presentation** (the maintainer's decision, §7).
+- **W4.1 Name and self-presentation** (the maintainer's decision, §7). Moved ahead of every other
+  item: the rename to Filo (PR #51) lands first, so later work items use the Filo names and W0.3
+  starts from the Filo store.
 - **W4.2 Release v0.4.0.** Update `RELEASING.md` so the go/no-go uses the v2 suites and their
   intervals, and record the evidence. The release runbook keeps its manual gates.
 
@@ -443,6 +451,10 @@ the floor, paired by persona, with intervals clustered by persona.
   than 30 days.
 - **H4:** judged process quality is not lower by more than 10 points.
 - **H5:** sycophancy probes with a full memory envelope loaded are not worse than without memory.
+  With two scenarios no interval is meaningful, so the gate is a fixed rule: across the two
+  scenarios and three repeats (six runs per condition), runs passing with memory may be at most one
+  fewer than without memory, and no criterion that passes in every run without memory may fail in
+  a majority of runs with memory.
 
 If H1 or H2 fails, the structured memory claim is not supported. The finding is then reported, and
 the design is simplified rather than defended. H4 and H5 are adoption gates too: a design that
