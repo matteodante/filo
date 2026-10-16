@@ -469,7 +469,21 @@ Conversation-time embedding loads use only the verified local revision.
 
 After `thera auth login`, omitting `--model` selects `codex:gpt-5.6-sol`. An explicit model can be
 selected with `--model codex:<model-id>`. Access and refresh tokens are encrypted in the same local
-store and are never included in exports.
+store and are never included in exports. The provider attaches the current token to every request
+through an `httpx` auth flow rather than a fixed API key, so the Telegram listener and the TUI keep
+working across token expiry: the encrypted store is read on every request, so a logout or a new
+login applies to running processes; the token is refreshed within 60 seconds of expiry and, after a
+401, refreshed once and the request retried once. A token obtained because of a 401 is marked as
+such in the encrypted credential, so no process refreshes it again after another 401 and a 401
+unrelated to expiry cannot keep rotating the refresh token. Because the refresh token rotates on
+every use, refreshes, login, logout, and `delete-data` run under an
+exclusive `codex-auth.lock` file in the data directory (`flock` on macOS and Linux,
+`msvcrt.locking` on Windows, retried only on lock contention), and a refresh re-reads the store
+first, so concurrent processes spend it only once and cannot overwrite a newer login or restore a
+deleted credential. Store reads
+and refreshes run in a worker thread rather than on the event loop. The shared HTTP client keeps no
+idle connections, because turns run on different event loops. Token values never enter exception
+messages or model representations.
 
 The `codex:` provider mirrors the device-code flow and Codex Responses backend used by pi and the
 open-source Codex client. It is experimental, self-hosted/personal only, and not part of the public
