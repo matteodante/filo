@@ -187,6 +187,20 @@ Parallel PRs then touch different documents instead of one file.
 - the full offline suite on the new lock;
 - live Codex smoke on the maintainer's Mac.
 
+**W0.2b Embeddings without torch (added 2026-10-16 by the maintainer).**
+- torch is installed only to run the local embedding model (`Qwen/Qwen3-Embedding-0.6B` through
+  sentence-transformers). Run the same model through a lighter runtime instead: ONNX Runtime with an
+  exported or published ONNX graph, or a GGUF build through llama.cpp bindings, pinned by revision and
+  verified like today's model. Keep the PydanticAI `Embedder` interface, the on-device guarantee,
+  the setup download-and-verify flow and fail-closed behavior.
+- Adopt it only if retrieval is equivalent: on the multilingual retrieval eval and the W0.6 retrieval
+  benchmark, recall@k is not lower, and cosine similarity to the current embeddings is high enough
+  that the stored semantic index can be rebuilt without changing results; otherwise keep torch (CPU).
+- Removing torch also speeds up the evaluation harness, which today spends most of its CPU on
+  embeddings.
+
+*Check:* install size and time, embedding latency per message, recall@k against the torch baseline.
+
 **W0.3 Forward schema migrations.**
 - The rename to Filo is the last clean break. From the Filo store onward, use ordered, tested
   migrations, so the maintainer's memory survives every later change.
