@@ -183,3 +183,7 @@ These are deterministic and computed over every assistant reply:
 - 2026-10-16, same point: user turns are generated for tuning personas MP01–MP06 and all eight test
   personas only. MP07 and MP08 are not generated, because generation cost about twice the estimate
   and only one tuning persona is needed for the pilot.
+- 2026-10-16, during the test-split runs: the maintainer raised the total budget, so the hard cap is
+  US$80 (`FILO_EVAL_BUDGET_USD=80`), still with at least US$3 in reserve. The `claude-sonnet-5-5`
+  confirmation on 2–3 test personas, briefly deferred to save money for re-measurement after fixes,
+  is reinstated. No change to arms, criteria, splits or hypotheses.
