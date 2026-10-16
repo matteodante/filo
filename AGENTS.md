@@ -49,7 +49,10 @@ Build a small bilingual, single-adult-user agent that:
 - optionally uses a personal ChatGPT Plus/Pro Codex subscription through experimental OAuth;
 - keeps behavioral instructions and source references in Git-versioned protocol packs;
 - lets the user inspect, confirm, correct, forget, export, and delete memory;
-- records offered, agreed, tried, stopped, and untried interventions for later review;
+- records offered, agreed, tried, stopped, and untried interventions for later review, and asks
+  how an agreed experiment went on the first turn of the next session;
+- recaps recent weeks on request from its own records, and offers an opt-in WHO-5 wellbeing
+  self-check that is never a diagnosis;
 - accepts the same conversation through a private, allowlisted Telegram bot;
 - remains small enough for one maintainer to understand.
 
@@ -110,9 +113,6 @@ operation.
 Known gaps in the current state of the repository. Close them or record why they stay open; do not
 let them accumulate silently.
 
-- Forward schema migrations are required from the Filo store onward, but the migration framework
-  does not exist yet. Build it before the first change to the Filo schema after the first Filo
-  release.
 - The installers pin the release named in `pyproject.toml`. Until the first release tagged under
   the Filo name exists, that tag still contains the Therapist package and the installers cannot
   complete, so `README.md` documents the checkout installation instead of the bootstrap. The
@@ -133,10 +133,6 @@ let them accumulate silently.
   `docs/improvement-program-2026-10.md`). `inline` stays the default until a live measurement
   shows the split arm improves extraction recall without raising false memories or lowering
   conversation quality; then keep one arm and remove the other.
-- SQLite foreign keys are enforced only inside `MemoryStore.transaction()`. Plain connections use
-  `autocommit=False`, which opens a transaction on connect, where SQLite ignores
-  `PRAGMA foreign_keys = ON`. Deletion code removes dependent rows explicitly instead of relying on
-  cascades; fix the pragma together with the migration framework.
 
 ## Conversation behavior
 
@@ -269,7 +265,11 @@ staged write tools: `record_user_reports`, `record_hypothesis`, `correct_claim`,
 evidence-supported mutation adds value. Read results accumulate, identical writes are idempotent,
 and write invariants are validated across the complete staged turn. The model may use no tool and
 may load no skill. It may load at most one verified skill, with no keyword router or preliminary
-classifier. Write tools are absent outside standard memory mode.
+classifier. Write tools are absent outside standard memory mode. `retrieve_case_context` also
+takes an optional `recap_weeks`; it then returns only the recap that `/recap` renders (see the CLI
+contract) without wellbeing scores, within the same size limit, so a natural-language "what changed
+lately" is answered from stored records. Scores never reach the model provider, so forgetting a
+check leaves nothing of it in model history.
 
 Who records direct user reports is a setting, `MemoryWriting`, so both designs can be measured.
 `inline`, the default, is the design above. `split` removes `record_user_reports` from the
@@ -427,7 +427,8 @@ model on every turn.
   relationships, course, functioning, explanatory model, preferences, maintaining factors,
   strengths, hypotheses, and focus from active memory claim IDs.
 - `InterventionRecord`: one offered or agreed technique with consent state, linked claims,
-  prediction, outcome, user appraisal, and follow-up information. It is not a goal.
+  prediction (what the person expects, in their words), `planned_for` (when they mean to try it,
+  in their words), outcome, user appraisal, and follow-up information. It is not a goal.
 - `CaseContextEnvelope`: today's date, the most recent closed session with the time elapsed since
   it (always present, whatever the message is about), bounded user reports, hypotheses, conflicts,
   relevant earlier sessions, active interventions, process preferences, support choices, round
@@ -436,7 +437,13 @@ model on every turn.
   the root protocol already puts risk handling above them. The formulation reaches the model only
   through relevant claims: each carries the formulation fields it supports. Relevant hypotheses
   the user said do not fit arrive as `rejected_hypotheses`, still reviewable, so they are not
-  proposed again.
+  proposed again. On the first turn of a session, `follow_up_due` lists up to three agreed
+  experiments from before the session with no reported outcome; they are kept among the active
+  interventions, and one sentence of the case-data preamble asks the model to ask how each went and
+  adapt. This is data and envelope code only; the root protocol text is unchanged.
+- `WellbeingCheck`: one optional WHO-5 self-report, five answers from 0 to 5, stored encrypted in
+  `wellbeing_checks` with its time. The score is shown as the raw total out of 25 and the
+  percentage out of 100 with the change from the previous check, never with a cutoff or label.
 - `SemanticIndex`: encrypted packed float32 vectors for active memory items, active interventions,
   session reflections, process preferences, support choices, and archived rounds. It is derived,
   excluded from export, safe to discard, and never establishes truth or provenance.
@@ -481,7 +488,7 @@ Claim dimensions:
   negation lands on, and can drop an unmarked qualifier such as a condition, turning "only when I
   drink coffee" into an unconditional claim. No lexical check closes either, and the exact quote is
   retained beside the content so both stay auditable. No unquoted records are created because the
-  Filo store started as a clean break without migration.
+  Filo store started as a clean break from Therapist.
 
 The complete archive is retained until the user deletes it. Corrections and forgotten items must be
 removed from derived formulation and summaries and suppressed from future retrieval. Suppression
@@ -518,7 +525,8 @@ uses an in-process encrypted SQLite store and writes no conversation content to 
 still persists its update offset in the configuration store. Mode changes do not erase
 earlier data. `RetentionPolicy` independently controls raw-message, session-summary, and stale-
 hypothesis days; all values default to `None`. Apply it at startup, before retrieval when configured,
-or through explicit CLI commands. There is no worker.
+or through explicit CLI commands. There is no worker. Wellbeing checks are raw self-reports and
+share the raw-message limit; `transcript_only` records none, and `ephemeral` keeps them in memory.
 
 The `pending_extractions` table holds only a user-message ID, a timestamp, an attempt count, and an
 exception class name, never content. It was added to the unreleased `filo-1` schema directly, and
@@ -526,15 +534,29 @@ an existing `filo-1` store gains it when opened. Deleting a message, session, or
 markers.
 
 The rename to Filo was an intentional clean break: Filo uses a fresh data directory and never
-reads, migrates, or modifies a Therapist store. From the Filo store onward, every schema change must
-ship a forward migration so that years of memory survive upgrades; the migration framework is a
-separate work item and does not exist yet. Do not add legacy aliases, schema fallbacks, or plaintext
-backups. The Filo schema marker is `filo-1`. The `filo-1` baseline is frozen at the first Filo
-release; until then no store carrying it exists outside development, so schema additions such as
-the `telegram_outbox` table amend `filo-1` directly, and from that release on every change ships a
-forward migration (W0.3). Reject an unknown or future schema version before
+reads, migrates, or modifies a Therapist store. From the Filo store onward, every schema change
+ships a forward migration so that years of memory survive upgrades. The schema marker is
+`filo-<generation>`, currently `filo-1`; the `filo-1` baseline is frozen at the first Filo release,
+and until then schema additions such as the `telegram_outbox` table amend it directly. A later
+change raises `SCHEMA_GENERATION` and registers `MIGRATIONS[n]`, the step from `filo-n` to
+`filo-(n + 1)`, with a test that migrates a store of the previous generation.
+
+Opening a store reads its marker, runs every pending step in order, and applies the schema
+statements inside one transaction that holds the SQLite write lock from the start, so a concurrent
+process waits and then finds the store already migrated, and a process running an older release
+rejects the newer marker instead of acting on one it read earlier. A process that cannot get the
+lock in time reports that another Filo process is updating the store. Before commit, the migrated
+store must pass `integrity_check` and `foreign_key_check`, with foreign keys enforced during the
+steps, and decrypt its new marker. Any failure rolls the transaction back, and SQLite's rollback
+journal does the same for a process that dies before the commit completes, so a store is either
+fully migrated or unchanged. No recovery copy is taken: it would never be used on any of those paths
+and would double the disk an upgrade needs. The generation is also kept in SQLite's
+`user_version`, which every connection checks, so a process started before an upgrade, such as a
+Telegram listener left running, stops with a restart notice instead of writing the old layout into
+the migrated store. Do
+not add legacy aliases or schema fallbacks. Reject an unknown or newer schema version before
 creating any table, and refuse a data directory containing a Therapist `thera.db` before creating,
-chmodding, or reading anything in it.
+chmodding, or reading anything in it. Every connection enforces SQLite foreign keys.
 
 ## CLI contract
 
@@ -599,6 +621,8 @@ filo memory show
 filo memory case
 filo memory sessions
 filo memory interventions
+filo memory recap [--weeks N]
+filo memory wellbeing
 filo memory review <id> fits|partly_fits|does_not_fit|unsure <evidence>
 filo memory correct <id> <text>
 filo memory forget <id>
@@ -619,6 +643,14 @@ filo delete-data
 filo doctor
 filo protocol validate [path]
 ```
+
+`filo doctor` reports, without network access and without creating a store:
+- the protocol, memory, model, and semantic-memory state;
+- the ChatGPT login, as whether the access token is still valid and when it expires, or that it
+  refreshes on the next request (never a token value);
+- the Telegram configuration and, when configured, the background service state;
+- the `local:` endpoint when that provider is selected;
+- the kind, exception class, and time of the last failed turn.
 
 `filo chat` uses a full-screen Textual interface in an interactive terminal. It restores the latest
 50 user/assistant turns from the active session, renders assistant Rich Markdown, displays live tool
@@ -665,11 +697,21 @@ Conversation-time embedding loads use only the verified local revision.
 
 After `filo auth login`, omitting `--model` selects `codex:gpt-5.6-sol`. An explicit model can be
 selected with `--model codex:<model-id>`. Access and refresh tokens are encrypted in the same local
-store and are never included in exports. The provider attaches the current token to every request
-through an `httpx2` auth flow rather than a fixed API key, so the Telegram listener and the TUI keep
-working across token expiry: the encrypted store is read on every request, so a logout or a new
+store and are never included in exports. Conversation requests use PydanticAI's `openai-codex`
+model, `OpenAICodexModel`, which carries the Codex wire dialect (streaming, `store=false`, the
+fields the backend rejects). Its provider is `FiloCodexProvider`, a subclass of
+`OpenAICodexProvider` whose credential source is Filo's `CodexTokenSource` over the encrypted store:
+the subclass routes every request's credentials through that source instead of the built-in
+in-memory cache and lock-free refresh, which would lose the guarantees below. It overrides the
+private hook `_prepare_request_credentials`, so `pydantic-ai-slim` is capped below the next minor
+release and a test fails if the provider's auth flow stops calling the hook. Should the hook ever be
+bypassed, the source's `save()` still persists rotated tokens under `codex-auth.lock`. Filo keeps its own
+device-code login, which the built-in PKCE flow does not offer. The provider's auth flow attaches
+the current token to every request rather than a fixed API key, so the Telegram listener and the
+TUI keep working across token expiry: the encrypted store is read on every request, so a logout or a new
 login applies to running processes; the token is refreshed within 60 seconds of expiry and, after a
-401, refreshed once and the request retried once. A token obtained because of a 401 is marked as
+401, refreshed once and the request replayed once; when no refresh is allowed, the request is not
+sent again and the turn fails with a login-required error. A token obtained because of a 401 is marked as
 such in the encrypted credential, so no process refreshes it again after another 401 and a 401
 unrelated to expiry cannot keep rotating the refresh token. Because the refresh token rotates on
 every use, refreshes, login, logout, and `delete-data` run under an
@@ -679,7 +721,9 @@ first, so concurrent processes spend it only once and cannot overwrite a newer l
 deleted credential. Store reads
 and refreshes run in a worker thread rather than on the event loop. The shared HTTP client keeps no
 idle connections, because turns run on different event loops. Token values never enter exception
-messages or model representations.
+messages or model representations. Every login and token failure is an `AuthError`, which is also
+an `OpenAIError`, so the SDK raises it unchanged instead of retrying it as a connection failure.
+`filo chat` checks the login at startup; the Telegram listener defers it to the turn (see below).
 
 The `codex:` provider mirrors the device-code flow and Codex Responses backend used by pi and the
 open-source Codex client. It is experimental, self-hosted/personal only, and not part of the public
@@ -709,9 +753,12 @@ Interactive chat commands:
 /memory
 /sessions [id]
 /interventions
+/recap [weeks]
+/wellbeing [on|off|five answers]
 /confirm <id>
 /correct <id> <text>
 /forget <id>
+/retry
 /crisis
 /end
 /help
@@ -724,6 +771,50 @@ other command. The CLI and TUI consent prompt shows the same text, so neither tr
 emergency resources behind consent. The numbers and their verification dates live in
 `protocols/transdiagnostic/references/risk-resources.md`; re-verify them before each release. A
 model failure in the CLI, TUI, or Telegram points to `/crisis`.
+
+A failed turn is classified by `classify()` in `src/filo/failures.py` from the exception type, HTTP
+status, and the provider's error code, never from provider text, which can echo conversation
+content. The four kinds each get a notice that says what to do:
+- usage limit reached, with the reset time when the Codex backend reports `resets_at` or
+  `resets_in_seconds`;
+- login needed (`filo auth login`), for a missing login, a rejected refresh grant, a 401, or a 403
+  whose body carries an authentication error code; any other 403 (a proxy challenge, a regional
+  block) is reported as the provider refusing the request;
+- context full (`/end`, then send again);
+- transient, for everything else, including a plain rate limit.
+
+A fifth kind, setup, carries a local fix such as `filo memory model install`. Every notice offers
+`/retry` and points to `/crisis`. `classify()` never raises, so a malformed error body cannot stop
+the listener or leave the TUI disabled. A failed turn archives nothing; `ChatSession.failed_text`
+keeps its message in process memory only, never on disk, and `/retry` in the CLI, TUI, or Telegram
+sends it again as a fresh turn. The message is dropped on `/end`, on a Telegram configuration
+reload, and after any local deletion: it is kept only while the persistent store's deletion counter
+(the Telegram output epoch) still matches, so a retry cannot re-archive deleted content. Outside
+`ephemeral` mode the kind, the exception class, and the time of the last failure, never its content,
+are stored encrypted under their own state key for `filo doctor`; the Telegram log records only the
+kind, the exception classes, and the HTTP status.
+
+`/recap [weeks]` (default 4, at most 52) and `filo memory recap` list, from stored records only and
+with each record's ID: recurring session themes (a theme in at least two sessions), session
+summaries, interventions updated in the period with what was planned, expected, and observed, active
+user reports first seen in the period, active hypotheses reviewed in it, claims corrected in it, and
+wellbeing checks. A corrected claim appears with its current wording only while it is still held;
+one no longer held appears by ID and date alone, so a correction, a forgotten claim, or an archived
+hypothesis never brings old wording back. Nothing is generated, so a recap cannot say more than
+memory holds. It is read-only and,
+like every command, outside the conversation history.
+
+`/wellbeing` shows the five WHO-5 statements in the official English wording or, for an Italian
+locale, the published Italian translation, the 5-to-0 answer scale, the person's recent trend, and
+the attribution. `/wellbeing` followed by five answers records a check; `/wellbeing on` and `off`
+set reminders. The check is offered unprompted once, after `/end` closes a session, and after that
+only when reminders are on, at most every two weeks counting from both the last offer and the last
+check. It is never offered mid-conversation, nor in `ephemeral` or `transcript_only` mode, which
+keep no checks and so record no offer either. In Telegram, a recorded check, its reply, and the
+update offset commit in one transaction, so a redelivered update cannot record it twice.
+`delete-before` also deletes the checks older than its date. `filo memory wellbeing` prints the trend, and
+`filo memory forget <id>` or `/forget <id>` deletes one check. It is a personal record, not
+screening, diagnosis, or monitoring, and no clinical cutoff from the WHO-5 documentation is shown.
 
 `/quit` only leaves the process. It does not close the conversation session. A later message closes
 and consolidates the previous session if at least eight hours elapsed. `/end` closes it immediately.
@@ -738,6 +829,16 @@ The user never needs to know or type that ID: setup validates the bot token, cre
 single-use deep link, waits for the matching private `/start` update, displays the detected account,
 and asks for confirmation before storing its ID. A phone number cannot be used to look up a Bot API
 user and is neither requested nor stored.
+A listener stops on a configuration problem only when it cannot reach the chat: a missing bot
+token or pairing, or an invalid token. Anything else would make a background service restart into
+the same failure, so the listener starts anyway and each turn reports the fix through the failure
+notice:
+- a missing login is checked per turn, not at startup;
+- no saved model falls back to `codex:gpt-5.6-sol`;
+- the embedding model resolves on first use. Until setup records it and the files are present,
+  every use raises the setup notice, and the running listener recovers once
+  `filo memory model install` completes.
+`filo chat` keeps failing fast at startup.
 Startup validates the token, removes any webhook without discarding pending updates, installs the
 allowlisted chat's English command menu and transparent bot description, then long-polls text
 messages sequentially. The runtime ignores groups, bots, and every sender except the configured
@@ -754,6 +855,11 @@ increments its stored version and requires renewed consent.
 Telegram is a conversation and read-only transparency surface, not a remote administration surface.
 `/crisis` returns the same static localized resources as the CLI, without a model call or storage,
 and is answered before consent so it never sits behind the notice.
+`/retry` sends the last failed message again. `/recap [weeks]` renders the same read-only recap as
+the CLI. `/wellbeing` shows the check; with five answers it records one, and `on`/`off` sets the
+reminder opt-in. Recording runs once, outside the re-rendered view loop, so a deletion landing
+mid-render cannot record a check twice; it is the one write a Telegram command makes besides
+consent, and it is the person's own self-report.
 `/status`, `/case`, `/memory [page]`, `/sessions [page|id]`, `/interventions [page]`, and `/privacy`
 show the agent identity, active session, bounded paginated structured state, evidence links, data
 flow, and limitations. `/start`, `/help`, and `/end` manage consent, guidance, and the conversational
@@ -863,7 +969,10 @@ Minimal setup:
 2. Run `filo setup`, choose the model and locale, then paste the bot token in the hidden prompt.
 3. Open the one-time `t.me` link printed by setup, press Start, and confirm the detected account.
 4. Choose whether setup should install the background service, or run `filo telegram` manually.
-   Only one poller may use a bot token at a time.
+   Only one poller may use a bot token at a time. `filo telegram` holds an exclusive
+   `telegram-poller.lock` in the data directory for its lifetime, taken without waiting, so a
+   second listener for the same data directory exits with a message naming the running one.
+   Setup's pairing step takes the same lock, so it refuses to pair while a listener runs.
 5. Run `filo doctor`, then enter the exact consent command shown in the private bot chat.
 
 `export` returns decrypted user-owned application state, formulation, memory items, sessions, and
@@ -1166,7 +1275,10 @@ uv run ruff check .
 - Qwen3-Embedding-0.6B: https://huggingface.co/Qwen/Qwen3-Embedding-0.6B
 - WHO responsible AI for mental health, 2026:
   https://www.who.int/news/item/20-03-2026-towards-responsible-ai-for-mental-health-and-well-being--experts-chart-a-way-forward
-- WHO-5: https://www.who.int/publications/m/item/WHO-UCN-MSD-MHE-2024.01
+- WHO-5: https://www.who.int/publications/m/item/WHO-UCN-MSD-MHE-2024.01 (English original,
+  © WHO 2024, CC BY-NC-SA 3.0 IGO; Italian translation by the Psychiatric Research Unit, WHO
+  Collaborating Centre in Mental Health, published there and not created by WHO; both verified
+  2026-10-16)
 - NICE NG222: https://www.nice.org.uk/guidance/ng222
 - NICE NG225: https://www.nice.org.uk/guidance/ng225
 - NIST AI 600-1:

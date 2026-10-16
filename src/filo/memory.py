@@ -18,7 +18,7 @@ from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 from uuid import uuid4
 
 import numpy as np
@@ -28,8 +28,15 @@ from pydantic_ai import Embedder, ModelMessage, ModelMessagesTypeAdapter
 
 SESSION_GAP = timedelta(hours=8)
 LOCAL_OLLAMA_EMBEDDINGS_URL = "http://localhost:11434/v1"
-# Filo stores start their own schema lineage; future forward migrations build on this marker.
-SCHEMA_VERSION = b"filo-1"
+# Filo stores start their own schema lineage at filo-1. Every later schema change raises the
+# generation and adds the step that brings a store from the previous one to it.
+SCHEMA_GENERATION = 1
+SCHEMA_VERSION = f"filo-{SCHEMA_GENERATION}".encode()
+SCHEMA_MARKER = re.compile(rb"filo-([1-9][0-9]*)")
+# Ordered forward steps: MIGRATIONS[n] brings a filo-n store to filo-(n + 1). Each step receives
+# the store, so it can decrypt and re-encrypt payloads, and the connection holding the exclusive
+# migration transaction; it must not commit.
+MIGRATIONS: dict[int, Callable[[MemoryStore, sqlite3.Connection], None]] = {}
 LEGACY_THERAPIST_DATABASE = "thera.db"
 SCHEMA_STATEMENTS = """
 CREATE TABLE IF NOT EXISTS state (
@@ -73,6 +80,9 @@ CREATE TABLE IF NOT EXISTS pending_extractions (
 );
 CREATE TABLE IF NOT EXISTS telegram_outbox (
     id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, payload BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS wellbeing_checks (
+    id TEXT PRIMARY KEY, created_at TEXT NOT NULL, payload BLOB NOT NULL
 );
 """
 DEFAULT_STALE_HYPOTHESIS_DAYS = 180
@@ -285,6 +295,22 @@ class RetentionPolicy(StrictModel):
     stale_hypothesis_days: int | None = Field(default=None, ge=1)
 
 
+class WellbeingCheck(StrictModel):
+    """One WHO-5 self-report: five answers from 0 (at no time) to 5 (all of the time)."""
+
+    id: str
+    created_at: str
+    answers: list[Annotated[int, Field(ge=0, le=5)]] = Field(min_length=5, max_length=5)
+
+    @property
+    def raw_score(self) -> int:
+        return sum(self.answers)
+
+    @property
+    def percentage(self) -> int:
+        return self.raw_score * 4
+
+
 class TelegramDelivery(StrictModel):
     chat_id: int
     text: str = Field(min_length=1)
@@ -304,6 +330,10 @@ class AppState(StrictModel):
     telegram_allowed_user_id: int | None = Field(default=None, gt=0)
     pending_hypothesis_id: str | None = None
     pending_intervention_id: str | None = None
+    # The optional WHO-5 check: offered unprompted once, then every two weeks only if enabled.
+    wellbeing_enabled: bool = False
+    wellbeing_invited: bool = False
+    wellbeing_offered_at: str | None = None
 
 
 class EvidenceRef(StrictModel):
@@ -451,6 +481,7 @@ class InterventionRecord(StrictModel):
     consent_evidence: EvidenceRef | None = None
     evidence_message_ids: list[int] = Field(default_factory=list)
     prediction: str | None = Field(default=None, max_length=500)
+    planned_for: str | None = Field(default=None, max_length=500)
     context: str | None = Field(default=None, max_length=500)
     outcome: str | None = Field(default=None, max_length=500)
     user_appraisal: str | None = Field(default=None, max_length=500)
@@ -583,6 +614,7 @@ class ContextIntervention(StrictModel):
     description: str
     state: InterventionState
     prediction: str | None
+    planned_for: str | None = None
     outcome: str | None
     user_appraisal: str | None
     unwanted_effects: str | None
@@ -635,6 +667,8 @@ class CaseContextEnvelope(StrictModel):
     conflicts: list[ClaimConflict] = Field(default_factory=list)
     relevant_sessions: list[ContextSession] = Field(default_factory=list)
     active_interventions: list[ContextIntervention] = Field(default_factory=list)
+    # Agreed experiments from before this session with no reported outcome, on its first turn.
+    follow_up_due: list[str] = Field(default_factory=list)
     process_preferences: list[ContextPreference] = Field(default_factory=list)
     support_choices: list[ContextSupportChoice] = Field(default_factory=list)
     relevant_excerpts: list[ContextExcerpt] = Field(default_factory=list)
@@ -793,30 +827,97 @@ class MemoryStore:
         self._initialize_schema()
 
     def _initialize_schema(self) -> None:
-        with self._connect() as database:
-            tables = {
-                row[0]
-                for row in database.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
-            }
-        existing_version = self._read_state("schema_version") if "state" in tables else None
-        if tables and existing_version != SCHEMA_VERSION:
-            # Only an empty database may be initialized. Anything else without the current marker
-            # is rejected before a table is created, so an unknown store is left unmodified.
+        if self._ephemeral:
+            with self.transaction():
+                self._apply_schema(fresh=True)
+            return
+        # The whole check, any migration and the schema statements run in one transaction that
+        # holds the write lock from the start, so no other process can migrate, write, or settle
+        # a recovery copy between reading the marker and acting on it.
+        database = sqlite3.connect(
+            self.database_path, autocommit=True, timeout=BUSY_TIMEOUT_SECONDS
+        )
+        try:
+            database.execute("PRAGMA foreign_keys = ON")
+            try:
+                database.execute("BEGIN IMMEDIATE")
+            except sqlite3.OperationalError as error:
+                raise MemoryError(
+                    "Another Filo process is updating the data store. Try again shortly."
+                ) from error
+            self._transaction = database
+            try:
+                self._open_locked(database)
+                database.execute("COMMIT")
+            except BaseException:
+                if database.in_transaction:
+                    database.execute("ROLLBACK")
+                self._clear_caches()
+                raise
+            finally:
+                self._transaction = None
+        finally:
+            database.close()
+
+    def _open_locked(self, database: sqlite3.Connection) -> None:
+        tables = {
+            row[0]
+            for row in database.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+        if not tables:
+            self._apply_schema(fresh=True)
+            return
+        generation = _schema_generation(
+            self._read_state("schema_version") if "state" in tables else None
+        )
+        if generation is None or generation > SCHEMA_GENERATION:
+            # Anything without a known marker, including a store written by a newer Filo, is
+            # rejected before a table is created, so it is left unmodified.
             raise MemoryError(
-                "This data store uses an incompatible schema. Use a new data directory or delete "
-                "the old store; migration is not supported."
+                "This data store uses an unknown or newer schema. Use the Filo version that "
+                "wrote it, or a new data directory."
             )
+        if generation < SCHEMA_GENERATION:
+            self._migrate(database, generation)
+        self._apply_schema(fresh=False)
+
+    def _apply_schema(self, *, fresh: bool) -> None:
         # Individual statements, unlike executescript, stay inside one transaction, so the
         # tables and the schema marker commit together or not at all.
-        with self.transaction(), self._connect() as database:
+        with self._connect() as database:
             for statement in SCHEMA_STATEMENTS.split(";"):
                 if statement.strip():
                     database.execute(statement)
-            if not tables:
+            if fresh:
                 self._write_state("schema_version", SCHEMA_VERSION)
+            # A plain integer every transaction can check without decrypting, so a process
+            # started before an upgrade stops instead of writing the old layout into it.
+            database.execute(f"PRAGMA user_version = {SCHEMA_GENERATION}")
             # Earlier filo-1 development stores indexed user messages as "message"; rounds
             # replaced them, and nothing else would ever delete those vectors.
             database.execute("DELETE FROM semantic_index WHERE entity_type = 'message'")
+
+    def _migrate(self, database: sqlite3.Connection, generation: int) -> None:
+        """Bring an older store forward inside the caller's write transaction.
+
+        The steps run, and the result must pass integrity and foreign-key checks and decrypt its
+        new marker before the caller commits. Any failure rolls the whole transaction back, and
+        SQLite's rollback journal does the same for a process that dies before the commit
+        completes, so the store is either fully migrated or unchanged. No copy is taken: it would
+        never be used on any of those paths and would double the disk an upgrade needs.
+        """
+        try:
+            database.execute("PRAGMA defer_foreign_keys = ON")
+            for step in range(generation, SCHEMA_GENERATION):
+                MIGRATIONS[step](self, database)
+            self._write_state("schema_version", SCHEMA_VERSION)
+            (integrity,) = database.execute("PRAGMA integrity_check").fetchone()
+            if integrity != "ok" or database.execute("PRAGMA foreign_key_check").fetchall():
+                raise MemoryError("The migrated store failed verification.")
+            if self._read_state("schema_version") != SCHEMA_VERSION:
+                raise MemoryError("The migrated store failed verification.")
+        except Exception as error:
+            raise MemoryError("Updating the data store failed; it was left unchanged.") from error
 
     def load_app_state(self) -> AppState:
         payload = self._read_state("app")
@@ -824,6 +925,15 @@ class MemoryStore:
 
     def save_app_state(self, state: AppState) -> None:
         self._write_state("app", state.model_dump_json().encode())
+
+    def record_failure(self, kind: str, error_class: str, now: datetime | None = None) -> None:
+        """Keep the last failed turn's kind and exception class, never its content."""
+        payload = {"kind": kind, "error_class": error_class, "at": _iso(now or _now())}
+        self._write_state("last_failure", json.dumps(payload).encode())
+
+    def last_failure(self) -> dict[str, str] | None:
+        payload = self._read_state("last_failure")
+        return None if payload is None else json.loads(payload)
 
     def load_formulation(self) -> CaseFormulation:
         payload = self._read_state("formulation")
@@ -1851,6 +1961,7 @@ class MemoryStore:
         consent_quote: str | None = None,
         evidence_text: str | None = None,
         prediction: str | None = None,
+        planned_for: str | None = None,
         context: str | None = None,
         follow_up_information: str | None = None,
         now: datetime | None = None,
@@ -1885,6 +1996,7 @@ class MemoryStore:
             ),
             evidence_message_ids=[evidence_message_id],
             prediction=_normalized(prediction) if prediction else None,
+            planned_for=_normalized(planned_for) if planned_for else None,
             context=_normalized(context) if context else None,
             follow_up_information=(
                 _normalized(follow_up_information) if follow_up_information else None
@@ -1905,6 +2017,7 @@ class MemoryStore:
         consent_quote: str | None = None,
         evidence_text: str | None = None,
         prediction: str | None = None,
+        planned_for: str | None = None,
         context: str | None = None,
         outcome: str | None = None,
         user_appraisal: str | None = None,
@@ -1921,6 +2034,7 @@ class MemoryStore:
         for field_name, value in (
             ("description", description),
             ("prediction", prediction),
+            ("planned_for", planned_for),
             ("context", context),
             ("outcome", outcome),
             ("user_appraisal", user_appraisal),
@@ -1970,7 +2084,13 @@ class MemoryStore:
         *,
         allow_index_write: bool = True,
         now: datetime | None = None,
+        follow_up_before: str | None = None,
     ) -> CaseContextResult:
+        """Bounded case data for one query.
+
+        ``follow_up_before`` is the start of a session on its first turn: experiments the person
+        agreed to before it and has not reported on are then listed in ``follow_up_due``.
+        """
         current = now or _now()
         if not self._ephemeral:
             policy = self.load_app_state().retention_policy
@@ -2096,12 +2216,25 @@ class MemoryStore:
                 claim_round_scores[reference.message_id] = max(
                     claim_round_scores.get(reference.message_id, 0.0), _context_claim_score(item)
                 )
+        follow_up_due = (
+            [
+                item.id
+                for item in self.list_interventions(active_only=True)
+                if item.state is InterventionState.AGREED
+                and not item.outcome
+                and item.updated_at < follow_up_before
+            ][:3]
+            if follow_up_before
+            else []
+        )
         interventions = self._relevant_interventions(
             query,
             query_vector,
             app_state.pending_intervention_id,
             allow_index_write=allow_index_write,
+            pinned=set(follow_up_due),
         )
+        interventions.sort(key=lambda item: item.id not in follow_up_due)
         latest, sessions = self._relevant_sessions(
             query, query_vector, allow_index_write=allow_index_write
         )
@@ -2142,6 +2275,7 @@ class MemoryStore:
             conflicts=conflicts[:5],
             relevant_sessions=sessions[:3],
             active_interventions=interventions[:5],
+            follow_up_due=follow_up_due,
             process_preferences=[
                 ContextPreference(
                     id=item.id,
@@ -2191,6 +2325,7 @@ class MemoryStore:
         pending_id: str | None,
         *,
         allow_index_write: bool,
+        pinned: set[str] | None = None,
     ) -> list[ContextIntervention]:
         items = self.list_interventions(active_only=True)
         text = {
@@ -2199,6 +2334,7 @@ class MemoryStore:
                 for value in (
                     item.description,
                     item.prediction,
+                    item.planned_for,
                     item.context,
                     item.outcome,
                     item.user_appraisal,
@@ -2227,6 +2363,7 @@ class MemoryStore:
                 description=item.description,
                 state=item.state,
                 prediction=item.prediction,
+                planned_for=item.planned_for,
                 outcome=item.outcome,
                 user_appraisal=item.user_appraisal,
                 unwanted_effects=item.unwanted_effects,
@@ -2238,6 +2375,7 @@ class MemoryStore:
             )
             for item in items
             if item.id == pending_id
+            or item.id in (pinned or set())
             or _lexical_score(query, text[item.id]) > 0
             or scores.get(item.id, 0.0) >= MIN_SEMANTIC_RELEVANCE
             or item.unwanted_effects is not None
@@ -2375,6 +2513,7 @@ class MemoryStore:
         message_ids: list[int] = []
         summaries: list[SessionRecord] = []
         hypotheses: list[MemoryItem] = []
+        wellbeing_ids: list[str] = []
         with self._connect() as database:
             if policy.raw_message_days:
                 cutoff = _iso(current - timedelta(days=policy.raw_message_days))
@@ -2382,6 +2521,13 @@ class MemoryStore:
                     row[0]
                     for row in database.execute(
                         "SELECT id FROM messages WHERE created_at < ?", (cutoff,)
+                    ).fetchall()
+                ]
+                # Wellbeing checks are raw self-reports, so they share the raw-message limit.
+                wellbeing_ids = [
+                    row[0]
+                    for row in database.execute(
+                        "SELECT id FROM wellbeing_checks WHERE created_at < ?", (cutoff,)
                     ).fetchall()
                 ]
         if policy.session_summary_days:
@@ -2402,6 +2548,7 @@ class MemoryStore:
             ]
         result = {
             "messages": len(message_ids),
+            "wellbeing_checks": len(wellbeing_ids),
             "session_summaries": len(summaries),
             "stale_hypotheses": len(hypotheses),
         }
@@ -2412,7 +2559,7 @@ class MemoryStore:
         removal_cutoffs = [
             current - timedelta(days=days)
             for days, removed in (
-                (policy.raw_message_days, message_ids),
+                (policy.raw_message_days, [*message_ids, *wellbeing_ids]),
                 (policy.session_summary_days, summaries),
                 (policy.stale_hypothesis_days, hypotheses),
             )
@@ -2422,6 +2569,10 @@ class MemoryStore:
             if removal_cutoffs:
                 self._discard_telegram_output(before=max(removal_cutoffs))
             self._delete_message_ids(message_ids)
+            with self._connect() as database:
+                database.executemany(
+                    "DELETE FROM wellbeing_checks WHERE id = ?", [(item,) for item in wellbeing_ids]
+                )
             for session in summaries:
                 _clear_session_reflection(session)
                 self.save_session(session)
@@ -2463,7 +2614,13 @@ class MemoryStore:
             if datetime.fromisoformat(item.ended_at or item.last_activity_at) < before
         ]
         deleted = sum(self.delete_session(item.id) for item in sessions)
-        return {"sessions": deleted}
+        with self.transaction(), self._connect() as database:
+            checks = database.execute(
+                "DELETE FROM wellbeing_checks WHERE created_at < ?", (_iso(before),)
+            ).rowcount
+            if checks:
+                self._discard_telegram_output()
+        return {"sessions": deleted, "wellbeing_checks": checks}
 
     def export(self) -> dict[str, Any]:
         with self._connect() as database:
@@ -2525,7 +2682,39 @@ class MemoryStore:
             "telegram_outbox": [
                 item.model_dump(mode="json") for _id, item in self.list_telegram_output()
             ],
+            "wellbeing_checks": [
+                {**item.model_dump(mode="json"), "raw_score": item.raw_score}
+                for item in self.list_wellbeing_checks()
+            ],
         }
+
+    def record_wellbeing_check(
+        self, answers: list[int], now: datetime | None = None
+    ) -> WellbeingCheck:
+        check = WellbeingCheck(id=f"wb_{uuid4().hex[:10]}", created_at=_iso(now), answers=answers)
+        with self._connect() as database:
+            database.execute(
+                "INSERT INTO wellbeing_checks(id, created_at, payload) VALUES (?, ?, ?)",
+                (check.id, check.created_at, self._encrypt_model(check)),
+            )
+        return check
+
+    def list_wellbeing_checks(self) -> list[WellbeingCheck]:
+        with self._connect() as database:
+            rows = database.execute(
+                "SELECT payload FROM wellbeing_checks ORDER BY created_at, id"
+            ).fetchall()
+        return [WellbeingCheck.model_validate(self._decrypt_json(row[0])) for row in rows]
+
+    def forget_wellbeing_check(self, check_id: str) -> bool:
+        with self.transaction(), self._connect() as database:
+            deleted = database.execute(
+                "DELETE FROM wellbeing_checks WHERE id = ?", (check_id,)
+            ).rowcount
+            if deleted:
+                # A queued Telegram view may show this score.
+                self._discard_telegram_output()
+        return bool(deleted)
 
     def load_secret(self, name: str) -> bytes | None:
         return self._read_state(f"secret:{name}")
@@ -2553,6 +2742,7 @@ class MemoryStore:
                 "process_preferences",
                 "support_choices",
                 "telegram_outbox",
+                "wellbeing_checks",
                 "state",
             ):
                 database.execute(f"DELETE FROM {table}")
@@ -2951,6 +3141,7 @@ class MemoryStore:
             if not record.evidence_message_ids:
                 record.description = "Content removed by retention or selective deletion."
                 record.prediction = None
+                record.planned_for = None
                 record.context = None
                 record.outcome = None
                 record.user_appraisal = None
@@ -3016,6 +3207,7 @@ class MemoryStore:
             for field_name in (
                 "description",
                 "prediction",
+                "planned_for",
                 "context",
                 "outcome",
                 "user_appraisal",
@@ -3196,6 +3388,7 @@ class MemoryStore:
             database.execute("PRAGMA foreign_keys = ON")
             database.execute("BEGIN IMMEDIATE")
             try:
+                _require_current_generation(database)
                 yield
             except BaseException:
                 if database.in_transaction:
@@ -3226,9 +3419,16 @@ class MemoryStore:
 
     def _open_connection(self) -> sqlite3.Connection:
         database = sqlite3.connect(
-            self.database_path, autocommit=False, timeout=BUSY_TIMEOUT_SECONDS
+            self.database_path, autocommit=True, timeout=BUSY_TIMEOUT_SECONDS
         )
+        # The pragma is a no-op inside a transaction, so it is set before leaving autocommit.
         database.execute("PRAGMA foreign_keys = ON")
+        try:
+            _require_current_generation(database)
+        except BaseException:
+            database.close()
+            raise
+        database.autocommit = False
         return database
 
     def _read_state(self, name: str) -> bytes | None:
@@ -3796,3 +3996,15 @@ def _require_quoted_time(expression: TimeExpression, evidence: str, message_time
     problem = time_expression_problem(expression, evidence, message_time)
     if problem:
         raise ValueError(problem)
+
+
+def _schema_generation(marker: bytes | None) -> int | None:
+    match = SCHEMA_MARKER.fullmatch(marker or b"")
+    return int(match.group(1)) if match else None
+
+
+def _require_current_generation(database: sqlite3.Connection) -> None:
+    """Stop a process started before an upgrade from writing the old layout into the new one."""
+    (generation,) = database.execute("PRAGMA user_version").fetchone()
+    if generation != SCHEMA_GENERATION:
+        raise MemoryError("The data store was upgraded by a newer Filo. Restart this process.")

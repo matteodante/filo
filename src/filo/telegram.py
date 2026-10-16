@@ -12,6 +12,7 @@ import sqlite3
 import threading
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -19,7 +20,10 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from filo.chat import ChatSession, ChatTurn, TurnStreamEvent, TurnStreamKind, crisis_resources
+from filo.failures import classify
 from filo.memory import MemoryMode, MemoryStore, TelegramDelivery
+from filo.recap import DEFAULT_RECAP_WEEKS, build_recap, render_recap
+from filo.wellbeing import wellbeing_command, wellbeing_offer
 
 API_ROOT = "https://api.telegram.org"
 TELEGRAM_SECRET = "telegram_bot_token"
@@ -87,6 +91,9 @@ class TelegramBot:
             ("sessions", "Sessions and summaries"),
             ("interventions", "Recorded interventions"),
             ("privacy", "Data, providers and limits"),
+            ("recap", "Your recent weeks, from your records"),
+            ("wellbeing", "Optional WHO-5 wellbeing check"),
+            ("retry", "Send the last failed message again"),
             ("end", "Close the session"),
         ]
         self._call("deleteMyCommands", {})
@@ -257,6 +264,8 @@ class TelegramChannel:
             try:
                 self._listen()
             except _ConfigurationChanged:
+                # A failed message belongs to the configuration that received it.
+                self.session.discard_failed()
                 state = self.config_store.load_app_state()
                 token = self.config_store.load_secret(TELEGRAM_SECRET)
                 if not token or not state.telegram_allowed_user_id:
@@ -496,7 +505,37 @@ class TelegramChannel:
 
         if command == "/end":
             send(self._command_response(command, None) or self._unknown_command())
+            # Closing a session is a calm moment for the optional wellbeing check. A mode that
+            # keeps no checks neither offers one nor records that it did.
+            if self.session.memory_mode is MemoryMode.STANDARD:
+                offer = wellbeing_offer(
+                    checks=self.store, settings=self.config_store, locale=self.session.locale
+                )
+                if offer:
+                    send(offer)
             return True, False
+        if command == "/wellbeing" and _command_argument(text):
+            # The check, its reply, and the offset that consumes the update commit together, so
+            # a redelivered update cannot record it twice, and no deletion can land between
+            # rendering the trend and queueing it.
+            with self.config_store.transaction():
+                epoch = self.config_store.telegram_output_epoch()
+                send(
+                    wellbeing_command(
+                        _command_argument(text),
+                        checks=self.store,
+                        settings=self.config_store,
+                        locale=self.session.locale,
+                        can_record=self.session.memory_mode is not MemoryMode.TRANSCRIPT_ONLY,
+                    )
+                )
+                enqueue(rendered_at_epoch=epoch)
+            return True, True
+        if command == "/retry":
+            if self.session.failed_text is None:
+                send("Nothing to retry.")
+                return True, False
+            text, command = self.session.failed_text, None
         if command:
             # These views render stored records. A local deletion between the
             # read and the queue write would otherwise let a discarded record
@@ -582,20 +621,22 @@ class TelegramChannel:
             # one, and keep the body out: it can echo conversation content.
             status = getattr(error, "status_code", None)
             status_note = f" (HTTP {status})" if status else ""
-            # The type alone cannot separate a refused request from a dropped
-            # connection. Bound the message: a provider can echo prompt content
-            # back in an error, and conversations must not reach the log.
-            summary = " ".join(str(error).split())[:200]
             cause = error.__cause__
             cause_note = f" <- {type(cause).__name__}" if cause is not None else ""
+            failure = classify(error)
+            # Kind and classes only, never the message: a provider can echo conversation
+            # content in an error, and this log is plain text.
             print(
-                f"Model error while handling Telegram message: "
-                f"{type(error).__name__}{status_note}{cause_note}: {summary}"
+                f"Model error ({failure.kind.value}) while handling Telegram message: "
+                f"{type(error).__name__}{status_note}{cause_note}"
             )
+            if not self._ephemeral:  # Ephemeral mode writes nothing about the conversation.
+                with suppress(Exception):  # A busy store must not hide the notice.
+                    self.config_store.record_failure(failure.kind.value, failure.error_class)
             # Any failure inside the turn transaction rolled the queued replies
             # back with it, so the caller queues this notice instead.
             outbox.clear()
-            send(self._model_error())
+            send(failure.notice())
             return True, False
         finally:
             typing_stopped.set()
@@ -634,6 +675,9 @@ class TelegramChannel:
                 "/start — identity, notice, and consent\n"
                 "/status — agent, session, and archive status\n"
                 "/crisis — emergency resources, without a model reply\n"
+                "/recap [weeks] — recurring themes, what you tried, and what changed\n"
+                "/wellbeing — optional WHO-5 check and its trend\n"
+                "/retry — send the last failed message again\n"
                 "/end — close and summarize the session\n\n"
                 "TRANSPARENCY\n"
                 "/case — formulation and linked evidence\n"
@@ -656,6 +700,13 @@ class TelegramChannel:
             return self._interventions(argument)
         if command == "/privacy":
             return self._privacy()
+        if command == "/recap":
+            weeks = int(argument) if argument and argument.isdigit() else DEFAULT_RECAP_WEEKS
+            return render_recap(build_recap(self.store, weeks))
+        if command == "/wellbeing":
+            return wellbeing_command(
+                None, checks=self.store, settings=self.config_store, locale=self.session.locale
+            )
         if command == "/end":
             closed = self.session.end()
             return (
@@ -841,6 +892,8 @@ class TelegramChannel:
                 f"Method: {item.skill}",
                 item.description,
             ]
+            if item.planned_for:
+                details.append(f"Planned for: {item.planned_for}")
             if item.prediction:
                 details.append(f"Prediction: {item.prediction}")
             if item.outcome:
@@ -957,12 +1010,6 @@ class TelegramChannel:
 
     def _unknown_command(self) -> str:
         return "Unknown command. Use /help."
-
-    def _model_error(self) -> str:
-        return (
-            "I couldn't respond. Please try again shortly. "
-            "If you may be in danger, /crisis shows emergency resources."
-        )
 
 
 def split_message(text: str, limit: int = MESSAGE_LIMIT) -> list[str]:
