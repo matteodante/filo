@@ -7,6 +7,7 @@ import os
 import secrets
 import sys
 from collections.abc import Callable, Sequence
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -50,6 +51,7 @@ from filo.chat import (
     TurnStreamKind,
     crisis_resources,
 )
+from filo.failures import classify
 from filo.memory import (
     ClaimCorrection,
     ClaimFit,
@@ -1112,7 +1114,7 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
 
     print("Commands: /case, /memory, /sessions [id], /interventions,")
     print("          /correct <id> <text>,")
-    print("          /forget <id>, /crisis, /end, /help, /quit")
+    print("          /forget <id>, /retry, /crisis, /end, /help, /quit")
     while True:
         try:
             user_text = input("you> ").strip()
@@ -1123,7 +1125,13 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
             continue
         if user_text == "/quit":
             return 0
-        if user_text.startswith("/"):
+        if user_text == "/retry":
+            if session.failed_text is None:
+                print("Nothing to retry.")
+                continue
+            user_text = session.failed_text
+            print(f"you> {user_text}")
+        elif user_text.startswith("/"):
             if _chat_command(user_text, session, store):
                 continue
             print("Unknown command. Use /help.")
@@ -1163,13 +1171,20 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
             if live:
                 live.stop()
         if failure is not None:
-            print(f"Model error: {failure}")
-            print("If you may be in danger, /crisis shows emergency resources.")
+            print(_report_failure(failure, store))
             continue
         print(f"filo> {turn.text}")
         if turn.notice:
             print(f"notice> {turn.notice}")
         _extract_reports(session)
+
+
+def _report_failure(error: Exception, store: MemoryStore) -> str:
+    """Record a failed turn's kind for `filo doctor` and return the notice to show."""
+    failure = classify(error)
+    with suppress(Exception):  # A busy store must not hide the notice.
+        store.record_failure(failure.kind.value, failure.error_class)
+    return failure.notice()
 
 
 def _extract_reports(session: ChatSession) -> None:
@@ -1195,6 +1210,7 @@ def _chat_tui(session: ChatSession, store: MemoryStore) -> int:
             store,
             output=output,
         ),
+        lambda error: _report_failure(error, store),
     )
     app.run()
     return 0
@@ -1242,7 +1258,7 @@ def _chat_command(
     try:
         if name == "/help":
             output("/case /memory /sessions [id] /correct <id> <text>")
-            output("/interventions /forget <id> /crisis /end /quit")
+            output("/interventions /forget <id> /retry /crisis /end /quit")
         elif name == "/crisis":
             output(crisis_resources(session.locale))
         elif name == "/case":

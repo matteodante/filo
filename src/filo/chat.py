@@ -40,6 +40,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models import Model
 
+from filo.failures import ContextFull
 from filo.memory import (
     FORMULATION_FIELDS,
     PARAPHRASABLE_KINDS,
@@ -376,6 +377,9 @@ class ChatSession:
             self.context_window_tokens * CONTEXT_OUTPUT_RESERVE_RATIO
         )
         self.input_token_budget = self.context_window_tokens - self.output_token_reserve
+        # The last message whose turn failed, kept in process memory only for /retry. A failed
+        # turn archives nothing, so retrying it is a fresh turn.
+        self.failed_text: str | None = None
 
     def respond(
         self,
@@ -387,6 +391,21 @@ class ChatSession:
         """Run one turn; ``on_commit`` runs inside the turn's storage transaction."""
         if text.lstrip().startswith("/"):
             raise ValueError("Commands must be handled outside the conversation.")
+        try:
+            turn = self._respond(text, now, on_event, on_commit)
+        except Exception:
+            self.failed_text = text
+            raise
+        self.failed_text = None
+        return turn
+
+    def _respond(
+        self,
+        text: str,
+        now: datetime | None,
+        on_event: Callable[[TurnStreamEvent], None] | None,
+        on_commit: Callable[[ChatTurn], None] | None,
+    ) -> ChatTurn:
         self.extract_pending()
         session = self._current_session(now)
         context = self.memory.retrieve_case_context(
@@ -400,7 +419,7 @@ class ChatSession:
         notice: str | None = None
         if estimated_tokens > self.input_token_budget:
             if not history:
-                raise ValueError("This message does not fit the configured model context window.")
+                raise ContextFull("This message does not fit the configured model context window.")
             self._consolidate(session, now, end_reason=SessionEndReason.CONTEXT_LIMIT)
             session = self.memory.start_session(now)
             context = self.memory.retrieve_case_context(
@@ -412,7 +431,7 @@ class ChatSession:
             context_json = _bounded_context_json(context)
             estimated_tokens = _estimate_context_tokens(instructions, context_json, history, text)
             if estimated_tokens > self.input_token_budget:
-                raise ValueError("This message does not fit the configured model context window.")
+                raise ContextFull("This message does not fit the configured model context window.")
             notice = self._context_rollover_notice()
 
         available_claims = _context_claims(context)

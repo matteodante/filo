@@ -14,6 +14,7 @@ from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
+import filo.auth as auth
 from filo.chat import (
     MAX_REQUEST_OUTPUT_TOKENS,
     TurnStreamEvent,
@@ -584,6 +585,38 @@ def test_plain_chat_does_not_persist_rejected_draft_in_redirected_output(
     output = capsys.readouterr().out  # type: ignore[attr-defined]
     assert "rejected draft" not in output
     assert output.count("filo> Validated reply.") == 1
+
+
+def test_plain_chat_retries_the_failed_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.consent_version = "alpha-4"
+    store.save_app_state(state)
+    inputs = iter(["/retry", "Busy week.", "/retry", "/quit"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    received: list[str] = []
+
+    def respond(text: str, *, on_event: object) -> SimpleNamespace:
+        received.append(text)
+        if len(received) == 1:
+            session.failed_text = text
+            raise auth.LoginRequired("Not logged in.")
+        session.failed_text = None
+        return SimpleNamespace(text=f"Reply to {text}", notice=None)
+
+    session = SimpleNamespace(
+        respond=respond, locale="en-US", extract_pending=lambda: 0, failed_text=None
+    )
+    assert _chat(session, store) == 0  # type: ignore[arg-type]
+
+    output = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert received == ["Busy week.", "Busy week."]
+    assert output.count("Nothing to retry.") == 1
+    assert "filo auth login" in output
+    assert "filo> Reply to Busy week." in output
+    assert store.last_failure()["kind"] == "login"  # type: ignore[index]
 
 
 def test_plain_chat_survives_a_database_error_during_extraction(

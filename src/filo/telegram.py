@@ -12,6 +12,7 @@ import sqlite3
 import threading
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -19,6 +20,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from filo.chat import ChatSession, ChatTurn, TurnStreamEvent, TurnStreamKind, crisis_resources
+from filo.failures import classify
 from filo.memory import MemoryMode, MemoryStore, TelegramDelivery
 
 API_ROOT = "https://api.telegram.org"
@@ -87,6 +89,7 @@ class TelegramBot:
             ("sessions", "Sessions and summaries"),
             ("interventions", "Recorded interventions"),
             ("privacy", "Data, providers and limits"),
+            ("retry", "Send the last failed message again"),
             ("end", "Close the session"),
         ]
         self._call("deleteMyCommands", {})
@@ -497,6 +500,11 @@ class TelegramChannel:
         if command == "/end":
             send(self._command_response(command, None) or self._unknown_command())
             return True, False
+        if command == "/retry":
+            if self.session.failed_text is None:
+                send("Nothing to retry.")
+                return True, False
+            text, command = self.session.failed_text, None
         if command:
             # These views render stored records. A local deletion between the
             # read and the queue write would otherwise let a discarded record
@@ -588,14 +596,17 @@ class TelegramChannel:
             summary = " ".join(str(error).split())[:200]
             cause = error.__cause__
             cause_note = f" <- {type(cause).__name__}" if cause is not None else ""
+            failure = classify(error)
             print(
-                f"Model error while handling Telegram message: "
+                f"Model error ({failure.kind.value}) while handling Telegram message: "
                 f"{type(error).__name__}{status_note}{cause_note}: {summary}"
             )
+            with suppress(Exception):  # A busy store must not hide the notice.
+                self.config_store.record_failure(failure.kind.value, failure.error_class)
             # Any failure inside the turn transaction rolled the queued replies
             # back with it, so the caller queues this notice instead.
             outbox.clear()
-            send(self._model_error())
+            send(failure.notice())
             return True, False
         finally:
             typing_stopped.set()
@@ -634,6 +645,7 @@ class TelegramChannel:
                 "/start — identity, notice, and consent\n"
                 "/status — agent, session, and archive status\n"
                 "/crisis — emergency resources, without a model reply\n"
+                "/retry — send the last failed message again\n"
                 "/end — close and summarize the session\n\n"
                 "TRANSPARENCY\n"
                 "/case — formulation and linked evidence\n"
@@ -946,12 +958,6 @@ class TelegramChannel:
 
     def _unknown_command(self) -> str:
         return "Unknown command. Use /help."
-
-    def _model_error(self) -> str:
-        return (
-            "I couldn't respond. Please try again shortly. "
-            "If you may be in danger, /crisis shows emergency resources."
-        )
 
 
 def split_message(text: str, limit: int = MESSAGE_LIMIT) -> list[str]:

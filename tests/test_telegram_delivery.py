@@ -23,6 +23,7 @@ from pydantic_ai import models
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 
 from filo.chat import ChatSession
+from filo.failures import classify
 from filo.memory import (
     MemoryKind,
     MemoryMode,
@@ -287,7 +288,7 @@ def test_failed_outbox_write_rolls_back_turn_and_reports_error(
     assert store.list_claims() == []
     assert store.load_app_state().telegram_update_offset == 42
     texts = [text for _method, text in api.delivered]
-    assert texts[-1] == channel._model_error()
+    assert texts[-1] == classify(OSError("disk full")).notice()
     assert REPLY not in texts
     assert not any("THIS TURN'S RECORD" in text for text in texts)
 

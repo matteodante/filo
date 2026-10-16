@@ -36,7 +36,7 @@ def test_tui_loads_history_and_renders_streamed_markdown(tmp_path: Path) -> None
     store = MemoryStore(tmp_path)
     session = store.start_session()
     store.save_turn(session, "Earlier user message.", "**Earlier reply.**", [])
-    app = FiloApp(FakeSession(), store, lambda *_: False)  # type: ignore[arg-type]
+    app = FiloApp(FakeSession(), store, lambda *_: False, lambda _error: "failed")  # type: ignore[arg-type]
 
     async def scenario() -> None:
         async with app.run_test() as pilot:
@@ -72,7 +72,7 @@ def test_tui_opens_at_latest_history(tmp_path: Path) -> None:
             f"Earlier assistant reply {index} with enough text to fill the viewport.",
             [],
         )
-    app = FiloApp(FakeSession(), store, lambda *_: False)  # type: ignore[arg-type]
+    app = FiloApp(FakeSession(), store, lambda *_: False, lambda _error: "failed")  # type: ignore[arg-type]
 
     async def scenario() -> None:
         async with app.run_test(size=(80, 24)) as pilot:
@@ -96,7 +96,9 @@ def test_tui_keeps_input_disabled_until_extraction_ends_and_hides_its_failure(
             release.wait(5)
             raise RuntimeError("database is locked")
 
-    app = FiloApp(ExtractingSession(), MemoryStore(tmp_path), lambda *_: False)  # type: ignore[arg-type]
+    app = FiloApp(
+        ExtractingSession(), MemoryStore(tmp_path), lambda *_: False, lambda _error: "failed"
+    )  # type: ignore[arg-type]
 
     async def scenario() -> None:
         async with app.run_test() as pilot:

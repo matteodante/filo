@@ -599,6 +599,15 @@ class MemoryStore:
     def save_app_state(self, state: AppState) -> None:
         self._write_state("app", state.model_dump_json().encode())
 
+    def record_failure(self, kind: str, error_class: str, now: datetime | None = None) -> None:
+        """Keep the last failed turn's kind and exception class, never its content."""
+        payload = {"kind": kind, "error_class": error_class, "at": _iso(now or _now())}
+        self._write_state("last_failure", json.dumps(payload).encode())
+
+    def last_failure(self) -> dict[str, str] | None:
+        payload = self._read_state("last_failure")
+        return None if payload is None else json.loads(payload)
+
     def load_formulation(self) -> CaseFormulation:
         payload = self._read_state("formulation")
         return (
