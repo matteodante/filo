@@ -580,6 +580,7 @@ def test_bot_configures_commands_only_for_allowlisted_chat(
         "memory",
         "sessions",
         "interventions",
+        "safety",
         "privacy",
         "end",
     }
@@ -839,3 +840,32 @@ def test_channel_retries_missing_tool_events_separately_without_duplicates(
         (42, "TOOL OUTPUT · test"),
     ]
     assert bot.rich_messages == [(42, "Done.")]
+
+
+def test_safety_record_is_disclosed_and_shown_read_only(tmp_path: Path) -> None:
+    bot = FakeBot()
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.telegram_consent_version = "alpha-5"
+    store.save_app_state(state)
+    active = store.start_session()
+
+    class RecordingSession(FakeSession):
+        def respond(
+            self, text: str, *, on_event: object | None = None, on_commit: object | None = None
+        ) -> ChatTurn:
+            message_id = store.save_turn(active, text, "Understood.", [])
+            store.record_safety_episode(
+                active.id, "I will call my brother", ["my brother"], "keep it", message_id, text
+            )
+            return _committed(ChatTurn("Understood."), on_commit)
+
+    channel = TelegramChannel(bot, RecordingSession(), store, 42)  # type: ignore[arg-type]
+    channel.process_update(private_update(1, 42, "I will call my brother, keep it"))
+    assert "Safety record kept: I will call my brother" in bot.messages[-1][1]
+
+    channel.process_update(private_update(2, 42, "/safety"))
+    view = bot.messages[-1][1]
+    assert "Protective step: I will call my brother" in view
+    assert "People named: my brother" in view
+    assert "Check-in: next session" in view

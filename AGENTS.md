@@ -217,10 +217,12 @@ Behavioral rules:
   Hotline, or the police stay open. A stored claim holding that premise records what was said, not
   a fact.
 - on a turn carrying one of those risks the agent makes no durable write, except stopping or pausing
-  an intervention the user says is causing harm, with its unwanted effects. This is a protocol
-  instruction, not a code gate: detecting such a turn deterministically would need the keyword
-  classifier the project rules out. A consented safety record is not built; if one is added it must
-  never apply to a user who said they are under 18.
+  an intervention the user says is causing harm, with its unwanted effects, and a safety record the
+  user agreed to keep when asked. This is a protocol instruction, not a code gate: detecting such a
+  turn deterministically would need the keyword classifier the project rules out. The safety record
+  never applies to a user who said they are under 18: the tool refuses it, and in `split` mode the
+  store refuses it and deletes one kept earlier in the session once the age is known. In `inline`
+  mode there is no age signal in code, so that case rests on the protocol instruction.
 
 ## Architecture
 
@@ -246,10 +248,10 @@ serialized as a bounded `CaseContextEnvelope` JSON object in a separate user-dat
 explicit quoted-data boundary; it is never concatenated into instructions. Successful session
 history remains another distinct message sequence.
 
-The model may call two read tools, `load_skill` and `retrieve_case_context`, and eight
+The model may call two read tools, `load_skill` and `retrieve_case_context`, and nine
 staged write tools: `record_user_reports`, `record_hypothesis`, `correct_claim`,
-`review_hypotheses`, `set_focus`, `record_process_feedback`, `record_intervention`, and
-`record_support_choice`. The model may call tools repeatedly when a refined read or another
+`review_hypotheses`, `set_focus`, `record_process_feedback`, `record_intervention`,
+`record_support_choice`, and `record_safety_episode`. The model may call tools repeatedly when a refined read or another
 evidence-supported mutation adds value. Read results accumulate, identical writes are idempotent,
 and write invariants are validated across the complete staged turn. The model may use no tool and
 may load no skill. It may load at most one verified skill, with no keyword router or preliminary
@@ -400,19 +402,43 @@ model on every turn.
   onset. The conversation tool and the split extractor apply the same check, so a bad expression
   is retried instead of rolling back the turn; the store repeats it as the backstop. A correction
   with a replacement resets `observed_at` to the correction and clears `valid_from`; forgetting
-  archives both with the claim.
+  archives both with the claim. A second time axis, `superseded_at`, records when a correction
+  replaced the claim's wording or superseded it outright, so `claims_as_of(moment)` answers what
+  the store held as true at a given time without reconstructing superseded wording. `about_others`
+  marks a report of what another person did, intends, or is, or of being watched, followed, or
+  targeted; the model sets it on the report. Such a claim stays in the formulation fields it
+  belongs to (concerns, relationships), shown as "User's account: …", so continuity around danger
+  is kept without presenting it as established fact about that person.
 - `CaseFormulation`: an evidence map that derives concerns, triggers, thoughts, behavior, coping,
   relationships, course, functioning, explanatory model, preferences, maintaining factors,
   strengths, hypotheses, and focus from active memory claim IDs.
 - `InterventionRecord`: one offered or agreed technique with consent state, linked claims,
   prediction, outcome, user appraisal, and follow-up information. It is not a goal.
+- `SafetyEpisode`: a danger the user went through, kept only after the user agreed when asked:
+  its date, the protective step they chose, and the people they named, each the user's exact
+  wording from a message of the same session (the agreement often follows the danger turn), with
+  the agreement as an exact quote of the current message. It prompts one brief check-in on the
+  first turn of a later session and is then marked done; nothing else reads it, so it cannot drive
+  engagement. The user sees it in `filo memory safety`, `/safety` in the CLI and Telegram, and the
+  Telegram change notice; corrects its protective step with `memory correct`; and forgets it with
+  `memory forget`, which deletes it and so cancels a pending check-in. Forgetting content in the
+  conversation, a correction or forgetting that suppresses a round it quotes, deleting its messages
+  or session, retention that removes them, and `delete-data` all delete it; export includes it.
+  Each of those paths has a regression test in `tests/test_memory_guards.py`.
 - `CaseContextEnvelope`: today's date, the most recent closed session with the time elapsed since
   it (always present, whatever the message is about), bounded user reports, hypotheses, conflicts,
   relevant earlier sessions, active interventions, process preferences, support choices, round
-  excerpts, and accepted/proposed focus. Every item carries an absolute date.
+  excerpts, and accepted/proposed focus. Every item carries an absolute date. A fixed `precedence`
+  statement says that risk and scope handling outranks process preferences, support choices, and
+  every stored record, and that an `about_others` claim is the user's account. Process preferences
+  are ranked by hybrid relevance to the turn, newest first among equals, rather than by recency.
+  The formulation reaches the model only through relevant claims: each carries the formulation
+  fields it supports. Relevant hypotheses the user said do not fit arrive as `rejected_hypotheses`
+  so they are not proposed again. `safety_check_in` is set only on a session's first turn in
+  standard mode, when a safety record from an earlier session awaits its check-in.
 - `SemanticIndex`: encrypted packed float32 vectors for active memory items, active interventions,
-  session reflections, support choices, and archived rounds. It is derived, excluded from export,
-  safe to discard, and never establishes truth or provenance.
+  session reflections, process preferences, support choices, and archived rounds. It is derived,
+  excluded from export, safe to discard, and never establishes truth or provenance.
 
 Claim dimensions:
 
@@ -496,7 +522,8 @@ or through explicit CLI commands. There is no worker.
 The `pending_extractions` table holds only a user-message ID, a timestamp, an attempt count, and an
 exception class name, never content. It was added to the unreleased `filo-1` schema directly, and
 an existing `filo-1` store gains it when opened. Deleting a message, session, or all data removes its
-markers.
+markers. The `safety_episodes` table (encrypted payload, plaintext ID, session ID, and creation
+time) was added the same way.
 
 The rename to Filo was an intentional clean break: Filo uses a fresh data directory and never
 reads, migrates, or modifies a Therapist store. From the Filo store onward, every schema change must
@@ -572,6 +599,7 @@ filo memory show
 filo memory case
 filo memory sessions
 filo memory interventions
+filo memory safety
 filo memory review <id> fits|partly_fits|does_not_fit|unsure <evidence>
 filo memory correct <id> <text>
 filo memory forget <id>
@@ -682,6 +710,7 @@ Interactive chat commands:
 /memory
 /sessions [id]
 /interventions
+/safety
 /confirm <id>
 /correct <id> <text>
 /forget <id>
@@ -727,11 +756,11 @@ increments its stored version and requires renewed consent.
 Telegram is a conversation and read-only transparency surface, not a remote administration surface.
 `/crisis` returns the same static localized resources as the CLI, without a model call or storage,
 and is answered before consent so it never sits behind the notice.
-`/status`, `/case`, `/memory [page]`, `/sessions [page|id]`, `/interventions [page]`, and `/privacy`
-show the agent identity, active session, bounded paginated structured state, evidence links, data
+`/status`, `/case`, `/memory [page]`, `/sessions [page|id]`, `/interventions [page]`, `/safety`,
+and `/privacy` show the agent identity, active session, bounded paginated structured state, evidence links, data
 flow, and limitations. `/start`, `/help`, and `/end` manage consent, guidance, and the conversational
-session. After each normal reply, the bot reports any durable memory, focus, or intervention changes
-committed for that turn; a claim that was forgotten or superseded is named by ID only. Correcting
+session. After each normal reply, the bot reports any durable memory, focus, intervention, or
+safety-record changes committed for that turn; a claim that was forgotten or superseded is named by ID only. Correcting
 or forgetting memory by ID, auth, export, and deletion remain local CLI operations; asking in the
 conversation to forget something reaches `forget_content` like in any other transport. Command messages, rendered command output, context warnings, and rollover notices are
 transport-only and are not archived or sent back to the conversation model. Internal prompts,
@@ -969,6 +998,9 @@ plainly distinguishes AI-supported conversation or self-help from diagnosis and 
 - Reported adverse effects stop the current intervention and are reviewed before another technique.
 - User correction wins over prior inference and no superseded wording returns via derived context.
 - Selective forgetting and full deletion work; sensitive plaintext is absent from SQLite.
+- A safety record exists only with the user's exact current agreement, never for a user who said
+  they are under 18, prompts exactly one check-in in a later session, and is inspected, corrected,
+  forgotten (cancelling its check-in), exported, and removed by deletion and retention.
 - Content forgotten in the conversation or through the CLI, including content that never became a
   claim, does not return through claims, round excerpts, session summaries or risk notes, the most
   recent session, or consolidation.
@@ -1028,7 +1060,9 @@ forgetting, semantic reindexing and fail-closed behavior, forgetting that reache
 summary that carried the content, time fields and most-recent-session continuity, complete
 active-session history beyond ten turns, warning and automatic rollover at hard context bounds,
 and command/output separation. `tests/test_retrieval_and_time.py` asks for forgotten content
-through every retrieval path and expects nothing back. A
+through every retrieval path and expects nothing back. `tests/test_memory_guards.py` covers
+relevance-ranked preferences, third-party attribution, relevant formulation and rejected
+hypotheses, `superseded_at`, and every lifecycle path of the safety record. A
 separate `live`
 test exercises the same high-level path
 against a real OpenAI model. It is skipped unless explicitly enabled:

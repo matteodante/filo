@@ -42,6 +42,7 @@ from pydantic_ai.models import Model
 
 from filo.memory import (
     FORMULATION_FIELDS,
+    MAX_SAFETY_PEOPLE,
     MIN_FORGET_QUOTE_WORDS,
     PARAPHRASABLE_KINDS,
     CaseContextResult,
@@ -194,6 +195,21 @@ class SupportChoiceAction(StrictModel):
     preference: ShortText | None = None
 
 
+class SafetyEpisodeAction(StrictModel):
+    protective_action: ShortText = Field(
+        description="The protective step the user chose, exact wording of one of their messages "
+        "in this session."
+    )
+    people_named: Annotated[list[ShortText], Field(max_length=MAX_SAFETY_PEOPLE)] = Field(
+        default_factory=list,
+        description="People the user named as part of the danger or the protective step, each "
+        "exact wording of one of their messages in this session.",
+    )
+    consent_quote: ShortText = Field(
+        description="Exact current-message wording in which the user agrees to keeping the record."
+    )
+
+
 @dataclass
 class TurnActions:
     loaded_skill_id: str | None = None
@@ -207,6 +223,7 @@ class TurnActions:
     process_feedback: list[ProcessFeedbackAction] = field(default_factory=list)
     intervention: InterventionAction | None = None
     support_choices: list[SupportChoiceAction] = field(default_factory=list)
+    safety_episode: SafetyEpisodeAction | None = None
     forget_quotes: list[str] = field(default_factory=list)
     forget_request_quote: str | None = None
     user_under_18: bool = False
@@ -222,6 +239,7 @@ class TurnContext:
     protocol: ProtocolPack
     memory_mode: MemoryMode
     user_text: str
+    session: SessionRecord
     available_claims: dict[str, ContextClaim]
     active_interventions: dict[str, InterventionRecord]
     message_time: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -414,6 +432,7 @@ class ChatSession:
             now=now,
         )
         history = self.memory.load_session_history(session.id)
+        self._add_safety_check_in(context, session, history)
         instructions = self._instructions(context, session, history)
         context_json = _bounded_context_json(context)
         estimated_tokens = _estimate_context_tokens(instructions, context_json, history, text)
@@ -428,6 +447,7 @@ class ChatSession:
                 allow_index_write=self.memory_mode is MemoryMode.STANDARD,
                 now=now,
             )
+            # A rollover continues the same conversation, so it brings no check-in.
             history = []
             instructions = self._instructions(context, session, history)
             context_json = _bounded_context_json(context)
@@ -447,6 +467,7 @@ class ChatSession:
             protocol=self.protocol,
             memory_mode=self.memory_mode,
             user_text=text,
+            session=session,
             available_claims=available_claims,
             active_interventions=active_interventions,
             message_time=now or datetime.now(UTC),
@@ -614,7 +635,9 @@ class ChatSession:
                 },
             )
             if self.memory_mode is MemoryMode.STANDARD:
-                self._commit_actions(actions, evidence_id, text, now)
+                self._commit_actions(actions, evidence_id, text, session, now)
+                if context.safety_check_in is not None:
+                    self.memory.complete_safety_check_in(session.id, now)
                 # A forget request is not mined for reports: its round is about to be suppressed.
                 if self.memory_writing is MemoryWriting.SPLIT:
                     if actions.user_under_18:
@@ -629,6 +652,17 @@ class ChatSession:
             if on_commit is not None:
                 on_commit(turn)
         return turn
+
+    def _add_safety_check_in(
+        self,
+        context: CaseContextResult,
+        session: SessionRecord,
+        history: list[ModelRequest | ModelResponse],
+    ) -> None:
+        # Only on a session's first turn, and only where the check-in can then be marked done:
+        # it is offered once and never becomes a reason to come back.
+        if self.memory_mode is MemoryMode.STANDARD and not history:
+            context.safety_check_in = self.memory.safety_check_in(session.id)
 
     def extract_pending(self) -> int:
         """Record direct user reports for every marked turn; return how many markers cleared.
@@ -1058,11 +1092,52 @@ class ChatSession:
             _record_tool_call(ctx.deps.actions, "record_support_choice")
             return {"staged": len(ctx.deps.actions.support_choices)}
 
+        @agent.tool(sequential=True)
+        def record_safety_episode(
+            ctx: RunContext[TurnContext], episode: SafetyEpisodeAction
+        ) -> dict[str, str]:
+            """Keep a brief safety record only after the user agreed to it in this message.
+
+            It holds the date, the protective step the user chose, and the people they named, so
+            the next conversation can check in once. The user can see, correct, and forget it.
+            Ask before keeping it; never for a user who said they are under 18. Every field is
+            exact user wording that keeps the negation qualifying it.
+            """
+            if ctx.deps.actions.user_under_18 or ctx.deps.session.user_reports_withheld:
+                raise ModelRetry("No safety record is kept for a user who said they are under 18.")
+            if not _quote_in_text(episode.consent_quote, ctx.deps.user_text) or not (
+                quote_keeps_clause_polarity(episode.consent_quote, ctx.deps.user_text)
+            ):
+                raise ModelRetry(
+                    "consent_quote must be the user's exact agreement in the current message; a "
+                    "refusal is not consent."
+                )
+            for quoted in [episode.protective_action, *episode.people_named]:
+                in_current = _quote_in_text(quoted, ctx.deps.user_text) and (
+                    quote_keeps_clause_polarity(quoted, ctx.deps.user_text)
+                )
+                if not in_current and not ctx.deps.memory.has_session_quote(
+                    ctx.deps.session.id, quoted
+                ):
+                    raise ModelRetry(
+                        f"{quoted!r} is not exact wording of a user message in this session that "
+                        "keeps its negation: copy the whole clause character for character."
+                    )
+            if (
+                ctx.deps.actions.safety_episode is not None
+                and ctx.deps.actions.safety_episode != episode
+            ):
+                raise ModelRetry("Keep at most one safety record in one turn.")
+            ctx.deps.actions.safety_episode = episode
+            _record_tool_call(ctx.deps.actions, "record_safety_episode")
+            return {"staged": "safety_episode"}
+
     def _commit_actions(
         self,
         actions: TurnActions,
         evidence_id: int,
         user_text: str,
+        session: SessionRecord,
         now: datetime | None,
     ) -> None:
         app = self.memory.load_app_state()
@@ -1126,6 +1201,16 @@ class ChatSession:
                 barrier=choice.barrier,
                 preference=choice.preference,
                 now=now,
+            )
+        if actions.safety_episode:
+            self.memory.record_safety_episode(
+                session.id,
+                actions.safety_episode.protective_action,
+                actions.safety_episode.people_named,
+                actions.safety_episode.consent_quote,
+                evidence_id,
+                user_text,
+                now,
             )
         if actions.intervention:
             action = actions.intervention
@@ -1219,6 +1304,14 @@ class ChatSession:
                     "provisional, orient to what changed, and review a prior experiment only when "
                     "relevant. Do not extend an old pattern to a new event without checking."
                 )
+        check_in = ""
+        if context.safety_check_in is not None:
+            check_in = (
+                "\nThe case data holds safety_check_in, a safety record the user agreed to keep. "
+                "Check in about it once, briefly and in a way that is easy to decline, unless the "
+                "current message already needs something else first; do not return to it unless "
+                "the user does."
+            )
         return (
             self.protocol.root_instructions
             + "\n\nVerified conversation skill catalog (metadata only):\n"
@@ -1244,7 +1337,7 @@ class ChatSession:
             "shortest form that fits the moment, but use enough detail for a formulation, repair, "
             "consented exercise, outcome review, or support/closure discussion. Avoid unrequested "
             "lists, routine headings, checklists, raw HTML, and embedded media. A turn may require "
-            "no tool and no skill." + long_gap
+            "no tool and no skill." + long_gap + check_in
         )
 
     def end(self, now: datetime | None = None) -> SessionRecord | None:
@@ -1465,6 +1558,7 @@ def _context_claims(context: CaseContextResult) -> dict[str, ContextClaim]:
         for item in [
             *context.user_reports,
             *context.hypotheses,
+            *context.rejected_hypotheses,
             *(claim for conflict in context.conflicts for claim in conflict.claims),
         ]
     }
@@ -1650,6 +1744,7 @@ def _bounded_lookup(payload: dict[str, object]) -> dict[str, object]:
         "relevant_excerpts",
         "relevant_sessions",
         "user_reports",
+        "rejected_hypotheses",
         "hypotheses",
         "active_interventions",
         "support_choices",
@@ -1673,6 +1768,7 @@ def _bounded_context_json(context: CaseContextResult) -> str:
         "relevant_excerpts",
         "relevant_sessions",
         "user_reports",
+        "rejected_hypotheses",
         "hypotheses",
         "active_interventions",
         "support_choices",

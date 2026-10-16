@@ -158,6 +158,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_commands.add_parser("case")
     memory_commands.add_parser("sessions")
     memory_commands.add_parser("interventions")
+    memory_commands.add_parser("safety")
     review = memory_commands.add_parser("review")
     review.add_argument("id")
     review.add_argument(
@@ -1072,6 +1073,8 @@ def _memory(args: argparse.Namespace, store: MemoryStore) -> int:
             print(_json([session.model_dump() for session in store.list_sessions()]))
         elif args.memory_command == "interventions":
             print(_json([item.model_dump(mode="json") for item in store.list_interventions()]))
+        elif args.memory_command == "safety":
+            print(_json([item.model_dump(mode="json") for item in store.list_safety_episodes()]))
         elif args.memory_command == "review":
             reviewed, _ = store.review_hypotheses(
                 [
@@ -1086,19 +1089,9 @@ def _memory(args: argparse.Namespace, store: MemoryStore) -> int:
             )
             print(reviewed[0].model_dump_json(indent=2))
         elif args.memory_command == "correct":
-            print(
-                store.correct_claim(
-                    ClaimCorrection(
-                        memory_id=args.id,
-                        correction_quote=args.text,
-                        replacement_quote=args.text,
-                    ),
-                    0,
-                    args.text,
-                ).model_dump_json(indent=2)
-            )
+            print(_correct(store, args.id, args.text))
         elif args.memory_command == "forget":
-            print(store.forget_claim(args.id).model_dump_json(indent=2))
+            print(_forget(store, args.id))
     except (KeyError, ValueError) as error:
         print(str(error))
         return 2
@@ -1110,7 +1103,7 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
         return 1
     _extract_reports(session)
 
-    print("Commands: /case, /memory, /sessions [id], /interventions,")
+    print("Commands: /case, /memory, /sessions [id], /interventions, /safety,")
     print("          /correct <id> <text>,")
     print("          /forget <id>, /crisis, /end, /help, /quit")
     while True:
@@ -1242,7 +1235,7 @@ def _chat_command(
     try:
         if name == "/help":
             output("/case /memory /sessions [id] /correct <id> <text>")
-            output("/interventions /forget <id> /crisis /end /quit")
+            output("/interventions /safety /forget <id> /crisis /end /quit")
         elif name == "/crisis":
             output(crisis_resources(session.locale))
         elif name == "/case":
@@ -1265,20 +1258,12 @@ def _chat_command(
                 output("Session not found." if found is None else found.model_dump_json(indent=2))
         elif name == "/interventions":
             output(_json([item.model_dump(mode="json") for item in store.list_interventions()]))
+        elif name == "/safety":
+            output(_json([item.model_dump(mode="json") for item in store.list_safety_episodes()]))
         elif name == "/correct" and len(parts) == 3:
-            output(
-                store.correct_claim(
-                    ClaimCorrection(
-                        memory_id=parts[1],
-                        correction_quote=parts[2],
-                        replacement_quote=parts[2],
-                    ),
-                    0,
-                    parts[2],
-                ).model_dump_json(indent=2)
-            )
+            output(_correct(store, parts[1], parts[2]))
         elif name == "/forget" and len(parts) >= 2:
-            output(store.forget_claim(parts[1]).model_dump_json(indent=2))
+            output(_forget(store, parts[1]))
         elif name == "/end":
             closed = session.end()
             message = (
@@ -1290,6 +1275,28 @@ def _chat_command(
     except (KeyError, ValueError) as error:
         output(str(error))
     return True
+
+
+def _is_safety_episode(store: MemoryStore, record_id: str) -> bool:
+    return any(item.id == record_id for item in store.list_safety_episodes())
+
+
+def _correct(store: MemoryStore, record_id: str, text: str) -> str:
+    """Correct a claim, or the protective action of a safety record, with the user's wording."""
+    if _is_safety_episode(store, record_id):
+        return store.correct_safety_episode(record_id, text).model_dump_json(indent=2)
+    return store.correct_claim(
+        ClaimCorrection(memory_id=record_id, correction_quote=text, replacement_quote=text),
+        0,
+        text,
+    ).model_dump_json(indent=2)
+
+
+def _forget(store: MemoryStore, record_id: str) -> str:
+    """Forget a claim, or delete a safety record together with its pending check-in."""
+    if _is_safety_episode(store, record_id):
+        return store.forget_safety_episode(record_id).model_dump_json(indent=2)
+    return store.forget_claim(record_id).model_dump_json(indent=2)
 
 
 def _json(value: object) -> str:

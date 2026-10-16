@@ -74,6 +74,10 @@ CREATE TABLE IF NOT EXISTS pending_extractions (
 CREATE TABLE IF NOT EXISTS telegram_outbox (
     id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, payload BLOB NOT NULL
 );
+CREATE TABLE IF NOT EXISTS safety_episodes (
+    id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created_at TEXT NOT NULL,
+    payload BLOB NOT NULL
+);
 """
 DEFAULT_STALE_HYPOTHESIS_DAYS = 180
 BUSY_TIMEOUT_SECONDS = 10.0
@@ -99,6 +103,12 @@ ROUND_TEXT_CACHE_SIZE = 1_024
 # Rounds whose text is read for lexical scoring in one retrieval: the best semantic matches plus
 # the most recent ones. Everything else is ranked by its vector alone.
 ROUND_LEXICAL_CANDIDATES = 200
+MAX_SAFETY_PEOPLE = 5
+PRECEDENCE_NOTE = (
+    "Risk and scope handling outranks process_preferences, support_choices, and every stored "
+    "record. A claim with about_others=true is the user's account of another person, or of being "
+    "watched, followed, or targeted, never established fact about that person."
+)
 
 
 def _now() -> datetime:
@@ -347,6 +357,12 @@ class UserReport(StrictModel):
         default=None,
         description="Only when the current message dates the situation; never inferred.",
     )
+    about_others: bool = Field(
+        default=False,
+        description="True when the report says what another person did, intends, thinks, or is, "
+        "or that the user is being watched, followed, or targeted. It is then kept as the user's "
+        "account, never as established fact about that person.",
+    )
 
 
 class ClaimCorrection(StrictModel):
@@ -379,6 +395,11 @@ class MemoryItem(StrictModel):
     last_reviewed_at: str | None = None
     observed_at: str | None = None
     valid_from: TimeExpression | None = None
+    # When a correction replaced this claim's wording or superseded it outright; with observed_at
+    # it says what the store held as true at a given time.
+    superseded_at: str | None = None
+    # The user's account of another person or of being targeted, never fact about that person.
+    about_others: bool = False
 
 
 class SessionRecord(StrictModel):
@@ -467,6 +488,26 @@ class SupportChoice(StrictModel):
     updated_at: str
 
 
+class SafetyEpisode(StrictModel):
+    """A danger the user went through and the protective step they chose, kept with consent.
+
+    It exists so the next session can check in once. ``evidence`` holds the exact user wording of
+    the action and of each person named; ``consent`` is the user's agreement to keep it.
+    """
+
+    id: str
+    session_id: str
+    occurred_at: str
+    protective_action: str = Field(min_length=1, max_length=500)
+    people_named: list[str] = Field(default_factory=list, max_length=MAX_SAFETY_PEOPLE)
+    evidence: list[EvidenceRef] = Field(default_factory=list)
+    consent: EvidenceRef
+    check_in_pending: bool = True
+    checked_in_at: str | None = None
+    created_at: str
+    updated_at: str
+
+
 FORMULATION_LIST_FIELDS = (
     "presenting_concerns",
     "situations_and_triggers",
@@ -536,6 +577,10 @@ class ContextClaim(StrictModel):
     last_reviewed_at: str | None
     observed_at: str | None = None
     valid_from: TimeExpression | None = None
+    about_others: bool = False
+    # The formulation fields this claim supports: the formulation reaches the model only through
+    # claims relevant to the turn.
+    formulation_fields: list[str] = Field(default_factory=list)
     conflict_ids: list[str]
     semantic_relevance: float | None = None
     lexical_relevance: float = 0.0
@@ -583,6 +628,7 @@ class ContextPreference(StrictModel):
     content: str
     evidence: EvidenceRef
     updated_at: str
+    semantic_relevance: float | None = None
 
 
 class ContextSupportChoice(StrictModel):
@@ -605,8 +651,16 @@ class ContextExcerpt(StrictModel):
     lexical_relevance: float = 0.0
 
 
+class ContextSafetyEpisode(StrictModel):
+    id: str
+    occurred_at: str
+    protective_action: str
+    people_named: list[str]
+
+
 class CaseContextEnvelope(StrictModel):
-    schema_version: int = 2
+    schema_version: int = 3
+    precedence: str = PRECEDENCE_NOTE
     today: str | None = None
     latest_session: ContextSession | None = None
     elapsed_since_latest_session: str | None = None
@@ -614,12 +668,16 @@ class CaseContextEnvelope(StrictModel):
     proposed_focus: str | None = None
     user_reports: list[ContextClaim] = Field(default_factory=list)
     hypotheses: list[ContextClaim] = Field(default_factory=list)
+    # Hypotheses the user said do not fit, so they are not proposed again.
+    rejected_hypotheses: list[ContextClaim] = Field(default_factory=list)
     conflicts: list[ClaimConflict] = Field(default_factory=list)
     relevant_sessions: list[ContextSession] = Field(default_factory=list)
     active_interventions: list[ContextIntervention] = Field(default_factory=list)
     process_preferences: list[ContextPreference] = Field(default_factory=list)
     support_choices: list[ContextSupportChoice] = Field(default_factory=list)
     relevant_excerpts: list[ContextExcerpt] = Field(default_factory=list)
+    # Set only on the first turn of a session after a consented safety record was kept.
+    safety_check_in: ContextSafetyEpisode | None = None
 
 
 class CaseContextResult(CaseContextEnvelope):
@@ -904,7 +962,9 @@ class MemoryStore:
                     continue
                 ids.append(item_id)
             if ids:
-                setattr(formulation, field_name, [active[item_id].content for item_id in ids])
+                setattr(
+                    formulation, field_name, [_formulation_text(active[item_id]) for item_id in ids]
+                )
                 formulation.evidence[field_name] = ids
         self.save_formulation(formulation, now)
         return formulation
@@ -1171,6 +1231,10 @@ class MemoryStore:
             session = self._decrypt_model(row[0], SessionRecord)
             session.user_reports_withheld = True
             self.save_session(session)
+            # Under-18 rules win: a safety record kept earlier in the session goes too.
+            self._delete_safety_episodes(
+                [item.id for item in self.list_safety_episodes() if item.session_id == session_id]
+            )
 
     def corrected_wording(self, message_id: int) -> list[str]:
         """Quotes and superseded wording of claims corrected by one message."""
@@ -1271,6 +1335,7 @@ class MemoryStore:
                     )
                 duplicate.aliases = list(dict.fromkeys([*duplicate.aliases, *report.aliases]))[:5]
                 duplicate.valid_from = duplicate.valid_from or report.valid_from
+                duplicate.about_others = duplicate.about_others or report.about_others
                 self._save_claim(duplicate)
                 saved.append(duplicate)
                 continue
@@ -1287,6 +1352,7 @@ class MemoryStore:
                 last_seen_at=timestamp,
                 observed_at=self._message_time(evidence_message_id) or timestamp,
                 valid_from=report.valid_from,
+                about_others=report.about_others,
             )
             for other in existing:
                 if (
@@ -1460,6 +1526,7 @@ class MemoryStore:
             item.aliases = []
             item.last_seen_at = timestamp
             item.last_reviewed_at = timestamp
+            item.superseded_at = timestamp
             if correction.replacement_quote:
                 item.content = _normalized(correction.replacement_quote)
                 item.origin = ClaimOrigin.USER_STATEMENT
@@ -1650,6 +1717,17 @@ class MemoryStore:
             ]
             for item in forgotten:
                 self._forget_claim(item, now)
+            self._delete_safety_episodes(
+                [
+                    item.id
+                    for item in self.list_safety_episodes()
+                    if any(
+                        _carries(wording, text) or _carries(text, wording)
+                        for wording in wordings
+                        for text in [item.protective_action, *item.people_named]
+                    )
+                ]
+            )
             for wording in sorted(wordings, key=len, reverse=True):
                 self._invalidate_derived_text(wording, "")
             # The request names what it asks to forget, so its own round goes too.
@@ -1658,8 +1736,9 @@ class MemoryStore:
         return {"rounds": len(rounds), "claims": [item.id for item in forgotten]}
 
     def _forget_rounds(self, round_ids: set[int]) -> None:
-        """Suppress rounds and every reflection that may paraphrase them."""
+        """Suppress rounds and every reflection or safety record that may repeat them."""
         self._suppress_rounds(round_ids)
+        self._delete_safety_episodes_citing(round_ids)
         session_ids = {item.session_id for item in self._round_refs() if item.id in round_ids}
         for session in self.list_sessions():
             if session.id not in session_ids:
@@ -1691,6 +1770,27 @@ class MemoryStore:
         with self._connect() as database:
             rows = database.execute(sql, parameters).fetchall()
         return [self._decrypt_model(row[0], MemoryItem) for row in rows]
+
+    def claims_as_of(self, moment: datetime) -> list[MemoryItem]:
+        """Claims the store held as true at ``moment``: observed by then, not yet superseded.
+
+        A corrected claim's current wording counts from the correction, which resets
+        ``observed_at``; its earlier wording is not reconstructed. Forgotten claims never count.
+        An inspection query only: retrieval never returns superseded wording.
+        """
+        return [
+            item
+            for item in self.list_claims(include_inactive=True)
+            if item.lifecycle is not ClaimLifecycle.ARCHIVED
+            and datetime.fromisoformat(item.observed_at or item.first_seen_at) <= moment
+            and (
+                item.lifecycle is ClaimLifecycle.ACTIVE
+                or (
+                    item.superseded_at is not None
+                    and moment < datetime.fromisoformat(item.superseded_at)
+                )
+            )
+        ]
 
     def record_process_preference(
         self,
@@ -1795,6 +1895,147 @@ class MemoryStore:
                 "SELECT payload FROM support_choices ORDER BY updated_at DESC"
             ).fetchall()
         return [self._decrypt_model(row[0], SupportChoice) for row in rows]
+
+    def record_safety_episode(
+        self,
+        session_id: str,
+        protective_action: str,
+        people_named: list[str],
+        consent_quote: str,
+        evidence_message_id: int,
+        evidence_text: str,
+        now: datetime | None = None,
+    ) -> SafetyEpisode:
+        """Keep a consented safety record so the next session can check in once.
+
+        The consent is exact wording of the current message. The protective action and each
+        person named are exact wording of a user message of the same session, which may be the
+        current one, because agreeing to keep the record often follows the turn that held the
+        danger. Never kept for a user who said they are under 18.
+        """
+        if self._get_session(session_id).user_reports_withheld:
+            raise ValueError("No safety record is kept for a user who said they are under 18.")
+        if not _supported_quote(consent_quote, evidence_text) or not quote_keeps_clause_polarity(
+            consent_quote, evidence_text
+        ):
+            raise ValueError("A safety record requires the user's exact agreement to keep it.")
+        if len(people_named) > MAX_SAFETY_PEOPLE:
+            raise ValueError(f"Name at most {MAX_SAFETY_PEOPLE} people in a safety record.")
+        timestamp = _iso(now)
+        evidence = []
+        for quoted in dict.fromkeys(
+            _normalized(value) for value in [protective_action, *people_named]
+        ):
+            source = self._session_quote_source(
+                session_id, quoted, evidence_message_id, evidence_text
+            )
+            if source is None:
+                raise ValueError(
+                    "Each safety record detail must be exact user wording from this session."
+                )
+            evidence.append(
+                EvidenceRef(
+                    message_id=source,
+                    quote=quoted,
+                    relation=EvidenceRelation.SUPPORTS,
+                    quality=EvidenceQuality.EXACT_QUOTE,
+                    recorded_at=timestamp,
+                )
+            )
+        episode = SafetyEpisode(
+            id=uuid4().hex[:12],
+            session_id=session_id,
+            occurred_at=min(
+                self._message_time(reference.message_id) or timestamp for reference in evidence
+            ),
+            protective_action=_normalized(protective_action),
+            people_named=list(dict.fromkeys(_normalized(value) for value in people_named)),
+            evidence=evidence,
+            consent=EvidenceRef(
+                message_id=evidence_message_id,
+                quote=_normalized(consent_quote),
+                relation=EvidenceRelation.SUPPORTS,
+                quality=EvidenceQuality.EXACT_QUOTE,
+                recorded_at=timestamp,
+            ),
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        self._save_safety_episode(episode)
+        return episode
+
+    def has_session_quote(self, session_id: str, quote: str) -> bool:
+        """Whether an archived user message of this session holds this exact wording."""
+        return self._session_quote_source(session_id, quote, -1, "") is not None
+
+    def list_safety_episodes(self) -> list[SafetyEpisode]:
+        with self._connect() as database:
+            rows = database.execute(
+                "SELECT payload FROM safety_episodes ORDER BY created_at DESC"
+            ).fetchall()
+        return [self._decrypt_model(row[0], SafetyEpisode) for row in rows]
+
+    def safety_check_in(self, session_id: str) -> ContextSafetyEpisode | None:
+        """The most recent safety record from an earlier session still awaiting its check-in."""
+        episode = next(
+            (
+                item
+                for item in self.list_safety_episodes()
+                if item.check_in_pending and item.session_id != session_id
+            ),
+            None,
+        )
+        return (
+            None
+            if episode is None
+            else ContextSafetyEpisode.model_validate(episode, from_attributes=True)
+        )
+
+    def complete_safety_check_in(self, session_id: str, now: datetime | None = None) -> None:
+        """One check-in covers every earlier record, so none of them is raised again."""
+        for item in self.list_safety_episodes():
+            if item.check_in_pending and item.session_id != session_id:
+                item.check_in_pending = False
+                item.checked_in_at = item.updated_at = _iso(now)
+                self._save_safety_episode(item)
+
+    def correct_safety_episode(
+        self, episode_id: str, protective_action: str, now: datetime | None = None
+    ) -> SafetyEpisode:
+        """Replace the protective action with the user's own corrected wording."""
+        protective_action = _normalized(protective_action)
+        if not protective_action:
+            raise ValueError("The corrected protective action cannot be empty.")
+        with self.transaction():
+            self._discard_telegram_output()
+            episode = self._get_safety_episode(episode_id)
+            timestamp = _iso(now)
+            episode.evidence = [
+                reference
+                for reference in episode.evidence
+                if reference.quote != episode.protective_action
+            ]
+            episode.evidence.append(
+                EvidenceRef(
+                    message_id=0,
+                    quote=protective_action,
+                    relation=EvidenceRelation.CORRECTS,
+                    quality=EvidenceQuality.EXACT_QUOTE,
+                    recorded_at=timestamp,
+                )
+            )
+            episode.protective_action = protective_action
+            episode.updated_at = timestamp
+            self._save_safety_episode(episode)
+            return episode
+
+    def forget_safety_episode(self, episode_id: str) -> SafetyEpisode:
+        """Delete a safety record, which also cancels its pending check-in."""
+        with self.transaction():
+            self._discard_telegram_output()
+            episode = self._get_safety_episode(episode_id)
+            self._delete_safety_episodes([episode.id])
+            return episode
 
     def create_intervention(
         self,
@@ -1944,6 +2185,11 @@ class MemoryStore:
         )
         app_state = self.load_app_state()
         pending_hypothesis_id = app_state.pending_hypothesis_id
+        formulation = self.load_formulation()
+        formulation_fields: dict[str, list[str]] = {}
+        for field_name, ids in formulation.evidence.items():
+            for item_id in ids:
+                formulation_fields.setdefault(item_id, []).append(field_name)
         ranked: list[ContextClaim] = []
         for index, item in enumerate(claims):
             semantic = semantic_scores.get(item.id)
@@ -1958,8 +2204,6 @@ class MemoryStore:
                 or (semantic is not None and semantic >= MIN_SEMANTIC_RELEVANCE)
             )
             if not relevant:
-                continue
-            if item.origin is ClaimOrigin.AGENT_HYPOTHESIS and item.fit is ClaimFit.DOES_NOT_FIT:
                 continue
             ranked.append(
                 ContextClaim(
@@ -1979,6 +2223,8 @@ class MemoryStore:
                     last_reviewed_at=item.last_reviewed_at,
                     observed_at=item.observed_at,
                     valid_from=item.valid_from,
+                    about_others=item.about_others,
+                    formulation_fields=formulation_fields.get(item.id, []),
                     conflict_ids=item.conflict_ids,
                     semantic_relevance=semantic,
                     lexical_relevance=lexical,
@@ -1995,6 +2241,12 @@ class MemoryStore:
             ),
             reverse=True,
         )
+        rejected = [
+            item
+            for item in ranked
+            if item.origin is ClaimOrigin.AGENT_HYPOTHESIS and item.fit is ClaimFit.DOES_NOT_FIT
+        ]
+        ranked = [item for item in ranked if item not in rejected]
         user_reports = [item for item in ranked if item.origin is ClaimOrigin.USER_STATEMENT][:15]
         hypotheses = [
             item
@@ -2056,7 +2308,21 @@ class MemoryStore:
         support_choices = self._relevant_support_choices(
             query, query_vector, allow_index_write=allow_index_write
         )
-        formulation = self.load_formulation()
+        preferences = self.list_process_preferences()
+        preference_scores = self._semantic_text_scores(
+            query_vector,
+            "preference",
+            {item.id: item.content for item in preferences},
+            allow_index_write=allow_index_write,
+        )
+        # Ranked by relevance to the turn, newest first among equals, rather than by recency alone.
+        preferences.sort(
+            key=lambda item: (
+                _hybrid_text_score(query, item.content, preference_scores.get(item.id)),
+                item.updated_at,
+            ),
+            reverse=True,
+        )
         return CaseContextResult(
             today=current.date().isoformat(),
             latest_session=latest,
@@ -2069,6 +2335,7 @@ class MemoryStore:
             proposed_focus=formulation.proposed_focus,
             user_reports=user_reports[:20],
             hypotheses=hypotheses[:10],
+            rejected_hypotheses=rejected[:5],
             conflicts=conflicts[:5],
             relevant_sessions=sessions[:3],
             active_interventions=interventions[:5],
@@ -2078,8 +2345,9 @@ class MemoryStore:
                     content=item.content,
                     evidence=item.evidence,
                     updated_at=item.updated_at,
+                    semantic_relevance=preference_scores.get(item.id),
                 )
-                for item in self.list_process_preferences()[:10]
+                for item in preferences[:10]
             ],
             support_choices=support_choices[:10],
             relevant_excerpts=excerpts[:5],
@@ -2378,6 +2646,7 @@ class MemoryStore:
             self._delete_message_ids([row[0] for row in rows])
             with self._connect() as database:
                 database.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+                database.execute("DELETE FROM safety_episodes WHERE session_id = ?", (session_id,))
             self._delete_semantic_entities("session", [session_id])
             self._refresh_formulation_links()
             self._clean_pending_ids()
@@ -2448,6 +2717,9 @@ class MemoryStore:
                 item.model_dump(mode="json") for item in self.list_support_choices()
             ],
             "interventions": [item.model_dump(mode="json") for item in self.list_interventions()],
+            "safety_episodes": [
+                item.model_dump(mode="json") for item in self.list_safety_episodes()
+            ],
             "sessions": [session.model_dump(mode="json") for session in self.list_sessions()],
             "messages": messages,
             "suppressed_round_ids": sorted(self._suppressed_round_ids()),
@@ -2481,6 +2753,7 @@ class MemoryStore:
                 "interventions",
                 "process_preferences",
                 "support_choices",
+                "safety_episodes",
                 "telegram_outbox",
                 "state",
             ):
@@ -2544,6 +2817,73 @@ class MemoryStore:
         if row is None:
             raise KeyError(f"Unknown claim: {item_id}")
         return self._decrypt_model(row[0], MemoryItem)
+
+    def _save_safety_episode(self, item: SafetyEpisode) -> None:
+        with self._connect() as database:
+            database.execute(
+                "INSERT INTO safety_episodes(id, session_id, created_at, payload) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET payload = excluded.payload",
+                (item.id, item.session_id, item.created_at, self._encrypt_model(item)),
+            )
+
+    def _get_safety_episode(self, episode_id: str) -> SafetyEpisode:
+        with self._connect() as database:
+            row = database.execute(
+                "SELECT payload FROM safety_episodes WHERE id = ?", (episode_id,)
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown safety record: {episode_id}")
+        return self._decrypt_model(row[0], SafetyEpisode)
+
+    def _delete_safety_episodes(self, episode_ids: list[str]) -> None:
+        with self._connect() as database:
+            database.executemany(
+                "DELETE FROM safety_episodes WHERE id = ?", ((item,) for item in episode_ids)
+            )
+
+    def _delete_safety_episodes_citing(self, message_ids: set[int]) -> None:
+        """Delete every safety record quoting or consented in one of these messages."""
+        self._delete_safety_episodes(
+            [
+                item.id
+                for item in self.list_safety_episodes()
+                if {item.consent.message_id, *(ref.message_id for ref in item.evidence)}
+                & message_ids
+            ]
+        )
+
+    def _get_session(self, session_id: str) -> SessionRecord:
+        with self._connect() as database:
+            row = database.execute(
+                "SELECT payload FROM sessions WHERE id = ?", (session_id,)
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Unknown session: {session_id}")
+        return self._decrypt_model(row[0], SessionRecord)
+
+    def _session_quote_source(
+        self, session_id: str, quote: str, current_id: int, current_text: str
+    ) -> int | None:
+        """ID of the newest user message of the session that holds this exact wording."""
+        if _supported_quote(quote, current_text) and quote_keeps_clause_polarity(
+            quote, current_text
+        ):
+            return current_id
+        excluded = self._excluded_round_ids()
+        refs = [
+            item
+            for item in self._round_refs()
+            if item.session_id == session_id and item.id not in excluded and item.id != current_id
+        ]
+        return next(
+            (
+                item.id
+                for item in sorted(self._decrypt_rounds(refs), key=lambda value: -value.id)
+                if _supported_quote(quote, item.user)
+                and quote_keeps_clause_polarity(quote, item.user)
+            ),
+            None,
+        )
 
     def _get_intervention(self, record_id: str) -> InterventionRecord:
         with self._connect() as database:
@@ -2891,10 +3231,13 @@ class MemoryStore:
             if item.evidence.message_id in message_set:
                 with self._connect() as database:
                     database.execute("DELETE FROM process_preferences WHERE id = ?", (item.id,))
+                self._delete_semantic_entities("preference", [item.id])
         for item in self.list_support_choices():
             if item.evidence.message_id in message_set:
                 with self._connect() as database:
                     database.execute("DELETE FROM support_choices WHERE id = ?", (item.id,))
+                self._delete_semantic_entities("support", [item.id])
+        self._delete_safety_episodes_citing(message_set)
         for session in self.list_sessions():
             if session.id in session_ids:
                 _clear_session_reflection(session)
@@ -3203,6 +3546,11 @@ def _claim_allowed_in_formulation(item: MemoryItem, field_name: str) -> bool:
     if field_name == "shared_hypotheses":
         return item.fit in {ClaimFit.FITS, ClaimFit.PARTLY_FITS}
     return False
+
+
+def _formulation_text(item: MemoryItem) -> str:
+    # A claim about another person stays in the formulation, attributed to the user who told it.
+    return f"User's account: {item.content}" if item.about_others else item.content
 
 
 def _is_stale_hypothesis(item: MemoryItem, now: datetime | None = None) -> bool:
