@@ -59,8 +59,11 @@ they record what shipped.
 - The terminal consent notice moves to `alpha-4` and the Telegram notice to `alpha-5`, so both ask
   for consent again.
 - Repository URLs point to `github.com/matteodante/filo`.
-- Schema policy: the Filo store starts fresh, and from now on every schema change must ship a
-  forward migration. Unknown or future schema versions are still rejected without modification.
+- Schema policy: the Filo store starts fresh with schema marker `filo-1`, and from now on every
+  schema change must ship a forward migration. Unknown or future schema versions, including a
+  Therapist store renamed to `filo.db`, are rejected before any table is created. A data directory
+  that still contains `thera.db` is refused before Filo creates, chmods, or reads anything in it.
+- Removed the outdated TUI screenshot, which still showed the old name and tool set.
 
 ### Upgrading an existing Therapist installation
 

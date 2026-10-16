@@ -366,7 +366,9 @@ The rename to Filo was an intentional clean break: Filo uses a fresh data direct
 reads, migrates, or modifies a Therapist store. From the Filo store onward, every schema change must
 ship a forward migration so that years of memory survive upgrades; the migration framework is a
 separate work item and does not exist yet. Do not add legacy aliases, schema fallbacks, or plaintext
-backups. Reject an unknown or future schema version without modifying it.
+backups. The Filo schema marker is `filo-1`. Reject an unknown or future schema version before
+creating any table, and refuse a data directory containing a Therapist `thera.db` before creating,
+chmodding, or reading anything in it.
 
 ## CLI contract
 

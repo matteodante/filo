@@ -25,7 +25,9 @@ from pydantic_ai import Embedder, ModelMessage, ModelMessagesTypeAdapter
 
 SESSION_GAP = timedelta(hours=8)
 LOCAL_OLLAMA_EMBEDDINGS_URL = "http://localhost:11434/v1"
-SCHEMA_VERSION = b"3"
+# Filo stores start their own schema lineage; future forward migrations build on this marker.
+SCHEMA_VERSION = b"filo-1"
+LEGACY_THERAPIST_DATABASE = "thera.db"
 DEFAULT_STALE_HYPOTHESIS_DAYS = 180
 MIN_SEMANTIC_RELEVANCE = 0.2
 
@@ -468,6 +470,12 @@ class MemoryStore:
             self._ephemeral_database.execute("PRAGMA foreign_keys = ON")
         else:
             self.directory = directory or Path.home() / ".filo"
+            if (self.directory / LEGACY_THERAPIST_DATABASE).exists():
+                # Checked before mkdir, chmod, or key access so a Therapist store stays untouched.
+                raise MemoryError(
+                    "This directory holds a Therapist store, which Filo never reads or modifies. "
+                    "Use a new data directory."
+                )
             self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
             os.chmod(self.directory, 0o700)
             self.database_path = self.directory / "filo.db"
@@ -477,6 +485,16 @@ class MemoryStore:
         self._initialize_schema()
 
     def _initialize_schema(self) -> None:
+        with self._connect() as database:
+            has_state = database.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'state'"
+            ).fetchone()
+        if has_state and self._read_state("schema_version") not in (None, SCHEMA_VERSION):
+            # Reject before creating any table so an incompatible store is left unmodified.
+            raise MemoryError(
+                "This data store uses an incompatible schema. Use a new data directory or delete "
+                "the old store; migration is not supported."
+            )
         with self._connect() as database:
             database.executescript(
                 """
@@ -525,11 +543,6 @@ class MemoryStore:
                     "Use a new data directory or delete the old store; migration is not supported."
                 )
             self._write_state("schema_version", SCHEMA_VERSION)
-        elif version != SCHEMA_VERSION:
-            raise MemoryError(
-                "This data store uses an incompatible schema. Use a new data directory or delete "
-                "the old store; migration is not supported."
-            )
 
     def _database_has_user_data(self) -> bool:
         with self._connect() as database:

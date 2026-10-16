@@ -1,5 +1,7 @@
 """Deterministic tests for the clean-break epistemic memory model."""
 
+import os
+import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -855,7 +857,7 @@ def test_export_contains_epistemic_and_governance_state(tmp_path) -> None:
     store = MemoryStore(tmp_path)
     _report(store, "I like concise questions")
     exported = store.export()
-    assert exported["schema_version"] == "3"
+    assert exported["schema_version"] == "filo-1"
     assert exported["claims"][0]["origin"] == "user_statement"
     assert "semantic_index" not in exported
 
@@ -922,3 +924,36 @@ def test_stale_hypothesis_is_not_linked_into_active_formulation(tmp_path) -> Non
     item = _hypothesis(store, "An old tentative interpretation", old)
     formulation = store.save_formulation_links({"open_hypotheses": [item.id]})
     assert formulation == CaseFormulation(last_reviewed_at=formulation.last_reviewed_at)
+
+
+def test_therapist_data_directory_is_refused_without_modification(tmp_path) -> None:
+    legacy = tmp_path / "legacy"
+    legacy.mkdir(mode=0o755)
+    (legacy / "thera.db").write_bytes(b"legacy store")
+    (legacy / "memory.key").write_bytes(b"legacy key")
+    os.chmod(legacy / "memory.key", 0o644)
+    before = {path.name: (path.read_bytes(), path.stat().st_mode) for path in legacy.iterdir()}
+    directory_mode = legacy.stat().st_mode
+
+    with pytest.raises(MemoryError, match="Therapist store"):
+        MemoryStore(legacy)
+
+    after = {path.name: (path.read_bytes(), path.stat().st_mode) for path in legacy.iterdir()}
+    assert after == before
+    assert legacy.stat().st_mode == directory_mode
+
+
+def test_store_with_older_schema_marker_is_rejected_without_modification(tmp_path) -> None:
+    store = MemoryStore(tmp_path)
+    store._write_state("schema_version", b"3")
+    with sqlite3.connect(store.database_path) as database:
+        database.execute("DROP TABLE semantic_index")
+    before = store.database_path.read_bytes()
+
+    with pytest.raises(MemoryError, match="incompatible schema"):
+        MemoryStore(tmp_path)
+
+    assert store.database_path.read_bytes() == before
+    with sqlite3.connect(store.database_path) as database:
+        tables = {row[0] for row in database.execute("SELECT name FROM sqlite_master")}
+    assert "semantic_index" not in tables

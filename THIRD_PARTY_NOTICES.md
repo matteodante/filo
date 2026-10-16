@@ -1,7 +1,7 @@
 # Third-party notices
 
-Filo's original code, protocol text, documentation, and synthetic product screenshot are
-licensed under `AGPL-3.0-or-later`. The items below remain under their owners' terms and are not
+Filo's original code, protocol text, and documentation are licensed under
+`AGPL-3.0-or-later`. The items below remain under their owners' terms and are not
 relicensed by Filo.
 
 ## uv
