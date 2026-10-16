@@ -18,7 +18,7 @@ from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from filo.chat import ChatSession, ChatTurn, TurnStreamEvent, TurnStreamKind
+from filo.chat import ChatSession, ChatTurn, TurnStreamEvent, TurnStreamKind, crisis_resources
 from filo.memory import MemoryMode, MemoryStore, TelegramDelivery
 
 API_ROOT = "https://api.telegram.org"
@@ -80,6 +80,7 @@ class TelegramBot:
         commands = [
             ("start", "Notice and consent"),
             ("help", "Complete guide"),
+            ("crisis", "Emergency resources, no AI reply"),
             ("status", "Agent and archive status"),
             ("case", "Shared formulation"),
             ("memory", "Structured memory"),
@@ -280,6 +281,8 @@ class TelegramChannel:
             self._check_configuration()
             try:
                 self.deliver_pending()
+                if self._extract_reports():
+                    self.deliver_pending()
                 updates = self.bot.get_updates(offset)
             except TelegramError as error:
                 if error.fatal:
@@ -329,7 +332,30 @@ class TelegramChannel:
     def process_update(self, update: dict[str, Any]) -> bool:
         handled = self.accept_update(update)
         self.deliver_pending()
+        if self._extract_reports():
+            self.deliver_pending()
         return handled
+
+    def _extract_reports(self) -> bool:
+        """Record split-arm reports once the turn's offset and replies are safely stored.
+
+        Runs only after ``accept_update`` committed the offset, so nothing here can make an update
+        run again, and no error here may stop the listener: a failed extraction keeps its marker
+        for the next attempt. Returns whether a change notice was queued.
+        """
+        try:
+            before = self._durable_snapshot()
+            epoch = self.config_store.telegram_output_epoch()
+            if not self.session.extract_pending():
+                return False
+            changes = self._durable_changes(before)
+            return bool(changes) and self.config_store.queue_telegram_output(
+                [TelegramDelivery(chat_id=self.allowed_user_id, text=changes)],
+                rendered_at_epoch=epoch,
+            )
+        except Exception as error:  # Extraction is best effort; its marker is retried later.
+            print(f"Memory extraction error: {type(error).__name__}")
+            return False
 
     def accept_update(self, update: dict[str, Any]) -> bool:
         """Handle one update and persist its replies with the offset that consumes it.
@@ -450,6 +476,11 @@ class TelegramChannel:
         state = self.config_store.load_app_state()
         if command == "/start":
             send(self._consent_notice(state.telegram_consent_version == CONSENT_VERSION))
+            return True, False
+        if command == "/crisis":
+            # Static text, no model call and no stored data, so it is answered
+            # before consent and still works when the provider is down.
+            send(crisis_resources(self.session.locale))
             return True, False
 
         consent = "I UNDERSTAND"
@@ -602,6 +633,7 @@ class TelegramChannel:
                 "CONVERSATION\n"
                 "/start — identity, notice, and consent\n"
                 "/status — agent, session, and archive status\n"
+                "/crisis — emergency resources, without a model reply\n"
                 "/end — close and summarize the session\n\n"
                 "TRANSPARENCY\n"
                 "/case — formulation and linked evidence\n"
@@ -916,7 +948,10 @@ class TelegramChannel:
         return "Unknown command. Use /help."
 
     def _model_error(self) -> str:
-        return "I couldn't respond. Please try again shortly."
+        return (
+            "I couldn't respond. Please try again shortly. "
+            "If you may be in danger, /crisis shows emergency resources."
+        )
 
 
 def split_message(text: str, limit: int = MESSAGE_LIMIT) -> list[str]:

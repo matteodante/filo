@@ -1,3 +1,4 @@
+import sqlite3
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -5,7 +6,7 @@ from urllib.error import HTTPError
 
 import pytest
 
-from filo.chat import ChatTurn, TurnStreamEvent, TurnStreamKind
+from filo.chat import ChatTurn, TurnStreamEvent, TurnStreamKind, crisis_resources
 from filo.memory import MemoryKind, MemoryMode, MemoryStore, UserReport
 from filo.telegram import (
     TelegramBot,
@@ -64,6 +65,7 @@ class FakeSession:
         self.received: list[str] = []
         self.end_calls = 0
         self.memory_mode = MemoryMode.STANDARD
+        self.locale = "en-US"
 
     def respond(
         self, text: str, *, on_event: object | None = None, on_commit: object | None = None
@@ -73,6 +75,9 @@ class FakeSession:
         if on_event:
             on_event(TurnStreamEvent(TurnStreamKind.REPLY, reply))  # type: ignore[operator]
         return _committed(ChatTurn(reply), on_commit)
+
+    def extract_pending(self) -> int:
+        return 0
 
     def end(self) -> None:
         self.end_calls += 1
@@ -157,6 +162,46 @@ def test_channel_requires_separate_consent_then_uses_shared_session(
     assert bot.rich_drafts[-1][1] > 0
     assert bot.rich_drafts[-1][2] == "reply: I feel stuck"
     assert bot.typing == [42]
+
+
+def test_crisis_command_answers_before_consent_without_model_or_archive(
+    tmp_path: Path,
+) -> None:
+    bot = FakeBot()
+    session = FakeSession()
+    session.locale = "it-IT"
+    store = MemoryStore(tmp_path)
+    channel = TelegramChannel(bot, session, store, 42)  # type: ignore[arg-type]
+
+    assert channel.process_update(private_update(1, 42, "/crisis")) is True
+
+    assert bot.messages == [(42, crisis_resources("it-IT"))]
+    assert bot.typing == []
+    assert session.received == []
+    assert store.list_sessions() == []
+    assert store.load_app_state().telegram_consent_version is None
+
+
+def test_model_failure_points_to_the_crisis_command(tmp_path: Path) -> None:
+    class FailingSession(FakeSession):
+        def respond(
+            self, text: str, *, on_event: object | None = None, on_commit: object | None = None
+        ) -> ChatTurn:
+            self.received.append(text)
+            raise RuntimeError("provider unavailable")
+
+    bot = FakeBot()
+    session = FailingSession()
+    store = MemoryStore(tmp_path)
+    channel = TelegramChannel(bot, session, store, 42)  # type: ignore[arg-type]
+    channel.process_update(private_update(1, 42, "/consent I UNDERSTAND"))
+
+    channel.process_update(private_update(2, 42, "I am not safe"))
+    assert "/crisis" in bot.messages[-1][1]
+
+    channel.process_update(private_update(3, 42, "/crisis"))
+    assert bot.messages[-1] == (42, crisis_resources("en-US"))
+    assert session.received == ["I am not safe"]
 
 
 def test_run_persists_update_watermark_after_dispatch(tmp_path: Path) -> None:
@@ -332,6 +377,102 @@ def test_normal_turn_discloses_committed_memory_change(tmp_path: Path) -> None:
     assert "Saved fact: I work from home" in bot.messages[-1][1]
 
 
+class SplitSession(FakeSession):
+    """Records a report after the turn, as the split memory-writing arm does."""
+
+    def __init__(self, store: MemoryStore, bot: FakeBot) -> None:
+        super().__init__()
+        self.store = store
+        self.bot = bot
+        self.message_id = 0
+        self.seen_at_extraction: list[tuple[int | None, list[tuple[int, str]]]] = []
+
+    def respond(
+        self, text: str, *, on_event: object | None = None, on_commit: object | None = None
+    ) -> ChatTurn:
+        self.received.append(text)
+        session = self.store.active_session() or self.store.start_session()
+        with self.store.transaction():
+            self.message_id = self.store.save_turn(session, text, "Understood.", [])
+            return _committed(ChatTurn("Understood."), on_commit)
+
+    def extract_pending(self) -> int:
+        if not self.message_id:
+            return 0
+        self.seen_at_extraction.append(
+            (self.store.load_app_state().telegram_update_offset, list(self.bot.rich_messages))
+        )
+        report = UserReport(
+            kind=MemoryKind.FACT, content="I work from home", evidence_quote="I work from home"
+        )
+        self.store.add_user_reports([report], self.message_id, "I work from home")
+        self.message_id = 0
+        return 1
+
+
+def _consented(store: MemoryStore) -> MemoryStore:
+    state = store.load_app_state()
+    state.telegram_consent_version = "alpha-5"
+    store.save_app_state(state)
+    return store
+
+
+def test_reports_extracted_after_delivery_are_disclosed_after_the_reply(tmp_path: Path) -> None:
+    bot = FakeBot()
+    store = _consented(MemoryStore(tmp_path))
+    session = SplitSession(store, bot)
+    channel = TelegramChannel(bot, session, store, 42)  # type: ignore[arg-type]
+
+    channel.process_update(private_update(1, 42, "I work from home"))
+
+    # The offset and the reply were stored and delivered before extraction ran.
+    assert session.seen_at_extraction == [(2, [(42, "Understood.")])]
+    assert "Saved fact: I work from home" in bot.messages[-1][1]
+
+
+def test_a_failed_extraction_notice_never_reruns_the_turn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class RateLimitedNoticeBot(FakeBot):
+        failures = 1
+
+        def send_message(self, chat_id: int, text: str) -> None:
+            if self.failures:
+                self.failures -= 1
+                raise TelegramError("rate limited", error_code=429, retry_after=7)
+            super().send_message(chat_id, text)
+
+    bot = RateLimitedNoticeBot([[private_update(7, 42, "I work from home")], []])
+    store = _consented(MemoryStore(tmp_path))
+    session = SplitSession(store, bot)
+    monkeypatch.setattr("filo.telegram.time.sleep", lambda _seconds: None)
+    channel = TelegramChannel(bot, session, store, 42)  # type: ignore[arg-type]
+
+    with pytest.raises(KeyboardInterrupt):
+        channel.run()
+
+    assert session.received == ["I work from home"]
+    assert len(store.export()["messages"]) == 2
+    assert [text for _, text in bot.messages if "Saved fact" in text] != []
+    assert store.load_app_state().telegram_update_offset == 8
+
+
+def test_a_database_error_during_extraction_does_not_stop_the_listener(tmp_path: Path) -> None:
+    class BrokenStoreSession(FakeSession):
+        def extract_pending(self) -> int:
+            raise sqlite3.OperationalError("disk I/O error")
+
+    bot = FakeBot([[private_update(7, 42, "hello")], [private_update(8, 42, "again")]])
+    store = _consented(MemoryStore(tmp_path))
+    session = BrokenStoreSession()
+    channel = TelegramChannel(bot, session, store, 42)  # type: ignore[arg-type]
+
+    with pytest.raises(KeyboardInterrupt):
+        channel.run()
+
+    assert session.received == ["hello", "again"]
+
+
 def test_normal_turn_sends_tool_input_and_output_before_reply(tmp_path: Path) -> None:
     bot = FakeBot()
     store = MemoryStore(tmp_path)
@@ -401,6 +542,7 @@ def test_bot_configures_commands_only_for_allowlisted_chat(
     assert {item["command"] for item in commands["commands"]} == {
         "start",
         "help",
+        "crisis",
         "status",
         "case",
         "memory",

@@ -1,6 +1,7 @@
 import errno
 import json
 import os
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.error import URLError
@@ -10,7 +11,7 @@ from pydantic_ai import ModelRequest, ModelResponse, UserPromptPart
 from pydantic_ai.messages import TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
-from filo.chat import TurnStreamEvent, TurnStreamKind
+from filo.chat import TurnStreamEvent, TurnStreamKind, crisis_resources
 from filo.cli import (
     DEFAULT_CODEX_MODEL,
     DEFAULT_EMBEDDING_MODEL,
@@ -172,10 +173,11 @@ def test_chat_consent_discloses_scope_fallibility_and_data_flow(
     store.save_app_state(state)
     monkeypatch.setattr("builtins.input", lambda _: "I UNDERSTAND")
 
-    assert _ensure_chat_consent(store)
+    assert _ensure_chat_consent(store, "it-IT")
 
     output = capsys.readouterr().out  # type: ignore[attr-defined]
     assert "Filo is experimental AI" in output
+    assert crisis_resources("it-IT") in output
     assert "at least 18" in output
     assert "output can be wrong" in output
     assert "separate bounded case-data envelope" in output
@@ -443,6 +445,56 @@ def test_interactive_command_and_output_stay_out_of_transcript(
     assert "Rendered command output." not in before
 
 
+def test_crisis_command_shows_static_resources_after_a_model_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.consent_version = "alpha-4"
+    store.save_app_state(state)
+    inputs = iter(["I am not safe tonight.", "/crisis", "/quit"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    calls: list[str] = []
+
+    def respond(text: str, *, on_event: object) -> SimpleNamespace:
+        calls.append(text)
+        raise RuntimeError("provider unavailable")
+
+    session = SimpleNamespace(respond=respond, locale="it-IT")
+
+    assert _chat(session, store) == 0  # type: ignore[arg-type]
+
+    output = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert calls == ["I am not safe tonight."]
+    assert output.index("/crisis shows emergency resources") < output.index("112")
+    assert crisis_resources("it-IT") in output
+    assert "1522" in output
+    assert store.list_sessions() == []
+
+
+def test_crisis_text_is_localized_and_covers_both_regions() -> None:
+    english = crisis_resources("en-US")
+    italian = crisis_resources("it-IT")
+
+    assert english != italian
+    assert crisis_resources("fr-FR") == english
+    for text in (english, italian):
+        for resource in (
+            "112",
+            "911",
+            "988",
+            "chat.988lifeline.org",
+            "1-800-222-1222",
+            "1-800-799-7233",
+            "88788",
+            "1522",
+            "02 2327 2327",
+        ):
+            assert resource in text
+    assert "cannot monitor you" in english
+    assert "non può tenerti d'occhio" in italian
+
+
 def test_interactive_chat_prints_tool_input_and_output(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
 ) -> None:
@@ -471,7 +523,7 @@ def test_interactive_chat_prints_tool_input_and_output(
         )
         return SimpleNamespace(text="Done.", notice=None, tool_trace=None)
 
-    session = SimpleNamespace(respond=respond)
+    session = SimpleNamespace(respond=respond, locale="en-US", extract_pending=lambda: 0)
 
     assert _chat(session, store) == 0  # type: ignore[arg-type]
 
@@ -497,11 +549,39 @@ def test_plain_chat_does_not_persist_rejected_draft_in_redirected_output(
         on_event(TurnStreamEvent(TurnStreamKind.REPLY, "Validated reply."))  # type: ignore[operator]
         return SimpleNamespace(text="Validated reply.", notice=None)
 
-    assert _chat(SimpleNamespace(respond=respond), store) == 0  # type: ignore[arg-type]
+    session = SimpleNamespace(respond=respond, locale="en-US", extract_pending=lambda: 0)
+    assert _chat(session, store) == 0  # type: ignore[arg-type]
 
     output = capsys.readouterr().out  # type: ignore[attr-defined]
     assert "rejected draft" not in output
     assert output.count("filo> Validated reply.") == 1
+
+
+def test_plain_chat_survives_a_database_error_during_extraction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.consent_version = "alpha-4"
+    store.save_app_state(state)
+    inputs = iter(["First.", "Second.", "/quit"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    received: list[str] = []
+
+    def respond(text: str, *, on_event: object) -> SimpleNamespace:
+        received.append(text)
+        return SimpleNamespace(text=f"Reply to {text}", notice=None)
+
+    def extract_pending() -> int:
+        raise sqlite3.OperationalError("database is locked")
+
+    session = SimpleNamespace(respond=respond, locale="en-US", extract_pending=extract_pending)
+    assert _chat(session, store) == 0  # type: ignore[arg-type]
+
+    output = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert received == ["First.", "Second."]
+    assert "filo> Reply to Second." in output
+    assert "Memory extraction error: OperationalError" in output
 
 
 def test_plain_chat_replaces_draft_in_interactive_terminal(
@@ -543,7 +623,8 @@ def test_plain_chat_replaces_draft_in_interactive_terminal(
     monkeypatch.setattr("filo.cli.Console", FakeConsole)
     monkeypatch.setattr("filo.cli.Live", FakeLive)
 
-    assert _chat(SimpleNamespace(respond=respond), store) == 0  # type: ignore[arg-type]
+    session = SimpleNamespace(respond=respond, locale="en-US", extract_pending=lambda: 0)
+    assert _chat(session, store) == 0  # type: ignore[arg-type]
     assert updates == ["filo> rejected draft", "filo> Validated reply."]
 
 

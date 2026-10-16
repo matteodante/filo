@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import suppress
 from typing import ClassVar
 
 from textual import on, work
@@ -159,8 +160,13 @@ class FiloApp(App[None]):
             turn = self.session.respond(text, on_event=self._post_stream_event)
         except Exception as error:  # Provider SDKs expose different error types.
             self.post_message(self.Finished(error=error))
-        else:
-            self.post_message(self.Finished(turn=turn))
+            return
+        # The reply is already on screen; input stays disabled until its reports are recorded,
+        # so no command can run on the store while the extraction does. A failure keeps the
+        # marker for the next turn and must not be shown as a failed reply.
+        with suppress(Exception):
+            self.session.extract_pending()
+        self.post_message(self.Finished(turn=turn))
 
     def _post_command_output(self, output: str) -> None:
         self.post_message(self.CommandOutput(output))
@@ -190,7 +196,8 @@ class FiloApp(App[None]):
                 await self._reply.remove()
                 self._reply = None
             await self._mount_static(
-                f"Model error: {type(message.error).__name__}: {message.error}",
+                f"Model error: {type(message.error).__name__}: {message.error}\n"
+                "If you may be in danger, /crisis shows emergency resources.",
                 "message error",
             )
         elif message.turn is not None:
