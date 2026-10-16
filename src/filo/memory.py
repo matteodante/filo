@@ -9,9 +9,10 @@ import math
 import os
 import re
 import sqlite3
+import threading
 import unicodedata
 from collections.abc import Iterator
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager, nullcontext, suppress
 from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
 from enum import StrEnum
@@ -496,6 +497,9 @@ class MemoryStore:
             os.environ["OLLAMA_BASE_URL"] = LOCAL_OLLAMA_EMBEDDINGS_URL
         self._ephemeral = ephemeral
         self._ephemeral_database: sqlite3.Connection | None = None
+        # PydanticAI runs synchronous tools in worker threads; the one in-memory connection is
+        # shared across them, so every use of it is serialized.
+        self._ephemeral_lock = threading.RLock()
         self._transaction: sqlite3.Connection | None = None
         self._embedding_model = embedding_model or ("injected" if embedder else None)
         self._embedder = embedder or (Embedder(embedding_model) if embedding_model else None)
@@ -503,7 +507,9 @@ class MemoryStore:
             self.directory = Path(":memory:")
             self.database_path = Path(":memory:")
             encryption_key = Fernet.generate_key()
-            self._ephemeral_database = sqlite3.connect(":memory:", autocommit=False)
+            self._ephemeral_database = sqlite3.connect(
+                ":memory:", autocommit=False, check_same_thread=False
+            )
             self._ephemeral_database.execute("PRAGMA foreign_keys = ON")
         else:
             self.directory = directory or Path.home() / ".filo"
@@ -2248,6 +2254,10 @@ class MemoryStore:
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
+        with self._ephemeral_lock if self._ephemeral else nullcontext():
+            yield from self._transaction_scope()
+
+    def _transaction_scope(self) -> Iterator[None]:
         if self._transaction is not None:
             yield
             return
@@ -2263,6 +2273,10 @@ class MemoryStore:
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
+        with self._ephemeral_lock if self._ephemeral else nullcontext():
+            yield from self._connection_scope()
+
+    def _connection_scope(self) -> Iterator[sqlite3.Connection]:
         if self._transaction is not None:
             yield self._transaction
             return
