@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import http.client
 import json
 import re
 import secrets
+import sqlite3
 import threading
 import time
 from collections.abc import Callable
@@ -20,6 +22,7 @@ from filo.chat import ChatSession, ChatTurn, TurnStreamEvent, TurnStreamKind
 from filo.memory import MemoryMode, MemoryStore, TelegramDelivery
 
 API_ROOT = "https://api.telegram.org"
+TELEGRAM_SECRET = "telegram_bot_token"
 CONSENT_VERSION = "alpha-5"
 MESSAGE_LIMIT = 4_000
 MEMORY_PAGE_SIZE = 10
@@ -53,8 +56,8 @@ class TelegramError(RuntimeError):
         )
 
 
-class TelegramPairingChanged(RuntimeError):
-    """Setup paired another account while this listener was running."""
+class _ConfigurationChanged(Exception):
+    """Setup changed the pairing or bot token while this listener was running."""
 
 
 class TelegramBot:
@@ -208,9 +211,15 @@ class TelegramChannel:
     )
 
     def __post_init__(self) -> None:
-        # The pairing this listener started with; a later change by setup
-        # deauthorizes the old account even while this process keeps running.
-        self._paired_at_start = self.config_store.load_app_state().telegram_allowed_user_id
+        # The configuration this listener started with. A later change by setup
+        # deauthorizes the old account or bot even while this process runs.
+        self._configured_as = self._configuration()
+
+    def _configuration(self) -> tuple[int | None, str | None]:
+        """The persisted pairing and a fingerprint of the stored bot token, never the token."""
+        token = self.config_store.load_secret(TELEGRAM_SECRET)
+        fingerprint = hashlib.sha256(token).hexdigest() if token else None
+        return self.config_store.load_app_state().telegram_allowed_user_id, fingerprint
 
     @property
     def config_store(self) -> MemoryStore:
@@ -220,28 +229,47 @@ class TelegramChannel:
     def _ephemeral(self) -> bool:
         return self.session.memory_mode is MemoryMode.EPHEMERAL
 
-    def _paired(self, user_id: object) -> bool:
-        """Whether ``user_id`` is still the account this listener may talk to.
+    def _allows(self, user_id: object, paired: int | None) -> bool:
+        """Whether this listener may talk to ``user_id`` under the persisted ``paired`` account.
 
-        The pairing is reread on every check: once setup pairs another account,
-        or delete-data removes the pairing, even a running listener stops
-        exchanging messages with the old one.
+        Once setup pairs another account, or delete-data removes the pairing,
+        even a running listener stops exchanging messages with the old one,
+        while an explicit --allowed-user-id keeps working as long as the
+        pairing it started with is unchanged.
         """
-        if user_id != self.allowed_user_id:
-            return False
-        paired = self.config_store.load_app_state().telegram_allowed_user_id
-        return paired == self._paired_at_start or user_id == paired
+        return user_id == self.allowed_user_id and (
+            paired == self._configured_as[0] or user_id == paired
+        )
 
-    def _stop_if_repaired(self) -> None:
-        # Consuming updates after a re-pairing would confirm the new account's
-        # messages to Telegram and advance the offset past them, so the
-        # replacement listener would never see them. Stop instead.
-        if self.config_store.load_app_state().telegram_allowed_user_id != self._paired_at_start:
-            raise TelegramPairingChanged(
-                "Telegram was paired with another account; restart the listener to use it."
-            )
+    def _paired(self, user_id: object) -> bool:
+        return self._allows(user_id, self.config_store.load_app_state().telegram_allowed_user_id)
+
+    def _check_configuration(self) -> None:
+        # Consuming updates after setup re-paired or replaced the bot would
+        # confirm the new configuration's messages to Telegram and move the
+        # offset past them, so this listener reloads first.
+        if self._configuration() != self._configured_as:
+            raise _ConfigurationChanged
 
     def run(self) -> None:
+        while True:
+            try:
+                self._listen()
+            except _ConfigurationChanged:
+                state = self.config_store.load_app_state()
+                token = self.config_store.load_secret(TELEGRAM_SECRET)
+                if not token or not state.telegram_allowed_user_id:
+                    print("Telegram is no longer configured; the listener is stopping.")
+                    return
+                print("Telegram configuration changed; reloading it.")
+                # Reloading in the same process does not depend on a service
+                # manager restarting it, which the Windows scheduled task and a
+                # systemd unit after delete-data would not do.
+                self.bot = TelegramBot(token.decode())
+                self.allowed_user_id = state.telegram_allowed_user_id
+                self._configured_as = self._configuration()
+
+    def _listen(self) -> None:
         identity = self.bot.get_me()
         self.bot.delete_webhook()
         self.bot.configure_interface(self.allowed_user_id)
@@ -249,7 +277,7 @@ class TelegramChannel:
         print(f"Telegram bot @{username} is listening. Press Ctrl-C to stop.")
         offset = self.config_store.load_app_state().telegram_update_offset
         while True:
-            self._stop_if_repaired()
+            self._check_configuration()
             try:
                 self.deliver_pending()
                 updates = self.bot.get_updates(offset)
@@ -259,14 +287,29 @@ class TelegramChannel:
                 print(f"Telegram polling or delivery error: {error}")
                 time.sleep(error.retry_after or 3)
                 continue
+            except sqlite3.OperationalError as error:
+                if not _locked(error):
+                    raise
+                print("The local store is busy; retrying.")
+                time.sleep(1)
+                continue
             for update in updates:
                 update_id = update.get("update_id")
                 if not isinstance(update_id, int):
                     continue
                 if offset is not None and update_id < offset:
                     continue
-                self._stop_if_repaired()
-                self.accept_update(update)
+                self._check_configuration()
+                try:
+                    self.accept_update(update)
+                except sqlite3.OperationalError as error:
+                    # A CLI command held the store past the busy timeout. The
+                    # update was not consumed, so the next poll returns it.
+                    if not _locked(error):
+                        raise
+                    print("The local store is busy; retrying.")
+                    time.sleep(1)
+                    break
                 offset = update_id + 1
                 try:
                     self.deliver_pending()
@@ -275,6 +318,12 @@ class TelegramChannel:
                     if error.fatal:
                         raise
                     time.sleep(error.retry_after or 3)
+                    break
+                except sqlite3.OperationalError as error:
+                    if not _locked(error):
+                        raise
+                    print("The local store is busy; retrying.")
+                    time.sleep(1)
                     break
 
     def process_update(self, update: dict[str, Any]) -> bool:
@@ -309,21 +358,26 @@ class TelegramChannel:
 
     def deliver_pending(self) -> None:
         """Send queued replies in order, removing each one only after delivery."""
+        cursor = 0
         while True:
             # The durable queue goes first: replies committed by an earlier run in
             # standard or transcript-only mode still need delivery after a restart
             # in ephemeral mode.
-            durable = self.config_store.list_telegram_output(limit=1)
+            durable = self.config_store.list_telegram_output(limit=1, after_id=cursor)
             if durable:
                 entry_id, delivery = durable[0]
+                cursor = entry_id
             elif self._ephemeral and self._ephemeral_outbox:
                 entry_id, delivery = None, self._ephemeral_outbox[0]
             else:
                 return
             paired = self.config_store.load_app_state().telegram_allowed_user_id
             if delivery.chat_id == paired != self.allowed_user_id:
-                return  # queued for the newly paired account; its listener delivers it
-            if not self._paired(delivery.chat_id):
+                # Queued for the persisted pairing while this listener runs
+                # with --allowed-user-id: leave it for that account's listener
+                # and keep delivering the rest.
+                continue
+            if not self._allows(delivery.chat_id, paired):
                 # Queued for an account that is no longer paired; never send
                 # private content to it.
                 print("Telegram dropped a queued message for a chat that is no longer allowed.")
@@ -473,8 +527,16 @@ class TelegramChannel:
             changes = self._durable_changes(before)
             if changes:
                 send(changes)
-            if not self._ephemeral:
-                enqueue()
+            if self._ephemeral or enqueue(rendered_at_epoch=epoch):
+                return
+            # A local deletion landed while this reply was being written, and the
+            # reply or its change summary may quote what it removed. The turn
+            # stays committed; only the notice below is sent.
+            outbox.clear()
+            send(self._memory_changed())
+            enqueue()
+
+        epoch = self.config_store.telegram_output_epoch()
 
         typing_stopped = threading.Event()
         typing = threading.Thread(
@@ -512,6 +574,12 @@ class TelegramChannel:
         # An ephemeral turn commits to memory only; its replies are queued by
         # the caller once the turn has returned, never inside that commit.
         return True, not self._ephemeral
+
+    def _memory_changed(self) -> str:
+        return (
+            "Your memory changed while I was answering, so I did not send that reply. "
+            "Please send your message again."
+        )
 
     def _keep_typing(self, chat_id: int, stopped: threading.Event) -> None:
         # Telegram shows a chat action for about five seconds; a model turn can
@@ -941,3 +1009,7 @@ def _http_error_details(error: HTTPError) -> tuple[str, int, int | None]:
         error_code if isinstance(error_code, int) else error.code,
         retry_after,
     )
+
+
+def _locked(error: sqlite3.OperationalError) -> bool:
+    return "locked" in str(error) or "busy" in str(error)

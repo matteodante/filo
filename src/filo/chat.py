@@ -896,9 +896,8 @@ class ChatSession:
                     now=now,
                 )
                 app.pending_intervention_id = created.id
-        # The store calls above may have changed other app state, such as
-        # discarding queued Telegram replies on a correction, so only the
-        # pending IDs decided here are written back.
+        # The store calls above may also have written app state, so only the
+        # pending IDs decided here are written back onto the current state.
         latest = self.memory.load_app_state()
         latest.pending_hypothesis_id = app.pending_hypothesis_id
         latest.pending_intervention_id = app.pending_intervention_id

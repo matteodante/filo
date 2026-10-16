@@ -606,13 +606,25 @@ queued on disk by an earlier standard or transcript-only run are delivered first
 forgetting a claim, deleting a session or a date range, and `delete-data` discard every undelivered
 queued reply, because a queued message is not linked to the records it quotes; retention discards
 only replies queued before the cutoff that removed data, so the startup retention pass keeps replies
-a crash left queued. A listener that finds the persisted pairing changed since it started stops
-polling before confirming or recording any further update, and exits non-zero so launchd or systemd
-starts a replacement that reads the new pairing; the new account's queued replies are left for that
-replacement. Each such discard increments a stored counter, and a transparency view
+a crash left queued. The listener records the persisted pairing and a SHA-256 fingerprint of the
+stored bot token (never the token) when it starts; when either changes it stops before confirming
+or recording any further update and reloads the configuration in the same process, so no platform
+depends on a service manager to restart it, and it stops cleanly when nothing is configured any
+more. Queued rows addressed to a pairing other than the one a listener runs with are skipped, not
+dropped, so an `--allowed-user-id` listener and the paired one never block each other. Store
+transactions begin with `BEGIN IMMEDIATE` and a ten-second busy timeout, and the listener retries
+an update when the store stays locked instead of exiting. Each such discard increments a stored counter, and a transparency view
 (`/status`, `/case`, `/memory`, `/sessions`, `/interventions`, `/privacy`) is queued only if the
 counter is unchanged since it was rendered, in the queue's own transaction; otherwise it is rendered
-again, so a deletion that lands mid-render cannot let the old view through. Incoming updates pass the same reread pairing check as delivery, so a listener
+again, so a deletion that lands mid-render cannot let the old view through. A model reply and its
+change summary pass the same check against the counter read before the turn: if a deletion landed
+while the reply was written, the committed turn is kept but only a short notice asking the user to
+resend is queued. `delete-data` advances the counter rather than resetting it. Accepted limits:
+retention keeps a recently queued reply that may quote content it just removed, since discarding
+it would lose the replies the queue recovers after a crash; live tool events and drafts of a turn
+already running can still reach the previously paired chat if re-pairing happens mid-turn, while
+its final reply is dropped; and correcting or forgetting a claim discards unrelated queued replies
+too, preferring privacy over delivery. Incoming updates pass the same reread pairing check as delivery, so a listener
 still running after re-pairing or `delete-data` stops handing the old account's messages to the
 model. A turn waits at most one second for an in-flight typing request before its reply is queued.
 `filo setup` applies only the fields it changed to the state as it is when it saves, so a listener's

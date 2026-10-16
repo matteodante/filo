@@ -58,12 +58,11 @@ from filo.memory import (
     MemoryError as MemoryStoreError,
 )
 from filo.protocol import ProtocolError, ProtocolPack
-from filo.telegram import TelegramBot, TelegramChannel, TelegramError, TelegramPairingChanged
+from filo.telegram import TELEGRAM_SECRET, TelegramBot, TelegramChannel, TelegramError
 
 PACKAGE_PROTOCOL = Path(__file__).resolve().parent / "protocols" / "transdiagnostic"
 REPOSITORY_PROTOCOL = Path(__file__).resolve().parents[2] / "protocols" / "transdiagnostic"
 DEFAULT_PROTOCOL = PACKAGE_PROTOCOL if PACKAGE_PROTOCOL.is_dir() else REPOSITORY_PROTOCOL
-TELEGRAM_SECRET = "telegram_bot_token"
 DEFAULT_CODEX_MODEL = "codex:gpt-5.6-sol"
 DEFAULT_EMBEDDING_REPO = "Qwen/Qwen3-Embedding-0.6B"
 DEFAULT_EMBEDDING_REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
@@ -396,11 +395,6 @@ def _main(argv: Sequence[str] | None = None) -> int:
         except TelegramError as error:
             print(f"Telegram startup error: {error}")
             return 2
-        except TelegramPairingChanged as error:
-            # A non-zero exit lets launchd and systemd (Restart=on-failure)
-            # start a fresh listener that reads the new pairing.
-            print(str(error))
-            return 3
         except KeyboardInterrupt:
             print()
         return 0

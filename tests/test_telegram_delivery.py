@@ -7,6 +7,8 @@ error wrapping, and ``TelegramChannel`` all run unmodified.
 
 import http.client
 import json
+import sqlite3
+import threading
 import time
 from collections import Counter
 from collections.abc import Callable
@@ -32,10 +34,11 @@ from filo.memory import (
 from filo.protocol import ProtocolPack
 from filo.telegram import (
     CONSENT_VERSION,
+    TELEGRAM_SECRET,
     TelegramBot,
     TelegramChannel,
     TelegramError,
-    TelegramPairingChanged,
+    _ConfigurationChanged,
 )
 
 models.ALLOW_MODEL_REQUESTS = False
@@ -739,10 +742,210 @@ def test_old_listener_stops_without_consuming_the_new_accounts_updates(
     api = RepairingApi(from_new_account)
     monkeypatch.setattr("filo.telegram.urlopen", api)
 
-    with pytest.raises(TelegramPairingChanged):
-        channel.run()
+    channel.run()  # no bot token is stored, so the reload stops cleanly
 
     assert api.calls["getUpdates"] == 1  # no later poll confirms the update to Telegram
     assert store.load_app_state().telegram_update_offset is None
     assert model_calls == []
     assert [item.text for item in _queued(store)] == ["for B"]
+
+
+def _configured(tmp_path: Path, token: str = "token-a") -> MemoryStore:
+    store = MemoryStore(tmp_path)
+    store.save_secret(TELEGRAM_SECRET, token.encode())
+    state = store.load_app_state()
+    state.telegram_allowed_user_id = 42
+    store.save_app_state(state)
+    return store
+
+
+def test_listener_reloads_a_new_pairing_in_process_and_answers_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _configured(tmp_path)
+    model_calls: list[str] = []
+    channel, store = _channel(tmp_path, model_calls)
+    from_new_account = _update()
+    from_new_account["message"]["from"]["id"] = from_new_account["message"]["chat"]["id"] = 43
+    repaired = False
+
+    class RepairingApi(FakeBotApi):
+        def __call__(self, request: Any, timeout: float = 0) -> BytesIO:
+            nonlocal repaired
+            if request.full_url.endswith("/getUpdates") and not repaired:
+                repaired = True
+                state = store.load_app_state()
+                state.telegram_allowed_user_id = 43
+                store.save_app_state(state)
+            return super().__call__(request, timeout)
+
+    api = RepairingApi(from_new_account, polls=4)
+    monkeypatch.setattr("filo.telegram.urlopen", api)
+
+    with pytest.raises(KeyboardInterrupt):
+        channel.run()
+
+    assert channel.allowed_user_id == 43
+    assert api.calls["getMe"] == 2  # the listener started again with the new pairing
+    assert len(model_calls) == 2
+    assert store.load_app_state().telegram_update_offset == 42
+    assert REPLY in [text for _method, text in api.delivered]
+
+
+def test_a_new_bot_token_for_the_same_account_reloads_the_listener(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _configured(tmp_path, "token-a")
+    channel, store = _channel(tmp_path, [])
+    swapped = False
+
+    class SwappingApi(FakeBotApi):
+        def __call__(self, request: Any, timeout: float = 0) -> BytesIO:
+            nonlocal swapped
+            if request.full_url.endswith("/getUpdates") and not swapped:
+                swapped = True
+                store.save_secret(TELEGRAM_SECRET, b"token-b")  # setup with a new bot
+                state = store.load_app_state()
+                state.telegram_update_offset = 7  # the new bot's own update position
+                store.save_app_state(state)
+            return super().__call__(request, timeout)
+
+    api = SwappingApi(_update(), polls=1)
+    monkeypatch.setattr("filo.telegram.urlopen", api)
+
+    with pytest.raises(KeyboardInterrupt):
+        channel.run()
+
+    assert channel.bot._base_url.endswith("/bottoken-b")
+    assert store.load_app_state().telegram_update_offset == 7  # not pushed by the old bot
+    assert "token-a" not in repr(channel._configured_as)
+
+
+def test_listener_without_any_configuration_left_stops_cleanly(tmp_path: Path) -> None:
+    store = _configured(tmp_path)
+    channel, store = _channel(tmp_path, [])
+    store.delete_all()
+
+    with pytest.raises(_ConfigurationChanged):
+        channel._check_configuration()
+
+
+def test_a_listener_override_skips_rows_for_the_saved_pairing_and_delivers_its_own(
+    tmp_path: Path,
+) -> None:
+    store = _configured(tmp_path)
+    store.queue_telegram_output([TelegramDelivery(chat_id=42, text="for the paired account")])
+    store.queue_telegram_output([TelegramDelivery(chat_id=50, text="for the override")])
+    sent: list[tuple[int, str]] = []
+
+    class RecordingBot:
+        def send_message(self, chat_id: int, text: str) -> None:
+            sent.append((chat_id, text))
+
+    channel, store = _channel(tmp_path, [])
+    channel.bot = RecordingBot()  # type: ignore[assignment]
+    channel.allowed_user_id = 50  # filo telegram --allowed-user-id 50
+
+    channel.deliver_pending()
+
+    assert sent == [(50, "for the override")]
+    assert [item.text for item in _queued(store)] == ["for the paired account"]
+
+
+def test_a_reply_written_while_memory_was_deleted_is_replaced_by_a_notice(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = MemoryStore(tmp_path)
+    message_id = store.save_turn(store.start_session(), "I live alone", "Noted.", [])
+    store.add_user_reports(
+        [UserReport(kind=MemoryKind.FACT, content="I live alone", evidence_quote="I live alone")],
+        message_id,
+        "I live alone",
+    )
+    claim_id = store.list_claims()[0].id
+    channel, store = _channel(tmp_path, [])
+
+    async def stream(messages: list[Any], _info: Any):
+        store.forget_claim(claim_id)  # `filo memory forget` while the reply is written
+        yield "You mentioned you live alone."
+
+    channel.session.model = FunctionModel(stream_function=stream)
+    api = FakeBotApi(_update())
+    monkeypatch.setattr("filo.telegram.urlopen", api)
+
+    channel.process_update(_update())
+
+    texts = [text for _method, text in api.delivered]
+    assert "You mentioned you live alone." not in texts
+    assert texts[-1] == channel._memory_changed()
+    assert USER_TEXT in _archived_user_messages(store)  # the turn itself stays committed
+    assert store.load_app_state().telegram_update_offset == 42
+
+
+def test_delete_data_keeps_a_view_rendered_before_it_from_being_queued(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path)
+    rendered_at = store.telegram_output_epoch()
+
+    store.delete_all()
+
+    queued = store.queue_telegram_output(
+        [TelegramDelivery(chat_id=42, text="stale view")], rendered_at_epoch=rendered_at
+    )
+    assert queued is False
+    assert _queued(store) == []
+
+
+def test_queue_writes_wait_for_a_concurrent_writer_instead_of_failing(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path)
+    store.queue_telegram_output([TelegramDelivery(chat_id=42, text="first")])
+    ready = threading.Event()
+
+    def other_process() -> None:
+        other = sqlite3.connect(store.database_path, autocommit=False)
+        other.execute("DELETE FROM telegram_outbox")  # holds the write lock
+        ready.set()
+        time.sleep(1)
+        other.commit()
+        other.close()
+
+    writer = threading.Thread(target=other_process)
+    writer.start()
+    ready.wait()
+
+    queued = store.queue_telegram_output(
+        [TelegramDelivery(chat_id=42, text="second")],
+        update_offset=10,
+        rendered_at_epoch=store.telegram_output_epoch(),
+    )
+    writer.join()
+
+    assert queued is True
+    assert [item.text for item in _queued(store)] == ["second"]
+    assert store.load_app_state().telegram_update_offset == 10
+
+
+def test_listener_retries_when_the_store_stays_locked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model_calls: list[str] = []
+    channel, store = _channel(tmp_path, model_calls)
+    accept = channel.accept_update
+    attempts: list[int] = []
+
+    def locked_once(update: dict[str, Any]) -> bool:
+        attempts.append(update["update_id"])
+        if len(attempts) == 1:
+            raise sqlite3.OperationalError("database is locked")
+        return accept(update)
+
+    channel.accept_update = locked_once  # type: ignore[method-assign]
+    api = FakeBotApi(_update())
+    monkeypatch.setattr("filo.telegram.urlopen", api)
+    monkeypatch.setattr("filo.telegram.time.sleep", lambda _seconds: None)
+
+    with pytest.raises(KeyboardInterrupt):
+        channel.run()
+
+    assert attempts == [41, 41]
+    assert len(model_calls) == 2
+    assert store.load_app_state().telegram_update_offset == 42

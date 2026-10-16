@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS telegram_outbox (
 );
 """
 DEFAULT_STALE_HYPOTHESIS_DAYS = 180
+BUSY_TIMEOUT_SECONDS = 10.0
 MIN_SEMANTIC_RELEVANCE = 0.2
 
 
@@ -1925,7 +1926,11 @@ class MemoryStore:
             database.execute("DELETE FROM state WHERE name = ?", (f"secret:{name}",))
 
     def delete_all(self) -> None:
-        with self._connect() as database:
+        with self.transaction(), self._connect() as database:
+            # The discard counter lives in the state table, which is wiped here;
+            # it must still move forward so a view rendered before the wipe is
+            # not queued after it.
+            epoch = self.telegram_output_epoch() + 1
             for table in (
                 "semantic_index",
                 "messages",
@@ -1938,7 +1943,8 @@ class MemoryStore:
                 "state",
             ):
                 database.execute(f"DELETE FROM {table}")
-        self._write_state("schema_version", SCHEMA_VERSION)
+            self._write_state("schema_version", SCHEMA_VERSION)
+            self._write_state("telegram_output_epoch", str(epoch).encode())
 
     def _save_claim(self, item: MemoryItem) -> None:
         with self._connect() as database:
@@ -2287,11 +2293,13 @@ class MemoryStore:
         payload = self._read_state("telegram_output_epoch")
         return 0 if payload is None else int(payload)
 
-    def list_telegram_output(self, limit: int | None = None) -> list[tuple[int, TelegramDelivery]]:
+    def list_telegram_output(
+        self, limit: int | None = None, *, after_id: int = 0
+    ) -> list[tuple[int, TelegramDelivery]]:
         with self._connect() as database:
             rows = database.execute(
-                "SELECT id, payload FROM telegram_outbox ORDER BY id LIMIT ?",
-                (-1 if limit is None else limit,),
+                "SELECT id, payload FROM telegram_outbox WHERE id > ? ORDER BY id LIMIT ?",
+                (after_id, -1 if limit is None else limit),
             ).fetchall()
         return [
             (row[0], TelegramDelivery.model_validate_json(self._decrypt(row[1]))) for row in rows
@@ -2345,15 +2353,36 @@ class MemoryStore:
         if self._transaction is not None:
             yield
             return
-        database = self._ephemeral_database or self._open_connection()
+        if self._ephemeral_database is not None:
+            self._transaction = self._ephemeral_database
+            try:
+                with self._ephemeral_database:
+                    yield
+            finally:
+                self._transaction = None
+            return
+        # BEGIN IMMEDIATE takes the write lock before the first read. A deferred
+        # transaction that reads and then writes cannot wait for a concurrent
+        # writer (the Telegram listener and a CLI command share this file):
+        # SQLite fails the lock upgrade at once with "database is locked"
+        # instead of honoring the busy timeout.
+        database = sqlite3.connect(
+            self.database_path, autocommit=True, timeout=BUSY_TIMEOUT_SECONDS
+        )
         self._transaction = database
         try:
-            with database:
+            database.execute("PRAGMA foreign_keys = ON")
+            database.execute("BEGIN IMMEDIATE")
+            try:
                 yield
+            except BaseException:
+                if database.in_transaction:
+                    database.execute("ROLLBACK")
+                raise
+            database.execute("COMMIT")
         finally:
             self._transaction = None
-            if not self._ephemeral:
-                database.close()
+            database.close()
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -2369,7 +2398,9 @@ class MemoryStore:
                 database.close()
 
     def _open_connection(self) -> sqlite3.Connection:
-        database = sqlite3.connect(self.database_path, autocommit=False)
+        database = sqlite3.connect(
+            self.database_path, autocommit=False, timeout=BUSY_TIMEOUT_SECONDS
+        )
         database.execute("PRAGMA foreign_keys = ON")
         return database
 
