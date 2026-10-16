@@ -1038,6 +1038,7 @@ class MemoryStore:
         now: datetime | None = None,
     ) -> MemoryItem:
         with self.transaction():
+            self._discard_pending_telegram_output()
             item = self._get_claim(correction.memory_id)
             if item.lifecycle is not ClaimLifecycle.ACTIVE:
                 raise ValueError("Only an active claim can be corrected.")
@@ -1197,6 +1198,7 @@ class MemoryStore:
 
     def forget_claim(self, item_id: str, now: datetime | None = None) -> MemoryItem:
         with self.transaction():
+            self._discard_pending_telegram_output()
             item = self._get_claim(item_id)
             item.lifecycle = ClaimLifecycle.ARCHIVED
             item.conflict_ids = []
@@ -1793,6 +1795,8 @@ class MemoryStore:
         if dry_run:
             return result
         with self.transaction():
+            if any(result.values()):
+                self._discard_pending_telegram_output()
             self._delete_message_ids(message_ids)
             for session in summaries:
                 _clear_session_reflection(session)
@@ -1817,6 +1821,7 @@ class MemoryStore:
                 ).fetchone()
             if exists is None:
                 return False
+            self._discard_pending_telegram_output()
             self._delete_message_ids([row[0] for row in rows])
             with self._connect() as database:
                 database.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
@@ -2226,6 +2231,15 @@ class MemoryStore:
         app = self.load_app_state()
         if app.pending_hypothesis_id == item_id:
             app.pending_hypothesis_id = None
+            self.save_app_state(app)
+
+    def _discard_pending_telegram_output(self) -> None:
+        # An undelivered Telegram reply can quote what is being deleted, and
+        # nothing ties a queued message to the records it mentions, so every
+        # deletion drops the whole queue rather than sending stale content.
+        app = self.load_app_state()
+        if app.telegram_outbox:
+            app.telegram_outbox = []
             self.save_app_state(app)
 
     def _clean_pending_ids(self) -> None:

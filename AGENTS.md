@@ -349,7 +349,8 @@ it does not replace full-disk encryption or protect a compromised operating-syst
 
 Memory modes are explicit. `standard` persists every encrypted layer; `transcript_only` persists
 only transcript and successful model history and exposes no structured write tools; `ephemeral`
-uses an in-process encrypted SQLite store and writes nothing to disk. Mode changes do not erase
+uses an in-process encrypted SQLite store and writes no conversation content to disk; Telegram
+still persists its update offset in the configuration store. Mode changes do not erase
 earlier data. `RetentionPolicy` independently controls raw-message, session-summary, and stale-
 hypothesis days; all values default to `None`. Apply it at startup, before retrieval when configured,
 or through explicit CLI commands. There is no worker.
@@ -559,9 +560,12 @@ after Telegram accepted a message but before its removal can send that one messa
 permanent rejection of one queued message is logged and dropped so later replies are not wedged;
 an invalid or revoked token stops the listener. Every network failure, including resets, TLS
 errors, and truncated responses, surfaces as a transient `TelegramError`. The typing indicator is
-repeated every four seconds while a turn runs. In `ephemeral` mode the outbox and offset live in
-the on-disk configuration store while the turn lives in memory, so that write is not atomic with
-the turn.
+repeated every four seconds while a turn runs. In `ephemeral` mode queued replies stay in process
+memory and are queued only after the in-memory turn returns; only the update offset is written to
+the on-disk configuration store, so a crash before delivery loses those replies instead of writing
+conversation content to disk. Correcting or forgetting a claim, deleting a session or a date range,
+retention that removes data, and `delete-data` discard every undelivered queued reply, because a
+queued message is not linked to the records it quotes.
 
 `thera telegram-service install` validates the saved configuration and starts the listener without
 putting secrets in process arguments. It writes a mode-`0600` LaunchAgent in

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import http.client
 import json
 import re
@@ -16,7 +17,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from therapist.chat import ChatSession, ChatTurn, TurnStreamEvent, TurnStreamKind
-from therapist.memory import MemoryStore, TelegramDelivery
+from therapist.memory import MemoryMode, MemoryStore, TelegramDelivery
 
 API_ROOT = "https://api.telegram.org"
 CONSENT_VERSION = "alpha-4"
@@ -188,10 +189,19 @@ class TelegramChannel:
     store: MemoryStore
     allowed_user_id: int
     configuration_store: MemoryStore | None = None
+    # Ephemeral mode writes no conversation content to disk, so its queued
+    # replies live only here and are lost if the process stops.
+    _ephemeral_outbox: list[TelegramDelivery] = dataclasses.field(
+        default_factory=list, init=False, repr=False
+    )
 
     @property
     def config_store(self) -> MemoryStore:
         return self.configuration_store or self.store
+
+    @property
+    def _ephemeral(self) -> bool:
+        return self.session.memory_mode is MemoryMode.EPHEMERAL
 
     def run(self) -> None:
         identity = self.bot.get_me()
@@ -243,7 +253,10 @@ class TelegramChannel:
 
         def enqueue() -> None:
             state = self.config_store.load_app_state()
-            state.telegram_outbox.extend(outbox)
+            if self._ephemeral:
+                self._ephemeral_outbox.extend(outbox)
+            else:
+                state.telegram_outbox.extend(outbox)
             if isinstance(update_id, int):
                 state.telegram_update_offset = max(state.telegram_update_offset or 0, update_id + 1)
             self.config_store.save_app_state(state)
@@ -256,10 +269,14 @@ class TelegramChannel:
     def deliver_pending(self) -> None:
         """Send queued replies in order, removing each one only after delivery."""
         while True:
-            state = self.config_store.load_app_state()
-            if not state.telegram_outbox:
+            pending = (
+                self._ephemeral_outbox
+                if self._ephemeral
+                else self.config_store.load_app_state().telegram_outbox
+            )
+            if not pending:
                 return
-            delivery = state.telegram_outbox[0]
+            delivery = pending[0]
             try:
                 self._deliver(delivery)
             except TelegramError as error:
@@ -268,6 +285,10 @@ class TelegramChannel:
                 # A permanent rejection of one message (for example a blocked
                 # bot) must not wedge every later reply behind it.
                 print(f"Telegram rejected a queued message permanently: {error}")
+            if self._ephemeral:
+                self._ephemeral_outbox.pop(0)
+                continue
+            # A local deletion may have emptied the queue meanwhile.
             state = self.config_store.load_app_state()
             if state.telegram_outbox and state.telegram_outbox[0] == delivery:
                 state.telegram_outbox.pop(0)
@@ -394,7 +415,8 @@ class TelegramChannel:
             changes = self._durable_changes(before)
             if changes:
                 send(changes)
-            enqueue()
+            if not self._ephemeral:
+                enqueue()
 
         typing_stopped = threading.Event()
         typing = threading.Thread(
@@ -427,7 +449,9 @@ class TelegramChannel:
         finally:
             typing_stopped.set()
             typing.join()
-        return True, True
+        # An ephemeral turn commits to memory only; its replies are queued by
+        # the caller once the turn has returned, never inside that commit.
+        return True, not self._ephemeral
 
     def _keep_typing(self, chat_id: int, stopped: threading.Event) -> None:
         # Telegram shows a chat action for about five seconds; a model turn can

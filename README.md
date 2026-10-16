@@ -95,7 +95,8 @@ thera privacy set-default ephemeral
 - `standard`: encrypted transcript/history plus all structured and semantic state.
 - `transcript-only`: encrypted transcript/history, with no new claims, formulation mutations,
   intervention records, or support choices.
-- `ephemeral`: process memory only; nothing is written to disk.
+- `ephemeral`: process memory only; no conversation content is written to disk (Telegram still saves
+  its update position).
 
 Changing mode does not delete earlier data. Retention is disabled by default and can be configured
 and applied explicitly:

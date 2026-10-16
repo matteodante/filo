@@ -9,6 +9,7 @@ import http.client
 import json
 from collections import Counter
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,7 @@ from pydantic_ai import models
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 
 from therapist.chat import ChatSession
-from therapist.memory import MemoryStore
+from therapist.memory import MemoryMode, MemoryStore, RetentionPolicy
 from therapist.protocol import ProtocolPack
 from therapist.telegram import CONSENT_VERSION, TelegramBot, TelegramChannel
 
@@ -101,7 +102,7 @@ def _update() -> dict[str, Any]:
     }
 
 
-def _counting_model(calls: list[str]) -> FunctionModel:
+def _counting_model(calls: list[str], *, use_tool: bool = True) -> FunctionModel:
     async def stream(messages: list[Any], _info: Any):
         calls.append("request")
         returned = any(
@@ -109,7 +110,7 @@ def _counting_model(calls: list[str]) -> FunctionModel:
             for message in messages[-1:]
             for part in message.parts
         )
-        if not returned:
+        if use_tool and not returned:
             yield {
                 0: DeltaToolCall(
                     name="record_user_reports",
@@ -297,3 +298,84 @@ def test_rejected_updates_never_reach_the_model(
     assert [text for _method, text in api.delivered] == (
         [channel._unsupported_message()] if variant == "photo" else []
     )
+
+
+def _crash_after_commit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
+    class CrashingApi(FakeBotApi):
+        def __call__(self, request: Any, timeout: float = 0) -> BytesIO:
+            if request.full_url.endswith("/sendRichMessage"):
+                raise SystemExit("process killed after the turn was committed")
+            return super().__call__(request, timeout)
+
+    monkeypatch.setattr("therapist.telegram.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("therapist.telegram.urlopen", CrashingApi(_update()))
+    channel, store = _channel(tmp_path, [])
+    with pytest.raises(SystemExit):
+        channel.run()
+    assert store.load_app_state().telegram_outbox
+    return store
+
+
+@pytest.mark.parametrize("operation", ["forget", "delete_session", "delete_before", "retention"])
+def test_local_deletion_discards_undelivered_replies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    store = _crash_after_commit(tmp_path, monkeypatch)
+    later = datetime.now(UTC) + timedelta(days=30)
+    if operation == "forget":
+        store.forget_claim(store.list_claims()[0].id)
+    elif operation == "delete_session":
+        assert store.delete_session(store.list_sessions()[0].id)
+    elif operation == "delete_before":
+        assert store.delete_before(later)["sessions"] == 1
+    else:
+        store.apply_retention(RetentionPolicy(raw_message_days=1), now=later)
+    assert store.load_app_state().telegram_outbox == []
+
+    restarted = FakeBotApi(_update())
+    model_calls, _store = _run(tmp_path, monkeypatch, restarted)
+
+    assert model_calls == []
+    assert restarted.delivered == []
+
+
+def test_ephemeral_mode_keeps_queued_replies_off_disk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = MemoryStore(tmp_path)
+    state = config.load_app_state()
+    state.telegram_consent_version = CONSENT_VERSION
+    config.save_app_state(state)
+    model_calls: list[str] = []
+    conversation = MemoryStore(ephemeral=True)
+    session = ChatSession(
+        _counting_model(model_calls, use_tool=False),  # write tools are absent here
+        ProtocolPack.load(Path("protocols/transdiagnostic")),
+        conversation,
+        "en-US",
+        memory_mode=MemoryMode.EPHEMERAL,
+    )
+    channel = TelegramChannel(
+        TelegramBot("synthetic-token"), session, conversation, 42, configuration_store=config
+    )
+    disk_outboxes: list[int] = []
+
+    class ObservingApi(FakeBotApi):
+        def __call__(self, request: Any, timeout: float = 0) -> BytesIO:
+            disk_outboxes.append(len(config.load_app_state().telegram_outbox))
+            return super().__call__(request, timeout)
+
+    api = ObservingApi(_update(), polls=5)
+    api.fail_at = ("sendRichMessage", 1)
+    api.error = ERRORS["rate_limit"]
+    monkeypatch.setattr("therapist.telegram.urlopen", api)
+    monkeypatch.setattr("therapist.telegram.time.sleep", lambda _seconds: None)
+
+    with pytest.raises(KeyboardInterrupt):
+        channel.run()
+
+    assert set(disk_outboxes) == {0}
+    assert len(model_calls) == 1
+    assert [text for _method, text in api.delivered].count(REPLY) == 1
+    assert config.load_app_state().telegram_update_offset == 42
+    assert config.export()["messages"] == []
