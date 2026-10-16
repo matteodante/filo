@@ -2,6 +2,7 @@ import errno
 import json
 import os
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -752,6 +753,46 @@ def test_doctor_does_not_create_memory(tmp_path: Path) -> None:
 
     assert main(["--data-dir", str(data_dir), "doctor"]) == 0
     assert not data_dir.exists()
+
+
+def test_doctor_reports_login_service_and_last_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
+    store = _paired_telegram(tmp_path)
+    auth.save_credential(
+        store,
+        auth.CodexCredential(
+            access_token="synthetic-access",
+            refresh_token="synthetic-refresh",
+            expires_at=int(datetime.now(UTC).timestamp()) - 60,
+            account_id="account",
+        ),
+    )
+    store.record_failure("usage_limit", "ModelHTTPError")
+    monkeypatch.setattr(
+        "filo.cli.telegram_service.status",
+        lambda: SimpleNamespace(installed=True, running=False, detail=""),
+    )
+
+    assert main(["--data-dir", str(tmp_path), "doctor"]) == 0
+
+    output = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert "ChatGPT login: access token expired at" in output
+    assert "refreshes on the next request" in output
+    assert "Telegram service: installed but not running" in output
+    assert "Last failed turn: usage_limit (ModelHTTPError) at" in output
+    assert "synthetic-access" not in output
+
+
+def test_doctor_without_login_or_failures(tmp_path: Path, capsys: object) -> None:
+    MemoryStore(tmp_path)
+
+    assert main(["--data-dir", str(tmp_path), "doctor"]) == 0
+
+    output = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert "ChatGPT login: not logged in" in output
+    assert "Last failed turn: none recorded" in output
+    assert "Telegram service" not in output
 
 
 def test_context_window_override_is_bounded() -> None:

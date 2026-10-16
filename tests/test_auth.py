@@ -520,3 +520,18 @@ def test_codex_request_carries_the_token_and_the_codex_dialect(
     assert request.headers["chatgpt-account-id"] == "account"
     assert body["store"] is False
     assert body["stream"] is True
+
+
+def test_token_source_is_a_pydantic_ai_credential_source(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path)
+    auth.save_credential(store, _credential("account", expires_at=10**10))
+    tokens = auth.CodexTokenSource(store)
+
+    loaded = asyncio.run(tokens.load())
+
+    assert loaded.account_id == "account"
+    assert loaded.access_token == _token("account")
+    assert _token("account") not in repr(loaded)
+    # Refreshes go through the token source, so the provider never saves on its own.
+    with pytest.raises(NotImplementedError):
+        asyncio.run(tokens.save(loaded))

@@ -529,6 +529,14 @@ filo doctor
 filo protocol validate [path]
 ```
 
+`filo doctor` reports, without network access and without creating a store:
+- the protocol, memory, model, and semantic-memory state;
+- the ChatGPT login, as whether the access token is still valid and when it expires, or that it
+  refreshes on the next request (never a token value);
+- the Telegram configuration and, when configured, the background service state;
+- the `local:` endpoint when that provider is selected;
+- the kind, exception class, and time of the last failed turn.
+
 `filo chat` uses a full-screen Textual interface in an interactive terminal. It restores the latest
 50 user/assistant turns from the active session, renders assistant Rich Markdown, displays live tool
 events, and disables input while one sequential turn is running. `--plain` forces the line-oriented
@@ -574,11 +582,18 @@ Conversation-time embedding loads use only the verified local revision.
 
 After `filo auth login`, omitting `--model` selects `codex:gpt-5.6-sol`. An explicit model can be
 selected with `--model codex:<model-id>`. Access and refresh tokens are encrypted in the same local
-store and are never included in exports. The provider attaches the current token to every request
-through an `httpx2` auth flow rather than a fixed API key, so the Telegram listener and the TUI keep
-working across token expiry: the encrypted store is read on every request, so a logout or a new
+store and are never included in exports. Conversation requests use PydanticAI's `openai-codex`
+model, `OpenAICodexModel`, which carries the Codex wire dialect (streaming, `store=false`, the
+fields the backend rejects). Its provider is `FiloCodexProvider`, a subclass of
+`OpenAICodexProvider` whose credential source is Filo's `CodexTokenSource` over the encrypted store:
+the subclass routes every request's credentials through that source instead of the built-in
+in-memory cache and lock-free refresh, which would lose the guarantees below. Filo keeps its own
+device-code login, which the built-in PKCE flow does not offer. The provider's auth flow attaches
+the current token to every request rather than a fixed API key, so the Telegram listener and the
+TUI keep working across token expiry: the encrypted store is read on every request, so a logout or a new
 login applies to running processes; the token is refreshed within 60 seconds of expiry and, after a
-401, refreshed once and the request retried once. A token obtained because of a 401 is marked as
+401, refreshed once and the request replayed once; without a replacement the replay carries the
+same token, so the 401 reaches the caller as an authentication error. A token obtained because of a 401 is marked as
 such in the encrypted credential, so no process refreshes it again after another 401 and a 401
 unrelated to expiry cannot keep rotating the refresh token. Because the refresh token rotates on
 every use, refreshes, login, logout, and `delete-data` run under an
@@ -588,7 +603,9 @@ first, so concurrent processes spend it only once and cannot overwrite a newer l
 deleted credential. Store reads
 and refreshes run in a worker thread rather than on the event loop. The shared HTTP client keeps no
 idle connections, because turns run on different event loops. Token values never enter exception
-messages or model representations.
+messages or model representations. Every login and token failure is an `AuthError`, which is also
+an `OpenAIError`, so the SDK raises it unchanged instead of retrying it as a connection failure.
+`filo chat` checks the login at startup; the Telegram listener defers it to the turn (see below).
 
 The `codex:` provider mirrors the device-code flow and Codex Responses backend used by pi and the
 open-source Codex client. It is experimental, self-hosted/personal only, and not part of the public
@@ -621,6 +638,7 @@ Interactive chat commands:
 /confirm <id>
 /correct <id> <text>
 /forget <id>
+/retry
 /crisis
 /end
 /help
@@ -633,6 +651,21 @@ other command. The CLI and TUI consent prompt shows the same text, so neither tr
 emergency resources behind consent. The numbers and their verification dates live in
 `protocols/transdiagnostic/references/risk-resources.md`; re-verify them before each release. A
 model failure in the CLI, TUI, or Telegram points to `/crisis`.
+
+A failed turn is classified by `classify()` in `src/filo/failures.py` from the exception type, HTTP
+status, and the provider's error code, never from provider text, which can echo conversation
+content. The four kinds each get a notice that says what to do:
+- usage limit reached, with the reset time when the Codex backend reports `resets_at` or
+  `resets_in_seconds`;
+- login needed (`filo auth login`), for a missing login, a rejected refresh grant, or a 401 or 403;
+- context full (`/end`, then send again);
+- transient, for everything else, including a plain rate limit.
+
+A fifth kind, setup, carries a local fix such as `filo memory model install`. Every notice offers
+`/retry` and points to `/crisis`. A failed turn archives nothing; `ChatSession.failed_text` keeps
+its message in process memory only, never on disk, and `/retry` in the CLI, TUI, or Telegram sends
+it again as a fresh turn. The kind, the exception class, and the time of the last failure, never its
+content, are stored encrypted under their own state key for `filo doctor`.
 
 `/quit` only leaves the process. It does not close the conversation session. A later message closes
 and consolidates the previous session if at least eight hours elapsed. `/end` closes it immediately.
@@ -647,6 +680,16 @@ The user never needs to know or type that ID: setup validates the bot token, cre
 single-use deep link, waits for the matching private `/start` update, displays the detected account,
 and asks for confirmation before storing its ID. A phone number cannot be used to look up a Bot API
 user and is neither requested nor stored.
+A listener stops on a configuration problem only when it cannot reach the chat: a missing bot
+token or pairing, or an invalid token. Anything else would make a background service restart into
+the same failure, so the listener starts anyway and each turn reports the fix through the failure
+notice:
+- a missing login is checked per turn, not at startup;
+- no saved model falls back to `codex:gpt-5.6-sol`;
+- the embedding model resolves on first use. Until setup records it and the files are present,
+  every use raises the setup notice, and the running listener recovers once
+  `filo memory model install` completes.
+`filo chat` keeps failing fast at startup.
 Startup validates the token, removes any webhook without discarding pending updates, installs the
 allowlisted chat's English command menu and transparent bot description, then long-polls text
 messages sequentially. The runtime ignores groups, bots, and every sender except the configured
@@ -663,6 +706,7 @@ increments its stored version and requires renewed consent.
 Telegram is a conversation and read-only transparency surface, not a remote administration surface.
 `/crisis` returns the same static localized resources as the CLI, without a model call or storage,
 and is answered before consent so it never sits behind the notice.
+`/retry` sends the last failed message again.
 `/status`, `/case`, `/memory [page]`, `/sessions [page|id]`, `/interventions [page]`, and `/privacy`
 show the agent identity, active session, bounded paginated structured state, evidence links, data
 flow, and limitations. `/start`, `/help`, and `/end` manage consent, guidance, and the conversational
@@ -771,7 +815,9 @@ Minimal setup:
 2. Run `filo setup`, choose the model and locale, then paste the bot token in the hidden prompt.
 3. Open the one-time `t.me` link printed by setup, press Start, and confirm the detected account.
 4. Choose whether setup should install the background service, or run `filo telegram` manually.
-   Only one poller may use a bot token at a time.
+   Only one poller may use a bot token at a time. `filo telegram` holds an exclusive
+   `telegram-poller.lock` in the data directory for its lifetime, taken without waiting, so a
+   second listener for the same data directory exits with a message naming the running one.
 5. Run `filo doctor`, then enter the exact consent command shown in the private bot chat.
 
 `export` returns decrypted user-owned application state, formulation, memory items, sessions, and

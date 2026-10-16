@@ -294,10 +294,23 @@ def _main(argv: Sequence[str] | None = None) -> int:
         )
         print(f"Semantic memory: {semantic_configuration}")
         print(f"Semantic model: {semantic_model}")
+        if store:
+            print(f"ChatGPT login: {_login_report(store)}")
         telegram = "configured" if store and _telegram_config(store) else "not configured"
         print(f"Telegram: {telegram}")
+        if telegram == "configured":
+            print(f"Telegram service: {_service_report()}")
         if model.startswith(LOCAL_PREFIX):
             print(f"Local server: {_local_endpoint_report()}")
+        failure = store.last_failure() if store else None
+        print(
+            "Last failed turn: "
+            + (
+                f"{failure['kind']} ({failure['error_class']}) at {failure['at']}"
+                if failure
+                else "none recorded"
+            )
+        )
         return 0
 
     if args.command == "setup" and not _prepare_semantic_memory():
@@ -754,6 +767,29 @@ def _local_model(model_name: str) -> OpenAIChatModel:
         ),
         settings=OpenAIChatModelSettings(openai_reasoning_effort=LOCAL_REASONING_EFFORT),
     )
+
+
+def _login_report(store: MemoryStore) -> str:
+    credential = load_credential(store)
+    if credential is None:
+        return "not logged in"
+    if credential.issued_after_rejection:
+        # Such a token is not refreshed again after another 401.
+        return "refreshed after a rejection; if replies fail, run `filo auth login`"
+    expires = datetime.fromtimestamp(credential.expires_at).strftime("%Y-%m-%d %H:%M")
+    if credential.expires_at <= datetime.now(UTC).timestamp():
+        return f"access token expired at {expires}; it refreshes on the next request"
+    return f"access token valid until {expires}; it refreshes automatically"
+
+
+def _service_report() -> str:
+    try:
+        current = telegram_service.status()
+    except (OSError, telegram_service.TelegramServiceError) as error:
+        return f"unknown ({type(error).__name__})"
+    if not current.installed:
+        return "not installed; run `filo telegram` or `filo telegram-service install`"
+    return "running" if current.running else "installed but not running"
 
 
 def _local_endpoint_report() -> str:
