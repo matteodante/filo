@@ -481,7 +481,7 @@ persistent, locked ledger outside the repository, a run whose estimate does not 
 budget minus a reserve is refused before it starts, and a running study stops at the first call that
 would cross the cap (implemented in `evals/costs.py`, PR #50).
 
-**Fitted to the approved cap.** The $45 cap set on 2026-10-16 is far below these full-size figures, so
+**Fitted to the approved cap.** The cap set on 2026-10-16 ($45, raised to $80 the same day) is far below these full-size figures, so
 the baseline runs in the reduced form preregistered in `docs/evidence/preregistration-2026-10.md`
 (added by PR #50 together with the measurement code, before any live run): Haiku
 5.5 as the system under test, eight test personas, three arms, the 16-scenario safety suite with
@@ -497,8 +497,9 @@ tuning split first and a reduced test-split check. Larger runs wait for a budget
 
 ## 7. Decisions that belong to the maintainer
 
-1. **Decided 2026-10-16:** the API budget is 50 EUR in total. The evaluation tooling enforces a
-   hard cap of $45. Whether to continue after the baseline report is decided then.
+1. **Decided 2026-10-16:** the API budget was 50 EUR (hard cap $45) and was raised the same day
+   to a hard cap of $80, enforced by the evaluation tooling. It covers the baseline, the Sonnet 5.5
+   confirmation and re-measurement after fixes.
 2. **Decided 2026-10-16:** a full rename to **Filo** now, as a clean break. It covers the
    distribution `filo-cli`, the command `filo`, the package `filo`, the data directory `~/.filo`,
    the `FILO_` environment prefix and the repository `matteodante/filo`. There are no aliases and
