@@ -27,6 +27,7 @@ SESSION_PAGE_SIZE = 5
 INTERVENTION_PAGE_SIZE = 10
 DRAFT_INTERVAL_SECONDS = 0.25
 TYPING_INTERVAL_SECONDS = 4.0
+TYPING_JOIN_SECONDS = 1.0
 # Rejections that a retry cannot fix and that concern only the one message. An
 # invalid or revoked token (401, 404) is fatal instead, and anything ambiguous,
 # such as 408, 429 or 5xx, is retried.
@@ -215,6 +216,18 @@ class TelegramChannel:
     def _ephemeral(self) -> bool:
         return self.session.memory_mode is MemoryMode.EPHEMERAL
 
+    def _paired(self, user_id: object) -> bool:
+        """Whether ``user_id`` is still the account this listener may talk to.
+
+        The pairing is reread on every check: once setup pairs another account,
+        or delete-data removes the pairing, even a running listener stops
+        exchanging messages with the old one.
+        """
+        if user_id != self.allowed_user_id:
+            return False
+        paired = self.config_store.load_app_state().telegram_allowed_user_id
+        return paired == self._paired_at_start or user_id == paired
+
     def run(self) -> None:
         identity = self.bot.get_me()
         self.bot.delete_webhook()
@@ -263,15 +276,15 @@ class TelegramChannel:
         update_id = update.get("update_id")
         outbox: list[TelegramDelivery] = []
 
-        def enqueue() -> None:
-            state = self.config_store.load_app_state()
+        def enqueue(*, consent: bool = False) -> None:
+            durable = [] if self._ephemeral else outbox
             if self._ephemeral:
                 self._ephemeral_outbox.extend(outbox)
-            else:
-                state.telegram_outbox.extend(outbox)
-            if isinstance(update_id, int):
-                state.telegram_update_offset = max(state.telegram_update_offset or 0, update_id + 1)
-            self.config_store.save_app_state(state)
+            self.config_store.queue_telegram_output(
+                durable,
+                update_offset=update_id + 1 if isinstance(update_id, int) else None,
+                consent_version=CONSENT_VERSION if consent else None,
+            )
 
         handled, queued = self._handle_update(update, outbox, enqueue)
         if not queued:
@@ -284,16 +297,14 @@ class TelegramChannel:
             # The durable queue goes first: replies committed by an earlier run in
             # standard or transcript-only mode still need delivery after a restart
             # in ephemeral mode.
-            state = self.config_store.load_app_state()
-            durable = state.telegram_outbox
-            from_memory = not durable and self._ephemeral
-            pending = self._ephemeral_outbox if from_memory else durable
-            if not pending:
+            durable = self.config_store.list_telegram_output(limit=1)
+            if durable:
+                entry_id, delivery = durable[0]
+            elif self._ephemeral and self._ephemeral_outbox:
+                entry_id, delivery = None, self._ephemeral_outbox[0]
+            else:
                 return
-            delivery = pending[0]
-            paired = state.telegram_allowed_user_id
-            repaired = paired != self._paired_at_start and delivery.chat_id != paired
-            if delivery.chat_id != self.allowed_user_id or repaired:
+            if not self._paired(delivery.chat_id):
                 # Queued for an account that is no longer paired; never send
                 # private content to it.
                 print("Telegram dropped a queued message for a chat that is no longer allowed.")
@@ -306,14 +317,10 @@ class TelegramChannel:
                     # A permanent rejection of one message (for example a
                     # blocked bot) must not wedge every later reply behind it.
                     print(f"Telegram rejected a queued message permanently: {error}")
-            if from_memory:
+            if entry_id is None:
                 self._ephemeral_outbox.pop(0)
-                continue
-            # A local deletion may have emptied the queue meanwhile.
-            state = self.config_store.load_app_state()
-            if state.telegram_outbox and state.telegram_outbox[0] == delivery:
-                state.telegram_outbox.pop(0)
-                self.config_store.save_app_state(state)
+            else:
+                self.config_store.remove_telegram_output(entry_id)
 
     def _deliver(self, delivery: TelegramDelivery) -> None:
         if not delivery.rich:
@@ -331,7 +338,7 @@ class TelegramChannel:
         self,
         update: dict[str, Any],
         outbox: list[TelegramDelivery],
-        enqueue: Callable[[], None],
+        enqueue: Callable[..., None],
     ) -> tuple[bool, bool]:
         """Return whether the update was handled and whether its replies are already queued."""
         message = update.get("message")
@@ -344,9 +351,9 @@ class TelegramChannel:
         chat_id = chat.get("id")
         if (
             chat.get("type") != "private"
-            or sender.get("id") != self.allowed_user_id
             or sender.get("is_bot") is True
             or not isinstance(chat_id, int)
+            or not self._paired(sender.get("id"))
         ):
             return False, False
 
@@ -375,11 +382,12 @@ class TelegramChannel:
         consent = "I UNDERSTAND"
         if state.telegram_consent_version != CONSENT_VERSION:
             if text == f"/consent {consent}":
-                state.telegram_consent_version = CONSENT_VERSION
-                self.config_store.save_app_state(state)
+                # Consent, its confirmation, and the offset commit together, so a
+                # crash cannot record one without the others.
                 send(self._consent_recorded())
-            else:
-                send(self._consent_notice(False))
+                enqueue(consent=True)
+                return True, True
+            send(self._consent_notice(False))
             return True, False
 
         if command:
@@ -469,7 +477,9 @@ class TelegramChannel:
             return True, False
         finally:
             typing_stopped.set()
-            typing.join()
+            # A sendChatAction already in flight can take up to the request
+            # timeout; the finished reply must not wait for it.
+            typing.join(timeout=TYPING_JOIN_SECONDS)
         # An ephemeral turn commits to memory only; its replies are queued by
         # the caller once the turn has returned, never inside that commit.
         return True, not self._ephemeral

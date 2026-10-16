@@ -64,6 +64,9 @@ CREATE TABLE IF NOT EXISTS semantic_index (
     dimensions INTEGER NOT NULL, payload BLOB NOT NULL,
     PRIMARY KEY(entity_type, entity_id)
 );
+CREATE TABLE IF NOT EXISTS telegram_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, payload BLOB NOT NULL
+);
 """
 DEFAULT_STALE_HYPOTHESIS_DAYS = 180
 MIN_SEMANTIC_RELEVANCE = 0.2
@@ -217,7 +220,6 @@ class AppState(StrictModel):
     consent_version: str | None = None
     telegram_consent_version: str | None = None
     telegram_update_offset: int | None = Field(default=None, ge=0)
-    telegram_outbox: list[TelegramDelivery] = Field(default_factory=list)
     default_model: str | None = None
     default_context_window_tokens: int | None = Field(default=None, ge=16_000, le=128_000)
     default_locale: str | None = None
@@ -1037,7 +1039,7 @@ class MemoryStore:
         now: datetime | None = None,
     ) -> MemoryItem:
         with self.transaction():
-            self._discard_pending_telegram_output()
+            self._discard_telegram_output()
             item = self._get_claim(correction.memory_id)
             if item.lifecycle is not ClaimLifecycle.ACTIVE:
                 raise ValueError("Only an active claim can be corrected.")
@@ -1197,7 +1199,7 @@ class MemoryStore:
 
     def forget_claim(self, item_id: str, now: datetime | None = None) -> MemoryItem:
         with self.transaction():
-            self._discard_pending_telegram_output()
+            self._discard_telegram_output()
             item = self._get_claim(item_id)
             item.lifecycle = ClaimLifecycle.ARCHIVED
             item.conflict_ids = []
@@ -1793,9 +1795,20 @@ class MemoryStore:
         }
         if dry_run:
             return result
+        # A queued Telegram reply older than a cutoff that removed data may quote
+        # it; replies queued since then, such as those a crash left behind, stay.
+        removal_cutoffs = [
+            current - timedelta(days=days)
+            for days, removed in (
+                (policy.raw_message_days, message_ids),
+                (policy.session_summary_days, summaries),
+                (policy.stale_hypothesis_days, hypotheses),
+            )
+            if days and removed
+        ]
         with self.transaction():
-            if any(result.values()):
-                self._discard_pending_telegram_output()
+            if removal_cutoffs:
+                self._discard_telegram_output(before=max(removal_cutoffs))
             self._delete_message_ids(message_ids)
             for session in summaries:
                 _clear_session_reflection(session)
@@ -1820,7 +1833,7 @@ class MemoryStore:
                 ).fetchone()
             if exists is None:
                 return False
-            self._discard_pending_telegram_output()
+            self._discard_telegram_output()
             self._delete_message_ids([row[0] for row in rows])
             with self._connect() as database:
                 database.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
@@ -1896,6 +1909,9 @@ class MemoryStore:
             "interventions": [item.model_dump(mode="json") for item in self.list_interventions()],
             "sessions": [session.model_dump(mode="json") for session in self.list_sessions()],
             "messages": messages,
+            "telegram_outbox": [
+                item.model_dump(mode="json") for _id, item in self.list_telegram_output()
+            ],
         }
 
     def load_secret(self, name: str) -> bytes | None:
@@ -1918,6 +1934,7 @@ class MemoryStore:
                 "interventions",
                 "process_preferences",
                 "support_choices",
+                "telegram_outbox",
                 "state",
             ):
                 database.execute(f"DELETE FROM {table}")
@@ -2232,14 +2249,55 @@ class MemoryStore:
             app.pending_hypothesis_id = None
             self.save_app_state(app)
 
-    def _discard_pending_telegram_output(self) -> None:
-        # An undelivered Telegram reply can quote what is being deleted, and
-        # nothing ties a queued message to the records it mentions, so every
-        # deletion drops the whole queue rather than sending stale content.
-        app = self.load_app_state()
-        if app.telegram_outbox:
-            app.telegram_outbox = []
+    def queue_telegram_output(
+        self,
+        deliveries: list[TelegramDelivery],
+        *,
+        update_offset: int | None = None,
+        consent_version: str | None = None,
+        now: datetime | None = None,
+    ) -> None:
+        """Queue replies and record the update that produced them in one transaction."""
+        with self.transaction():
+            with self._connect() as database:
+                database.executemany(
+                    "INSERT INTO telegram_outbox(created_at, payload) VALUES (?, ?)",
+                    [(_iso(now), self._encrypt_model(item)) for item in deliveries],
+                )
+            if update_offset is None and consent_version is None:
+                return
+            app = self.load_app_state()
+            if update_offset is not None:
+                app.telegram_update_offset = max(app.telegram_update_offset or 0, update_offset)
+            if consent_version is not None:
+                app.telegram_consent_version = consent_version
             self.save_app_state(app)
+
+    def list_telegram_output(self, limit: int | None = None) -> list[tuple[int, TelegramDelivery]]:
+        with self._connect() as database:
+            rows = database.execute(
+                "SELECT id, payload FROM telegram_outbox ORDER BY id LIMIT ?",
+                (-1 if limit is None else limit,),
+            ).fetchall()
+        return [
+            (row[0], TelegramDelivery.model_validate_json(self._decrypt(row[1]))) for row in rows
+        ]
+
+    def remove_telegram_output(self, entry_id: int) -> None:
+        with self._connect() as database:
+            database.execute("DELETE FROM telegram_outbox WHERE id = ?", (entry_id,))
+
+    def _discard_telegram_output(self, before: datetime | None = None) -> None:
+        # An undelivered Telegram reply can quote what is being deleted, and
+        # nothing ties a queued message to the records it mentions, so a
+        # deletion drops every queued reply that could predate it.
+        with self._connect() as database:
+            if before is None:
+                database.execute("DELETE FROM telegram_outbox")
+            else:
+                database.execute(
+                    "DELETE FROM telegram_outbox WHERE created_at < ?", (_iso(before),)
+                )
 
     def _clean_pending_ids(self) -> None:
         app = self.load_app_state()

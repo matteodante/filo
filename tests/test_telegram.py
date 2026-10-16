@@ -202,7 +202,7 @@ def test_run_queues_delivery_and_retries_without_reprocessing(
 
     state = store.load_app_state()
     assert state.telegram_update_offset == 8
-    assert state.telegram_outbox == []
+    assert store.list_telegram_output() == []
     assert sleeps == [7]
     assert len(bot.messages) == 1
 

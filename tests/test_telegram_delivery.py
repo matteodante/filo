@@ -7,6 +7,7 @@ error wrapping, and ``TelegramChannel`` all run unmodified.
 
 import http.client
 import json
+import time
 from collections import Counter
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -99,6 +100,10 @@ class FakeBotApi:
         return BytesIO(json.dumps({"ok": True, "result": result}).encode())
 
 
+def _queued(store: MemoryStore) -> list[TelegramDelivery]:
+    return [delivery for _id, delivery in store.list_telegram_output()]
+
+
 def _update() -> dict[str, Any]:
     return {
         "update_id": 41,
@@ -178,7 +183,7 @@ def _assert_one_turn_delivered(api: FakeBotApi, model_calls: list[str], store: M
     assert len(store.list_claims()) == 1
     state = store.load_app_state()
     assert state.telegram_update_offset == 42
-    assert state.telegram_outbox == []
+    assert _queued(store) == []
     texts = [text for _method, text in api.delivered]
     assert texts.count(REPLY) == 1
     assert sum("THIS TURN'S RECORD" in text for text in texts) == 1
@@ -237,7 +242,7 @@ def test_crash_after_commit_does_not_rerun_model_after_restart(
     assert len(first_calls) == 2
     pending = store.load_app_state()
     assert pending.telegram_update_offset == 42
-    assert pending.telegram_outbox[0].text == REPLY
+    assert _queued(store)[0].text == REPLY
 
     restarted = FakeBotApi(_update())
     model_calls, store = _run(tmp_path, monkeypatch, restarted)
@@ -245,7 +250,7 @@ def test_crash_after_commit_does_not_rerun_model_after_restart(
     assert model_calls == []
     assert _archived_user_messages(store) == [USER_TEXT]
     assert restarted.delivered[0][1] == REPLY
-    assert store.load_app_state().telegram_outbox == []
+    assert _queued(store) == []
 
 
 def test_failed_outbox_write_rolls_back_turn_and_reports_error(
@@ -255,17 +260,17 @@ def test_failed_outbox_write_rolls_back_turn_and_reports_error(
     monkeypatch.setattr("filo.telegram.urlopen", api)
     model_calls: list[str] = []
     channel, store = _channel(tmp_path, model_calls)
-    save = store.save_app_state
+    queue = store.queue_telegram_output
     failed = False
 
-    def failing_save(state: Any) -> None:
+    def failing_queue(deliveries: list[TelegramDelivery], **kwargs: Any) -> None:
         nonlocal failed
-        if state.telegram_outbox and not failed:
+        if deliveries and not failed:
             failed = True
             raise OSError("disk full")
-        save(state)
+        queue(deliveries, **kwargs)
 
-    monkeypatch.setattr(store, "save_app_state", failing_save)
+    monkeypatch.setattr(store, "queue_telegram_output", failing_queue)
 
     assert channel.process_update(_update()) is True
 
@@ -320,7 +325,7 @@ def _crash_after_commit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Memo
     channel, store = _channel(tmp_path, [])
     with pytest.raises(SystemExit):
         channel.run()
-    assert store.load_app_state().telegram_outbox
+    assert _queued(store)
     return store
 
 
@@ -338,7 +343,7 @@ def test_local_deletion_discards_undelivered_replies(
         assert store.delete_before(later)["sessions"] == 1
     else:
         store.apply_retention(RetentionPolicy(raw_message_days=1), now=later)
-    assert store.load_app_state().telegram_outbox == []
+    assert _queued(store) == []
 
     restarted = FakeBotApi(_update())
     model_calls, _store = _run(tmp_path, monkeypatch, restarted)
@@ -370,7 +375,7 @@ def test_ephemeral_mode_keeps_queued_replies_off_disk(
 
     class ObservingApi(FakeBotApi):
         def __call__(self, request: Any, timeout: float = 0) -> BytesIO:
-            disk_outboxes.append(len(config.load_app_state().telegram_outbox))
+            disk_outboxes.append(len(_queued(config)))
             return super().__call__(request, timeout)
 
     api = ObservingApi(_update(), polls=5)
@@ -424,7 +429,7 @@ def test_ephemeral_restart_delivers_replies_queued_by_a_durable_run(
 
     assert model_calls == []
     assert restarted.delivered[0][1] == REPLY
-    assert MemoryStore(tmp_path).load_app_state().telegram_outbox == []
+    assert _queued(MemoryStore(tmp_path)) == []
 
 
 def test_queued_replies_are_never_sent_to_an_unpaired_chat(
@@ -443,7 +448,7 @@ def test_queued_replies_are_never_sent_to_an_unpaired_chat(
         channel.run()
 
     assert restarted.delivered == []
-    assert store.load_app_state().telegram_outbox == []
+    assert _queued(store) == []
 
 
 def test_privacy_view_states_what_ephemeral_mode_still_saves(tmp_path: Path) -> None:
@@ -490,8 +495,8 @@ def test_running_listener_stops_delivering_once_setup_pairs_another_account(
     store = MemoryStore(tmp_path)
     state = store.load_app_state()
     state.telegram_allowed_user_id = 42
-    state.telegram_outbox = [TelegramDelivery(chat_id=42, text=REPLY)]
     store.save_app_state(state)
+    store.queue_telegram_output([TelegramDelivery(chat_id=42, text=REPLY)])
     sent: list[int] = []
 
     class RecordingBot:
@@ -507,15 +512,15 @@ def test_running_listener_stops_delivering_once_setup_pairs_another_account(
     channel.deliver_pending()
 
     assert sent == []
-    assert store.load_app_state().telegram_outbox == []
+    assert _queued(store) == []
 
 
 def test_unchanged_pairing_still_honors_an_explicit_listener_override(tmp_path: Path) -> None:
     store = MemoryStore(tmp_path)
     state = store.load_app_state()
     state.telegram_allowed_user_id = 42
-    state.telegram_outbox = [TelegramDelivery(chat_id=50, text=REPLY)]
     store.save_app_state(state)
+    store.queue_telegram_output([TelegramDelivery(chat_id=50, text=REPLY)])
     sent: list[int] = []
 
     class RecordingBot:
@@ -542,9 +547,7 @@ def test_a_model_correction_in_another_conversation_keeps_the_queue_discarded(
         USER_TEXT,
     )
     claim_id = store.list_claims()[0].id
-    state = store.load_app_state()
-    state.telegram_outbox = [TelegramDelivery(chat_id=42, text=f"Saved fact: {USER_TEXT}")]
-    store.save_app_state(state)
+    store.queue_telegram_output([TelegramDelivery(chat_id=42, text=f"Saved fact: {USER_TEXT}")])
     correction = "I do not work from home anymore"
 
     async def stream(messages: list[Any], _info: Any):
@@ -574,4 +577,101 @@ def test_a_model_correction_in_another_conversation_keeps_the_queue_discarded(
     ).respond(correction)
 
     assert store.list_claims() == []
-    assert store.load_app_state().telegram_outbox == []
+    assert _queued(store) == []
+
+
+def test_delivery_never_restores_a_queue_discarded_while_it_was_sending(tmp_path: Path) -> None:
+    channel, store = _channel(tmp_path, [])
+    store.queue_telegram_output(
+        [TelegramDelivery(chat_id=42, text="first"), TelegramDelivery(chat_id=42, text="second")]
+    )
+    sent: list[str] = []
+
+    class ForgettingBot:
+        def send_message(self, chat_id: int, text: str) -> None:
+            sent.append(text)
+            store._discard_telegram_output()  # `filo memory forget` in another process
+
+    channel.bot = ForgettingBot()  # type: ignore[assignment]
+
+    channel.deliver_pending()
+
+    assert sent == ["first"]
+    assert _queued(store) == []
+
+
+def test_retention_at_startup_keeps_replies_a_crash_left_queued(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path)
+    long_ago = datetime.now(UTC) - timedelta(days=30)
+    store.save_turn(store.start_session(long_ago), "an old message", "old reply", [], long_ago)
+    store.queue_telegram_output([TelegramDelivery(chat_id=42, text="stale")], now=long_ago)
+    store.queue_telegram_output([TelegramDelivery(chat_id=42, text=REPLY)])
+
+    result = store.apply_retention(RetentionPolicy(raw_message_days=7))
+
+    assert result["messages"] == 2
+    assert [item.text for item in _queued(store)] == [REPLY]
+
+
+def test_messages_from_an_unpaired_account_never_reach_the_model(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.telegram_allowed_user_id = 42
+    store.save_app_state(state)
+    model_calls: list[str] = []
+    channel, store = _channel(tmp_path, model_calls)
+    state = store.load_app_state()
+    state.telegram_allowed_user_id = 43  # setup re-paired while this listener runs
+    store.save_app_state(state)
+
+    assert channel.accept_update(_update()) is False
+
+    assert model_calls == []
+    assert _archived_user_messages(store) == []
+
+
+def test_a_slow_typing_request_does_not_hold_back_the_reply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    api = FakeBotApi(_update())
+
+    def slow_api(request: Any, timeout: float = 0) -> BytesIO:
+        if request.full_url.endswith("/sendChatAction"):
+            time.sleep(3)
+        return api(request, timeout)
+
+    monkeypatch.setattr("filo.telegram.urlopen", slow_api)
+    channel, _store = _channel(tmp_path, [])
+
+    started = time.monotonic()
+    channel.process_update(_update())
+
+    assert time.monotonic() - started < 2.5
+    assert api.delivered[-2][1] == REPLY
+
+
+def test_consent_is_recorded_only_together_with_its_reply_and_offset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    channel, store = _channel(tmp_path, [])
+    state = store.load_app_state()
+    state.telegram_consent_version = None
+    store.save_app_state(state)
+    update = _update()
+    update["message"]["text"] = "/consent I UNDERSTAND"
+
+    def crash(*_args: Any, **_kwargs: Any) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(store, "queue_telegram_output", crash)
+    with pytest.raises(OSError):
+        channel.accept_update(update)
+    assert store.load_app_state().telegram_consent_version is None
+    assert store.load_app_state().telegram_update_offset is None
+
+    monkeypatch.undo()
+    channel.accept_update(update)
+    state = store.load_app_state()
+    assert state.telegram_consent_version == CONSENT_VERSION
+    assert state.telegram_update_offset == 42
+    assert len(_queued(store)) == 1

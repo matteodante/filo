@@ -496,6 +496,7 @@ def _install_telegram_service(args: argparse.Namespace) -> Path | str:
 
 def _setup(store: MemoryStore, args: argparse.Namespace) -> int:
     state = store.load_app_state()
+    loaded = state.model_copy(deep=True)
     install_background = False
     try:
         model = _select_model()
@@ -594,7 +595,14 @@ def _setup(store: MemoryStore, args: argparse.Namespace) -> int:
                 store.save_secret(*provider_secret)
             if token_payload:
                 store.save_secret(TELEGRAM_SECRET, token_payload)
-            store.save_app_state(state)
+            # Setup can sit at a prompt for minutes while a listener keeps
+            # writing its offset and consent, so only the fields setup changed
+            # are applied to the state as it is now.
+            current = store.load_app_state()
+            for field in type(state).model_fields:
+                if getattr(state, field) != getattr(loaded, field):
+                    setattr(current, field, getattr(state, field))
+            store.save_app_state(current)
     except (EOFError, KeyboardInterrupt):
         print("\nSetup cancelled.")
         return 1
