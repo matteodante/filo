@@ -18,7 +18,7 @@ from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from filo.chat import ChatSession, ChatTurn, TurnStreamEvent, TurnStreamKind
+from filo.chat import ChatSession, ChatTurn, TurnStreamEvent, TurnStreamKind, crisis_resources
 from filo.memory import MemoryMode, MemoryStore, TelegramDelivery
 
 API_ROOT = "https://api.telegram.org"
@@ -80,6 +80,7 @@ class TelegramBot:
         commands = [
             ("start", "Notice and consent"),
             ("help", "Complete guide"),
+            ("crisis", "Emergency resources, no AI reply"),
             ("status", "Agent and archive status"),
             ("case", "Shared formulation"),
             ("memory", "Structured memory"),
@@ -451,6 +452,11 @@ class TelegramChannel:
         if command == "/start":
             send(self._consent_notice(state.telegram_consent_version == CONSENT_VERSION))
             return True, False
+        if command == "/crisis":
+            # Static text, no model call and no stored data, so it is answered
+            # before consent and still works when the provider is down.
+            send(crisis_resources(self.session.locale))
+            return True, False
 
         consent = "I UNDERSTAND"
         if state.telegram_consent_version != CONSENT_VERSION:
@@ -602,6 +608,7 @@ class TelegramChannel:
                 "CONVERSATION\n"
                 "/start — identity, notice, and consent\n"
                 "/status — agent, session, and archive status\n"
+                "/crisis — emergency resources, without a model reply\n"
                 "/end — close and summarize the session\n\n"
                 "TRANSPARENCY\n"
                 "/case — formulation and linked evidence\n"
@@ -916,7 +923,10 @@ class TelegramChannel:
         return "Unknown command. Use /help."
 
     def _model_error(self) -> str:
-        return "I couldn't respond. Please try again shortly."
+        return (
+            "I couldn't respond. Please try again shortly. "
+            "If you may be in danger, /crisis shows emergency resources."
+        )
 
 
 def split_message(text: str, limit: int = MESSAGE_LIMIT) -> list[str]:

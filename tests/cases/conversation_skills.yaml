@@ -15,6 +15,13 @@ cases:
         - Answer a direct question before asking another one
         - do not withdraw either
         - Understand before advising
+        - outranks everything else
+        - but no operational help
+        - make no durable write
+        - the country is unknown
+        - say that it is your inference and what it rests on
+        - Do not pass verdicts on absent people
+        - give the reason once
     expected_output: {all_required_terms_present: true}
   - name: CONTRACT
     inputs:
@@ -39,7 +46,7 @@ cases:
   - name: REPAIR
     inputs:
       path: skills/repair-misattunement/SKILL.md
-      required_terms: [specific mismatch, without defending, one concrete question, new technique in the repair turn]
+      required_terms: [specific mismatch, without defending, one concrete question, new technique in the repair turn, not a rupture]
     expected_output: {all_required_terms_present: true}
   - name: FLEXIBILITY
     inputs:

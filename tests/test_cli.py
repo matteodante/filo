@@ -10,7 +10,7 @@ from pydantic_ai import ModelRequest, ModelResponse, UserPromptPart
 from pydantic_ai.messages import TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
-from filo.chat import TurnStreamEvent, TurnStreamKind
+from filo.chat import TurnStreamEvent, TurnStreamKind, crisis_resources
 from filo.cli import (
     DEFAULT_CODEX_MODEL,
     DEFAULT_EMBEDDING_MODEL,
@@ -441,6 +441,46 @@ def test_interactive_command_and_output_stay_out_of_transcript(
     assert "Rendered command output." in output
     assert store.session_transcript(session.id) == before
     assert "Rendered command output." not in before
+
+
+def test_crisis_command_shows_static_resources_after_a_model_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.consent_version = "alpha-4"
+    store.save_app_state(state)
+    inputs = iter(["I am not safe tonight.", "/crisis", "/quit"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    calls: list[str] = []
+
+    def respond(text: str, *, on_event: object) -> SimpleNamespace:
+        calls.append(text)
+        raise RuntimeError("provider unavailable")
+
+    session = SimpleNamespace(respond=respond, locale="it-IT")
+
+    assert _chat(session, store) == 0  # type: ignore[arg-type]
+
+    output = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert calls == ["I am not safe tonight."]
+    assert output.index("/crisis shows emergency resources") < output.index("112")
+    assert crisis_resources("it-IT") in output
+    assert "1522" in output
+    assert store.list_sessions() == []
+
+
+def test_crisis_text_is_localized_and_covers_both_regions() -> None:
+    english = crisis_resources("en-US")
+    italian = crisis_resources("it-IT")
+
+    assert english != italian
+    assert crisis_resources("fr-FR") == english
+    for text in (english, italian):
+        for resource in ("112", "911", "988", "1522"):
+            assert resource in text
+    assert "cannot monitor you" in english
+    assert "non può tenerti d'occhio" in italian
 
 
 def test_interactive_chat_prints_tool_input_and_output(

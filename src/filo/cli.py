@@ -45,6 +45,7 @@ from filo.chat import (
     ChatSession,
     TurnStreamEvent,
     TurnStreamKind,
+    crisis_resources,
 )
 from filo.memory import (
     ClaimCorrection,
@@ -1085,7 +1086,7 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
 
     print("Commands: /case, /memory, /sessions [id], /interventions,")
     print("          /correct <id> <text>,")
-    print("          /forget <id>, /end, /help, /quit")
+    print("          /forget <id>, /crisis, /end, /help, /quit")
     while True:
         try:
             user_text = input("you> ").strip()
@@ -1137,6 +1138,7 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
                 live.stop()
         if failure is not None:
             print(f"Model error: {failure}")
+            print("If you may be in danger, /crisis shows emergency resources.")
             continue
         print(f"filo> {turn.text}")
         if turn.notice:
@@ -1202,7 +1204,9 @@ def _chat_command(
     try:
         if name == "/help":
             output("/case /memory /sessions [id] /correct <id> <text>")
-            output("/interventions /forget <id> /end /quit")
+            output("/interventions /forget <id> /crisis /end /quit")
+        elif name == "/crisis":
+            output(crisis_resources(session.locale))
         elif name == "/case":
             output(store.load_formulation().model_dump_json(indent=2))
         elif name == "/memory":
