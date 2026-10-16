@@ -15,6 +15,7 @@ from filo.chat import (
     CASE_CONTEXT_PREAMBLE,
     CONSOLIDATION_CHUNK_CHARS,
     ChatSession,
+    SessionReflection,
     _transcript_chunks,
 )
 from filo.memory import (
@@ -533,6 +534,73 @@ def test_consolidation_covers_the_whole_session_in_dated_parts(tmp_path) -> None
     assert case_data[1]["reflection_so_far"]["summary"] == "Part 1"
     assert closed.summary == f"Part {len(prompts)}"
     assert closed.risk_notes == ["none discussed"]
+
+
+def _free_keyed_objects(schema: Any) -> list[Any]:
+    if isinstance(schema, dict):
+        found = [schema] if isinstance(schema.get("additionalProperties"), dict) else []
+        return found + [item for value in schema.values() for item in _free_keyed_objects(value)]
+    if isinstance(schema, list):
+        return [item for value in schema for item in _free_keyed_objects(value)]
+    return []
+
+
+def test_reflection_schema_has_no_free_keyed_object() -> None:
+    # Strict structured output cannot express one and silently returns it empty.
+    assert _free_keyed_objects(SessionReflection.model_json_schema()) == []
+
+
+def test_consolidation_links_and_unlinks_claims_through_listed_entries(tmp_path) -> None:
+    store = _store(tmp_path)
+    session = store.start_session()
+    text = "Phone calls at work make my chest tight"
+    message_id = store.save_turn(session, text, "That sounds hard.", [])
+    claim = store.add_user_reports(
+        [UserReport(kind=MemoryKind.PATTERN, content=text, evidence_quote=text)],
+        message_id,
+        text,
+    )[0]
+    store.save_formulation_links({"meanings_and_thoughts": [claim.id]})
+
+    async def stream(_messages: list[Any], _info: Any):
+        yield _tool(
+            "final_result",
+            {
+                "summary": "Work calls came up.",
+                "formulation_links": [
+                    {"field": "situations_and_triggers", "claim_ids": [claim.id]},
+                    {"field": "presenting_concerns", "claim_ids": [claim.id]},
+                ],
+                "formulation_unlinks": [
+                    {"field": "meanings_and_thoughts", "claim_ids": [claim.id]}
+                ],
+            },
+        )
+
+    chat = ChatSession(FunctionModel(stream_function=stream), _pack(), store, "en-US")
+    chat.end()
+
+    formulation = store.load_formulation()
+    assert formulation.evidence["situations_and_triggers"] == [claim.id]
+    assert formulation.evidence["presenting_concerns"] == [claim.id]
+    assert claim.id not in formulation.evidence.get("meanings_and_thoughts", [])
+
+
+def test_reflection_rejects_an_unknown_field_and_more_than_five_claims() -> None:
+    with pytest.raises(ValidationError, match="Unknown formulation field"):
+        SessionReflection.model_validate(
+            {"summary": "s", "formulation_links": [{"field": "mood", "claim_ids": ["a"]}]}
+        )
+    with pytest.raises(ValidationError, match="At most five"):
+        SessionReflection.model_validate(
+            {
+                "summary": "s",
+                "formulation_links": [
+                    {"field": "exceptions", "claim_ids": ["a", "b", "c"]},
+                    {"field": "exceptions", "claim_ids": ["d", "e", "f"]},
+                ],
+            }
+        )
 
 
 def test_transcript_chunks_keep_whole_rounds_and_a_bounded_count() -> None:
