@@ -13,7 +13,7 @@ import sys
 import threading
 import time
 import webbrowser
-from collections.abc import AsyncGenerator, Callable, Generator
+from collections.abc import Awaitable, Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -21,9 +21,15 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 import httpx2
+from openai import OpenAIError
 from pydantic import BaseModel, Field
-from pydantic_ai.models.openai import OpenAIResponsesModel, OpenAIResponsesModelSettings
-from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.models.openai import OpenAIResponsesModelSettings
+from pydantic_ai.models.openai_codex import OpenAICodexModel
+from pydantic_ai.providers.openai_codex import (
+    OpenAICodexCredentials,
+    OpenAICodexCredentialSource,
+    OpenAICodexProvider,
+)
 
 from filo.memory import MemoryStore
 
@@ -34,7 +40,6 @@ DEVICE_TOKEN_URL = f"{AUTH_BASE_URL}/api/accounts/deviceauth/token"
 TOKEN_URL = f"{AUTH_BASE_URL}/oauth/token"
 DEVICE_REDIRECT_URI = f"{AUTH_BASE_URL}/deviceauth/callback"
 DEVICE_VERIFICATION_URI = f"{AUTH_BASE_URL}/codex/device"
-CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 JWT_CLAIM = "https://api.openai.com/auth"
 SECRET_NAME = "openai-codex"
 LOCK_NAME = "codex-auth.lock"
@@ -51,8 +56,13 @@ class CodexCredential(BaseModel):
     issued_after_rejection: bool = False
 
 
-class AuthError(RuntimeError):
-    pass
+class AuthError(RuntimeError, OpenAIError):
+    """A ChatGPT login or token failure. As an `OpenAIError`, the SDK raises it unchanged from a
+    request instead of retrying it and reporting a connection failure."""
+
+
+class LoginRequired(AuthError):
+    """No usable ChatGPT login: the user has to run `filo auth login`."""
 
 
 class _HTTPError(AuthError):
@@ -146,7 +156,7 @@ def credential_lock(store: MemoryStore) -> contextlib.AbstractContextManager[Non
     return _exclusive_lock(store.directory / LOCK_NAME)
 
 
-class CodexTokenSource:
+class CodexTokenSource(OpenAICodexCredentialSource):
     """Hand out a current access token, refreshing it at most once across processes.
 
     The refresh token rotates on every use, so the Telegram listener and an
@@ -167,14 +177,13 @@ class CodexTokenSource:
         self._refresh = refresh or _refresh
         self._lock_path = store.directory / LOCK_NAME
         self._thread_lock = threading.Lock()
-        self.current()
 
     def current(self) -> CodexCredential:
         # Read the store on every request so a logout or a new login made by
         # another process takes effect on the next turn.
         stored = load_credential(self._store)
         if stored is None:
-            raise AuthError("Not logged in. Run `filo auth login` first.")
+            raise LoginRequired("Not logged in. Run `filo auth login` first.")
         if not self._expiring(stored):
             return stored
         return self._refreshed(stored)
@@ -199,7 +208,7 @@ class CodexTokenSource:
         with self._thread_lock, _exclusive_lock(self._lock_path):
             stored = load_credential(self._store)
             if stored is None:
-                raise AuthError("Not logged in. Run `filo auth login` first.")
+                raise LoginRequired("Not logged in. Run `filo auth login` first.")
             if stored != stale and not self._expiring(stored):
                 return stored
             credential = self._refresh(stored.refresh_token)
@@ -208,45 +217,49 @@ class CodexTokenSource:
             save_credential(self._store, credential)
             return credential
 
+    async def load(self) -> OpenAICodexCredentials:
+        return _provider_credentials(await asyncio.to_thread(self.current))
 
-class CodexAuth(httpx2.Auth):
-    """Set the current ChatGPT token on each request and retry once after a 401."""
+    async def save(self, credentials: OpenAICodexCredentials) -> None:
+        # The provider refreshes only through `FiloCodexProvider`, which never calls this.
+        raise NotImplementedError("Refreshed tokens are saved by CodexTokenSource itself.")
 
-    def __init__(self, tokens: CodexTokenSource) -> None:
+
+class FiloCodexProvider(OpenAICodexProvider):
+    """PydanticAI's Codex provider with Filo's token source behind every request.
+
+    The built-in provider keeps credentials in memory and refreshes without an inter-process
+    lock. Filo instead reads the encrypted store per request, so a logout or a new login reaches
+    running processes, refreshes under `codex-auth.lock`, and never refreshes a token that was
+    itself issued after a 401 when it is rejected again.
+    """
+
+    def __init__(self, tokens: CodexTokenSource, *, http_client: httpx2.AsyncClient) -> None:
+        super().__init__(credential_source=tokens, http_client=http_client)
         self._tokens = tokens
 
-    def auth_flow(
-        self, request: httpx2.Request
-    ) -> Generator[httpx2.Request, httpx2.Response, None]:
-        credential = self._tokens.current()
-        _authorize(request, credential)
-        response = yield request
-        if response.status_code != 401:
-            return
-        replacement = self._tokens.after_rejection(credential)
-        if replacement is not None:
-            _authorize(request, replacement)
-            yield request
-
-    async def async_auth_flow(
-        self, request: httpx2.Request
-    ) -> AsyncGenerator[httpx2.Request, httpx2.Response]:
+    async def _prepare_request_credentials(
+        self,
+    ) -> tuple[OpenAICodexCredentials, Callable[[], Awaitable[OpenAICodexCredentials]]]:
         # Store reads, lock waits, and refreshes block, so they run in a worker
         # thread instead of stalling the event loop that streams the reply.
         credential = await asyncio.to_thread(self._tokens.current)
-        _authorize(request, credential)
-        response = yield request
-        if response.status_code != 401:
-            return
-        replacement = await asyncio.to_thread(self._tokens.after_rejection, credential)
-        if replacement is not None:
-            _authorize(request, replacement)
-            yield request
+
+        async def replay() -> OpenAICodexCredentials:
+            replacement = await asyncio.to_thread(self._tokens.after_rejection, credential)
+            # Without a replacement the request is replayed unchanged, so the 401 reaches the
+            # caller as an authentication error.
+            return _provider_credentials(replacement or credential)
+
+        return _provider_credentials(credential), replay
 
 
-def _authorize(request: httpx2.Request, credential: CodexCredential) -> None:
-    request.headers["Authorization"] = f"Bearer {credential.access_token}"
-    request.headers["chatgpt-account-id"] = credential.account_id
+def _provider_credentials(credential: CodexCredential) -> OpenAICodexCredentials:
+    return OpenAICodexCredentials(
+        access_token=credential.access_token,
+        refresh_token=credential.refresh_token,
+        account_id=credential.account_id,
+    )
 
 
 @contextmanager
@@ -283,36 +296,29 @@ def _exclusive_lock(path: Path) -> Generator[None]:
         os.close(descriptor)
 
 
-def codex_model(store: MemoryStore, model_name: str) -> OpenAIResponsesModel:
+def codex_model(
+    store: MemoryStore, model_name: str, *, check_login: bool = True
+) -> OpenAICodexModel:
     tokens = CodexTokenSource(store)
-    # Fail at startup rather than on the first message when login is needed.
-    tokens.current()
-    settings = OpenAIResponsesModelSettings(
-        openai_store=False,
-        openai_reasoning_effort="medium",
-        openai_text_verbosity="low",
-        extra_headers={
-            "OpenAI-Beta": "responses=experimental",
-            "originator": "filo-cli",
-        },
-    )
-    return OpenAIResponsesModel(
+    if check_login:
+        # Fail at startup rather than on the first message when login is needed.
+        tokens.current()
+    return OpenAICodexModel(
         model_name,
-        provider=OpenAIProvider(
-            base_url=CODEX_BASE_URL,
-            # Replaced on every request by CodexAuth with the current token.
-            api_key="codex-oauth",
-            # The provider does not own a client passed in, so this one outlives
-            # each run. Turns run on different event loops (the TUI uses a new
-            # worker thread per turn), and a pooled connection bound to a closed
-            # loop fails, so no connection is kept alive between requests.
+        provider=FiloCodexProvider(
+            tokens,
+            # Turns run on different event loops (the TUI uses a new worker thread per turn),
+            # and a pooled connection bound to a closed loop fails, so no connection is kept
+            # alive between requests.
             http_client=httpx2.AsyncClient(
-                auth=CodexAuth(tokens),
                 timeout=httpx2.Timeout(600, connect=5),
                 limits=httpx2.Limits(max_keepalive_connections=0),
             ),
         ),
-        settings=settings,
+        settings=OpenAIResponsesModelSettings(
+            openai_reasoning_effort="medium",
+            openai_text_verbosity="low",
+        ),
     )
 
 

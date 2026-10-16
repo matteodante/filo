@@ -11,11 +11,25 @@ from urllib.error import HTTPError
 
 import httpx2
 import pytest
+from pydantic_ai import Agent, models
+from pydantic_ai.exceptions import ModelHTTPError
+from pydantic_ai.models.openai_codex import OpenAICodexModel
 
 import filo.auth as auth
 from filo.auth import CodexCredential
 from filo.cli import main
 from filo.memory import MemoryStore
+
+CODEX_URL = "https://chatgpt.com/backend-api/codex/responses"
+
+
+def _codex_client(
+    tokens: auth.CodexTokenSource, transport: httpx2.MockTransport
+) -> httpx2.AsyncClient:
+    # The provider attaches PydanticAI's credential-injecting auth to the client it is given.
+    client = httpx2.AsyncClient(transport=transport)
+    auth.FiloCodexProvider(tokens, http_client=client)
+    return client
 
 
 def _token(account_id: str) -> str:
@@ -230,8 +244,8 @@ def test_unauthorized_response_triggers_exactly_one_refresh_and_retry(tmp_path: 
             (lambda _request: httpx2.Response(401)) if rejecting else handler
         )
         tokens = auth.CodexTokenSource(store, refresh=refresh)
-        async with httpx2.AsyncClient(auth=auth.CodexAuth(tokens), transport=transport) as client:
-            response = await client.post("https://codex.invalid/responses", json={"input": "x"})
+        async with _codex_client(tokens, transport) as client:
+            response = await client.post(CODEX_URL, json={"input": "x"})
         return response.status_code
 
     assert asyncio.run(call(rejecting=False)) == 200
@@ -242,15 +256,36 @@ def test_unauthorized_response_triggers_exactly_one_refresh_and_retry(tmp_path: 
     assert spent == ["refresh"]  # the stored token came from a 401, so no further rotation
 
 
-def test_codex_model_sends_current_token_through_auth_flow(tmp_path: Path) -> None:
+def test_codex_model_uses_the_pydantic_ai_codex_provider(tmp_path: Path) -> None:
     store = MemoryStore(tmp_path)
     auth.save_credential(store, _credential("account", expires_at=10**10))
 
     model = auth.codex_model(store, "gpt-5.6-sol")
 
-    client = model.client._client  # the httpx client handed to the provider
-    assert isinstance(client.auth, auth.CodexAuth)
+    assert isinstance(model, OpenAICodexModel)
+    assert isinstance(model._provider, auth.FiloCodexProvider)
     assert _token("account") not in repr(model.client.api_key)
+
+
+def test_codex_model_can_defer_the_login_check(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path)
+
+    with pytest.raises(auth.LoginRequired):
+        auth.codex_model(store, "gpt-5.6-sol")
+
+    assert isinstance(auth.codex_model(store, "gpt-5.6-sol", check_login=False), OpenAICodexModel)
+
+
+def test_missing_login_reaches_the_caller_without_sdk_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No request leaves the process: the auth flow stops it before the transport.
+    monkeypatch.setattr(models, "ALLOW_MODEL_REQUESTS", True)
+    store = MemoryStore(tmp_path)
+    agent = Agent(auth.codex_model(store, "gpt-5.6-sol", check_login=False))
+
+    with pytest.raises(auth.LoginRequired):
+        agent.run_sync("hello")
 
 
 _RACE = """
@@ -344,10 +379,8 @@ def test_repeated_unauthorized_responses_refresh_only_once(tmp_path: Path) -> No
 
     async def calls() -> list[int]:
         transport = httpx2.MockTransport(lambda _request: httpx2.Response(401))
-        async with httpx2.AsyncClient(auth=auth.CodexAuth(tokens), transport=transport) as client:
-            return [
-                (await client.post("https://codex.invalid/responses")).status_code for _ in range(3)
-            ]
+        async with _codex_client(tokens, transport) as client:
+            return [(await client.post(CODEX_URL)).status_code for _ in range(3)]
 
     assert asyncio.run(calls()) == [401, 401, 401]
     assert spent == ["refresh"]  # a refreshed token that is still rejected is not rotated again
@@ -413,8 +446,8 @@ def test_a_second_process_does_not_refresh_a_token_issued_after_rejection(
 
     async def rejected_request(tokens: auth.CodexTokenSource) -> int:
         transport = httpx2.MockTransport(lambda _request: httpx2.Response(401))
-        async with httpx2.AsyncClient(auth=auth.CodexAuth(tokens), transport=transport) as client:
-            return (await client.post("https://codex.invalid/responses")).status_code
+        async with _codex_client(tokens, transport) as client:
+            return (await client.post(CODEX_URL)).status_code
 
     listener = auth.CodexTokenSource(store, refresh=refresh)
     chat = auth.CodexTokenSource(store, refresh=refresh)  # separate state, as in another process
@@ -438,9 +471,9 @@ def test_delete_data_waits_for_an_in_flight_refresh(tmp_path: Path) -> None:
         release.wait(10)
         return _credential("account", expires_at=10**10, refresh="rotated")
 
-    tokens: list[auth.CodexTokenSource] = []
+    tokens: list[CodexCredential] = []
     refresher = threading.Thread(
-        target=lambda: tokens.append(auth.CodexTokenSource(store, refresh=slow_refresh))
+        target=lambda: tokens.append(auth.CodexTokenSource(store, refresh=slow_refresh).current())
     )
     refresher.start()
     assert refreshing.wait(10)
@@ -457,3 +490,32 @@ def test_delete_data_waits_for_an_in_flight_refresh(tmp_path: Path) -> None:
 
     assert not deleter.is_alive()
     assert auth.load_credential(store) is None
+
+
+def test_codex_request_carries_the_token_and_the_codex_dialect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The request goes to a mock transport, never the network.
+    monkeypatch.setattr(models, "ALLOW_MODEL_REQUESTS", True)
+    store = MemoryStore(tmp_path)
+    auth.save_credential(store, _credential("account", expires_at=10**10))
+    seen: list[httpx2.Request] = []
+
+    def reject(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return httpx2.Response(400, json={"error": {"message": "stop here"}})
+
+    client = httpx2.AsyncClient(transport=httpx2.MockTransport(reject))
+    provider = auth.FiloCodexProvider(auth.CodexTokenSource(store), http_client=client)
+    agent = Agent(OpenAICodexModel("gpt-5.6-sol", provider=provider))
+
+    with pytest.raises(ModelHTTPError):
+        agent.run_sync("hello")
+
+    (request,) = seen
+    body = json.loads(request.content)
+    assert str(request.url) == CODEX_URL
+    assert request.headers["Authorization"] == f"Bearer {_token('account')}"
+    assert request.headers["chatgpt-account-id"] == "account"
+    assert body["store"] is False
+    assert body["stream"] is True
