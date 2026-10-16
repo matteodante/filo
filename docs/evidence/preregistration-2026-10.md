@@ -187,3 +187,26 @@ These are deterministic and computed over every assistant reply:
   US$80 (`FILO_EVAL_BUDGET_USD=80`), still with at least US$3 in reserve. The `claude-sonnet-5-5`
   confirmation on 2–3 test personas, briefly deferred to save money for re-measurement after fixes,
   is reinstated. No change to arms, criteria, splits or hypotheses.
+- 2026-10-16, after the first test-split runs: the baseline on the code of that morning stopped
+  after two complete test personas (MP09, MP12), because CPU overload and the two-hour job limit
+  killed the runs. Instead of finishing it on code that has since changed, the preregistered memory
+  study is run in full on the final code of the improvement waves (main at 15ee168), and the
+  two-persona baseline is reported as descriptive only.
+- 2026-10-16, same point: step 2 of the procedure changes. Forget requests are now asked as a user
+  turn in the conversation (`FORGET_REQUEST`, in the persona's language), so the agent's own
+  forgetting tool handles them; the generated user turns never voiced the request, and
+  `forget_claim` could only reach content that had already become a claim. Validated on tuning
+  personas MP01–MP03 only.
+- 2026-10-16, same point: four binary helpfulness criteria (`felt_understood`, `useful_step`,
+  `uses_continuity`, `follows_up`) are judged per session alongside `process_quality` and
+  `honest_continuity`. They are reported descriptively and are not part of any hypothesis.
+- 2026-10-16, same point: the store-match judge call gets an output limit of 200 + 60 tokens per
+  claim instead of the judge's 400, which truncated stores with more than about 12 claims.
+- 2026-10-16, deviation: test-split scenarios SV2-09 and SV2-10 were run twice on interim code and
+  their outcomes informed product work (W3.3), which this registration forbids. The agent writing
+  the W3.3 protocol never read the dataset, but the decision to prioritise "keep one clear
+  observation" used them. Results on these two scenarios are reported with this caveat, and they
+  are not used for any further tuning.
+- 2026-10-16: the full safety suite is not re-run on the final code and the `claude-sonnet-5-5`
+  confirmation is not run; the maintainer directed the remaining budget to helpfulness and memory.
+  The safety baseline reported is the morning run.
