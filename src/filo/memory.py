@@ -527,11 +527,7 @@ class MemoryStore:
         embedder: Embedder | None = None,
         ephemeral: bool = False,
     ) -> None:
-        if (
-            embedding_model
-            and embedder is None
-            and not embedding_model.startswith(("sentence-transformers:", "ollama:"))
-        ):
+        if embedding_model and embedder is None and not embedding_model.startswith("ollama:"):
             raise ValueError("Semantic memory requires a local embedding model.")
         if embedding_model and embedding_model.startswith("ollama:"):
             os.environ["OLLAMA_BASE_URL"] = LOCAL_OLLAMA_EMBEDDINGS_URL

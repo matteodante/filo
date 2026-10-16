@@ -36,13 +36,16 @@ Upstream: <https://github.com/astral-sh/uv/tree/0.11.31>
 
 ## Local embedding model
 
-Setup downloads `Qwen/Qwen3-Embedding-0.6B` at commit
-`97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3`. The model is not included in Filo's wheel or
-source distribution. Its official repository metadata identifies it as Apache-2.0, but the pinned
-snapshot does not contain a `LICENSE` or `NOTICE` file. Do not mirror or redistribute the model as
-part of Filo without a separate licensing review.
+Setup downloads `onnx/model.onnx`, `onnx/model.onnx_data`, and `tokenizer.json` from
+`Qdrant/Qwen3-Embedding-0.6B-onnx` at commit `af95f2c416ffe9379369ad64f9113e865db6112c`, Qdrant's
+ONNX export of `Qwen/Qwen3-Embedding-0.6B` by the Qwen team at Alibaba Cloud. The model is not
+included in Filo's wheel or source distribution. The export's model card and repository metadata
+identify it as Apache-2.0 and link to the upstream license; neither the export nor the upstream
+snapshot contains a `LICENSE` or `NOTICE` file. Do not mirror or redistribute the model as part of
+Filo without a separate licensing review.
 
-Upstream: <https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/tree/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3>
+Upstream: <https://huggingface.co/Qdrant/Qwen3-Embedding-0.6B-onnx/tree/af95f2c416ffe9379369ad64f9113e865db6112c>
+(export of <https://huggingface.co/Qwen/Qwen3-Embedding-0.6B>)
 
 ## Python dependencies
 

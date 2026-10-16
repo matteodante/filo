@@ -148,13 +148,10 @@ if [ ! -f "$TEMP_DIRECTORY/pyproject.toml" ]; then
 fi
 
 echo "Installing Filo..."
-# uv tool install does not read uv.lock, so the tested versions are passed as constraints. torch
-# stays unpinned outside Linux, where the locked release has no wheel for older Macs; on Linux the
-# project's sources select the CPU build.
+# uv tool install does not read uv.lock, so the tested versions are passed as constraints.
 CONSTRAINTS="$TEMP_DIRECTORY/filo-constraints.txt"
 "$UV" export --project "$TEMP_DIRECTORY" --frozen --no-dev --no-emit-project --no-hashes \
-    --quiet --output-file "$TEMP_DIRECTORY/locked-versions.txt"
-grep -v "^torch==.*sys_platform != 'linux'" "$TEMP_DIRECTORY/locked-versions.txt" >"$CONSTRAINTS"
+    --quiet --output-file "$CONSTRAINTS"
 "$UV" tool install --force --python 3.12 --constraints "$CONSTRAINTS" "$TEMP_DIRECTORY"
 "$UV" tool update-shell
 

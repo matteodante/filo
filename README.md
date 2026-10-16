@@ -21,18 +21,15 @@ Until the first release published under the Filo name, install from a checkout. 
 ```bash
 git clone https://github.com/matteodante/filo.git
 cd filo
-uv export --frozen --no-dev --no-emit-project --no-hashes |
-  grep -v "^torch==.*sys_platform != 'linux'" >filo-constraints.txt
+uv export --frozen --no-dev --no-emit-project --no-hashes --output-file filo-constraints.txt
 uv tool install --python 3.12 --constraints filo-constraints.txt .
 filo setup
 filo doctor
 ```
 
 The constraints file pins the versions in `uv.lock`, which `uv tool install` does not read, so the
-installation uses the tested versions. On Linux the project selects the CPU build of PyTorch: the
-embedding model runs on the CPU, and the default Linux build adds several gigabytes of CUDA
-libraries. Outside Linux PyTorch is left unpinned, because the locked release has no wheel for
-Intel Macs or macOS 13.
+installation uses the tested versions. The application needs about 260 MB; `filo setup` then
+downloads the 2.4 GB embedding model, which runs on the CPU through ONNX Runtime without PyTorch.
 
 The one-line bootstrap installers (`install.sh`, `install.ps1`) still pin `v0.3.1`, which predates
 the rename, so they are not usable until that release. They need no administrator privileges,
@@ -89,7 +86,8 @@ choices, and a derived semantic index.
   active context.
 - Conflicts remain explicit; semantic similarity never establishes truth.
 
-Retrieval combines lexical overlap, local multilingual embeddings, recency, focus, pending
+Retrieval combines lexical overlap, local multilingual embeddings (Qwen3-Embedding-0.6B in fp32 on
+ONNX Runtime), recency, focus, pending
 interventions, process preferences, conflicts, relevant sessions, and concrete excerpts. Results are
 bounded as complete JSON records. Missing embeddings fail closed.
 

@@ -286,7 +286,8 @@ def test_embedding_model_verify_checks_checksums_and_local_inference(
         size_on_disk=1024,
     )
     model = SimpleNamespace(revisions=[revision])
-    result = SimpleNamespace(mismatches=[], checked_count=11)
+    # Files the runtime does not use are never downloaded, so their absence is expected.
+    result = SimpleNamespace(mismatches=[], missing_paths=["README.md"], checked_count=3)
     monkeypatch.setattr(
         "filo.cli._embedding_cache_info",
         lambda: (SimpleNamespace(), model, []),
@@ -304,7 +305,14 @@ def test_embedding_model_verify_checks_checksums_and_local_inference(
     assert main(["memory", "model", "verify"]) == 0
 
     assert len(inferred_models) == 1
-    assert "11 files, 1024 dimensions" in capsys.readouterr().out  # type: ignore[attr-defined]
+    assert "3 files, 1024 dimensions" in capsys.readouterr().out  # type: ignore[attr-defined]
+
+    result.missing_paths = ["onnx/model.onnx_data"]
+
+    assert main(["memory", "model", "verify"]) == 2
+
+    assert len(inferred_models) == 1
+    assert "missing onnx/model.onnx_data" in capsys.readouterr().out  # type: ignore[attr-defined]
 
 
 def test_embedding_model_install_uses_setup_smoke_test(

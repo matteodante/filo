@@ -120,16 +120,12 @@ try {
 
     Write-Host "Installing Filo..."
     # uv tool install does not read uv.lock, so the tested versions are passed as constraints.
-    # torch stays unpinned outside Linux, where the locked release has no wheel for older Macs.
     $Constraints = Join-Path $TemporaryDirectory "filo-constraints.txt"
-    $LockedVersions = & $Uv export --project $ProjectDirectory.FullName --frozen --no-dev `
-        --no-emit-project --no-hashes --quiet
+    & $Uv export --project $ProjectDirectory.FullName --frozen --no-dev --no-emit-project `
+        --no-hashes --quiet --output-file $Constraints
     if ($LASTEXITCODE -ne 0) {
         throw "uv could not read the Filo lockfile."
     }
-    $LockedVersions |
-        Where-Object { $_ -notmatch "^torch==.*sys_platform != 'linux'" } |
-        Set-Content -LiteralPath $Constraints -Encoding ascii
     & $Uv tool install --force --python 3.12 --constraints $Constraints $ProjectDirectory.FullName
     if ($LASTEXITCODE -ne 0) {
         throw "uv could not install Filo."

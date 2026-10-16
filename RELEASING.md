@@ -144,9 +144,7 @@ in a fresh isolated tool environment:
 
 ```bash
 shasum -a 256 dist/*
-uv export --frozen --no-dev --no-emit-project --no-hashes |
-  grep -v "^torch==.*sys_platform != 'linux'" >/tmp/filo-constraints.txt
-# On Linux, also pass --torch-backend cpu: a wheel carries no [tool.uv.sources].
+uv export --frozen --no-dev --no-emit-project --no-hashes --output-file /tmp/filo-constraints.txt
 uv tool install --force --python 3.12 --constraints /tmp/filo-constraints.txt dist/*.whl
 "$(uv tool dir --bin)/filo" protocol validate
 "$(uv tool dir --bin)/filo" doctor

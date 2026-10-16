@@ -14,6 +14,8 @@ from urllib.request import Request, urlopen
 
 os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
 os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
+# ONNX Runtime refuses external weights behind a symbolic link, so the cache keeps real files.
+os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
 
 import questionary
 from huggingface_hub import HfApi, scan_cache_dir, snapshot_download
@@ -50,6 +52,12 @@ from filo.chat import (
     TurnStreamKind,
     crisis_resources,
 )
+from filo.embedding import (
+    EMBEDDING_FILES,
+    EMBEDDING_REPO,
+    EMBEDDING_REVISION,
+    OnnxQwen3EmbeddingModel,
+)
 from filo.memory import (
     ClaimCorrection,
     ClaimFit,
@@ -68,11 +76,9 @@ PACKAGE_PROTOCOL = Path(__file__).resolve().parent / "protocols" / "transdiagnos
 REPOSITORY_PROTOCOL = Path(__file__).resolve().parents[2] / "protocols" / "transdiagnostic"
 DEFAULT_PROTOCOL = PACKAGE_PROTOCOL if PACKAGE_PROTOCOL.is_dir() else REPOSITORY_PROTOCOL
 DEFAULT_CODEX_MODEL = "codex:gpt-5.6-sol"
-DEFAULT_EMBEDDING_REPO = "Qwen/Qwen3-Embedding-0.6B"
-DEFAULT_EMBEDDING_REVISION = "97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3"
-DEFAULT_EMBEDDING_MODEL = (
-    f"sentence-transformers:{DEFAULT_EMBEDDING_REPO}@{DEFAULT_EMBEDDING_REVISION}"
-)
+DEFAULT_EMBEDDING_REPO = EMBEDDING_REPO
+DEFAULT_EMBEDDING_REVISION = EMBEDDING_REVISION
+DEFAULT_EMBEDDING_MODEL = f"onnx:{DEFAULT_EMBEDDING_REPO}@{DEFAULT_EMBEDDING_REVISION}"
 PROVIDER_SECRETS = {
     "openai:": ("openai_api_key", "OPENAI_API_KEY", "OpenAI API key"),
     "anthropic:": ("anthropic_api_key", "ANTHROPIC_API_KEY", "Anthropic API key"),
@@ -944,9 +950,10 @@ def _default_embedder(*, local_files_only: bool) -> Embedder:
     snapshot = snapshot_download(
         DEFAULT_EMBEDDING_REPO,
         revision=DEFAULT_EMBEDDING_REVISION,
+        allow_patterns=list(EMBEDDING_FILES),
         local_files_only=local_files_only,
     )
-    return Embedder(f"sentence-transformers:{snapshot}")
+    return Embedder(OnnxQwen3EmbeddingModel(Path(snapshot)))
 
 
 def _verify_embedding_inference(embedder: Embedder) -> int:
@@ -1021,8 +1028,12 @@ def _memory_model(args: argparse.Namespace) -> int:
             )
             if result.mismatches:
                 raise RuntimeError(f"{len(result.mismatches)} checksum mismatch(es)")
+            # Only the files the runtime needs are downloaded; the rest are expected to be absent.
+            missing = sorted(set(EMBEDDING_FILES) & set(result.missing_paths))
+            if missing:
+                raise RuntimeError(f"missing {', '.join(missing)}")
             dimensions = _verify_embedding_inference(
-                Embedder(f"sentence-transformers:{revision.snapshot_path}")
+                Embedder(OnnxQwen3EmbeddingModel(revision.snapshot_path))
             )
         except Exception as error:
             print(f"Embedding model verification failed: {type(error).__name__}: {error}")

@@ -22,7 +22,7 @@ interventions and unwanted effects, support choices, and the derived semantic in
 the operating system supports them.
 
 The pinned multilingual embedding model is downloaded from Hugging Face and performs document and
-query inference locally. Vectors are encrypted and never establish truth, evidence, origin, fit, or
+query inference locally through ONNX Runtime. Vectors are encrypted and never establish truth, evidence, origin, fit, or
 lifecycle.
 
 Fernet protects a copied database without its key. It does not protect against a compromised user

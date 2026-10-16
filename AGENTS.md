@@ -460,17 +460,14 @@ leaves user data in place.
 Every installation path installs the tested versions. `uv tool install` does not read `uv.lock`, so
 the installers, the documented checkout installation, the release wheel check, and the CI wheel
 smoke tests first run `uv export --frozen --no-dev --no-emit-project --no-hashes` and pass the
-result as `--constraints`. Hashes are not enforced. The non-Linux `torch` pin is removed from those
-constraints, because the locked release has no wheel for Intel Macs or macOS 13, so torch outside
-Linux resolves from PyPI as it did before. On Linux, `torch` is a direct dependency whose
-`[tool.uv.sources]` entry resolves it from the PyTorch CPU index, so `uv.lock`, `uv sync`, and
-source installations carry the CPU build: the embedding model runs on the CPU, and the default
-Linux build adds several gigabytes of unused CUDA libraries. A wheel carries no sources, so the
-Linux wheel checks pass `--torch-backend cpu`. `filo.auth` imports `httpx2`, the client PydanticAI
-uses for OpenAI-compatible providers, so `httpx2` is declared directly; `httpx` arrives only
-transitively for google-genai and huggingface-hub, and Filo does not import it. Anthropic requests
-set `max_tokens` explicitly, since PydanticAI otherwise requests the model's whole maximum output,
-beyond the context output reserve.
+result as `--constraints`. Hashes are not enforced. The runtime has no PyTorch: the embedding model
+runs on ONNX Runtime with the Hugging Face `tokenizers` library. `onnxruntime` is held below 1.24
+on macOS, because later releases ship wheels only for macOS 14 on Apple silicon; 1.23 still covers
+Intel Macs and macOS 13 and gives identical embeddings. `filo.auth` imports `httpx2`, the client
+PydanticAI uses for OpenAI-compatible providers, so `httpx2` is declared directly; `httpx` arrives
+only transitively for google-genai and huggingface-hub, and Filo does not import it. Anthropic
+requests set `max_tokens` explicitly, since PydanticAI otherwise requests the model's whole maximum
+output, beyond the context output reserve.
 
 Once a Filo release exists, the public README uses `main` only as a small latest-alpha bootstrap
 channel; that script always
@@ -537,15 +534,28 @@ output emits tool events followed by only the validated final reply because an a
 cannot replace a rejected attempt. Non-interactive stdin or stdout selects plain mode automatically.
 The TUI never loads more than 50 historical turns and does not replay old tool traces.
 
-`setup` downloads and verifies the local multilingual Apache-2.0
-`sentence-transformers:Qwen/Qwen3-Embedding-0.6B` model at the repository-pinned revision. The model
-then runs on-device for every `chat` and `telegram` conversation. Semantic retrieval has no off
-switch in the product CLI. `memory model status` inspects the exact revision in the local Hugging
-Face cache without network access, `verify` checks it against Hub checksums and performs local
-inference, `install` downloads or repairs it, runs the same inference smoke test, and updates an
-existing encrypted app configuration, and `remove` deletes only that revision from the shared cache
-after confirmation. Removing the derived model files does not delete encrypted conversations or
-structured memory.
+`setup` downloads and verifies the local multilingual Apache-2.0 `Qwen/Qwen3-Embedding-0.6B`
+model as Qdrant's fp32 ONNX export, `Qdrant/Qwen3-Embedding-0.6B-onnx`, at the repository-pinned
+revision, fetching only `onnx/model.onnx`, `onnx/model.onnx_data`, and `tokenizer.json`. The model
+then runs on-device through ONNX Runtime for every `chat` and `telegram` conversation, as a
+PydanticAI `EmbeddingModel` in `src/filo/embedding.py`. The ONNX graph holds only the transformer,
+so the module reproduces what sentence-transformers did around it: the upstream query instruction
+prefix on queries only, last-non-padding-token pooling with right padding (a text embeds the same
+whatever it is batched with), and L2 normalization. Its embeddings match the fp32 PyTorch model to
+within 6e-7. ONNX Runtime refuses external weights reached through a symbolic link, so Filo sets
+`HF_HUB_DISABLE_SYMLINKS=1` and the Hugging Face cache stores real files for downloads made by Filo;
+a snapshot whose model files are symbolic links fails closed. The stored embedding-model identifier
+is `onnx:<repo>@<revision>`; an older identifier is stale setup state, so `chat` and `telegram`
+refuse to start until `filo setup` or `filo memory model install` records the new one, and the
+semantic index, keyed by that identifier, is rebuilt. Semantic retrieval has no off switch in the
+product CLI. `memory model status` inspects the exact revision in the local Hugging Face cache
+without network access, `verify` checks the downloaded files against Hub checksums, requires the
+three runtime files, and performs local inference, `install` downloads or repairs it, runs the same
+inference smoke test, and updates an existing encrypted app configuration, and `remove` deletes
+only that revision from the shared cache after confirmation. Removing the derived model files does
+not delete encrypted conversations or structured memory. The PyTorch snapshot of
+`Qwen/Qwen3-Embedding-0.6B` used before the ONNX switch stays in the shared cache untouched, since
+other programs may use it; the Hugging Face cache tools remove it.
 
 Setup stores a conservative context-window limit for the selected conversation model. Known remote
 models use their documented limit subject to the application-wide 128,000-token cap. Ollama models
@@ -1059,6 +1069,8 @@ uv run ruff check .
 - Python sqlite3: https://docs.python.org/3.12/library/sqlite3.html
 - Cryptography Fernet: https://cryptography.io/en/latest/fernet/
 - Qwen3-Embedding-0.6B: https://huggingface.co/Qwen/Qwen3-Embedding-0.6B
+- Qwen3-Embedding-0.6B ONNX export: https://huggingface.co/Qdrant/Qwen3-Embedding-0.6B-onnx
+- ONNX Runtime Python API: https://onnxruntime.ai/docs/api/python/api_summary.html
 - WHO responsible AI for mental health, 2026:
   https://www.who.int/news/item/20-03-2026-towards-responsible-ai-for-mental-health-and-well-being--experts-chart-a-way-forward
 - WHO-5: https://www.who.int/publications/m/item/WHO-UCN-MSD-MHE-2024.01
