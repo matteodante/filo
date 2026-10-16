@@ -1,7 +1,6 @@
-"""Forward schema migrations: ordered steps, a verified recovery copy, and unknown versions."""
+"""Forward schema migrations: ordered verified steps, concurrency, crashes, unknown versions."""
 
 import sqlite3
-import stat
 import subprocess
 import sys
 import threading
@@ -50,7 +49,6 @@ def test_older_store_is_migrated_and_keeps_its_memory(tmp_path, monkeypatch) -> 
     with sqlite3.connect(store.database_path) as database:
         columns = {row[1] for row in database.execute("PRAGMA table_info(sessions)")}
     assert "migrated" in columns
-    assert not store.migration_backup_path.exists()
     # Opening again runs no step.
     _next_generation(monkeypatch, lambda store, database: pytest.fail("ran twice"))
     MemoryStore(tmp_path)
@@ -68,7 +66,6 @@ def test_failing_step_leaves_the_store_unchanged(tmp_path, monkeypatch) -> None:
     with pytest.raises(MemoryError, match="left unchanged"):
         MemoryStore(tmp_path)
 
-    assert not store.migration_backup_path.exists()
     monkeypatch.undo()
     assert MemoryStore(tmp_path).export() == before
 
@@ -87,45 +84,54 @@ def test_migrated_store_failing_verification_is_rolled_back(tmp_path, monkeypatc
     with pytest.raises(MemoryError, match="left unchanged"):
         MemoryStore(tmp_path)
 
-    assert not store.migration_backup_path.exists()
     monkeypatch.undo()
     assert MemoryStore(tmp_path).export() == before
 
 
-def test_recovery_copy_is_private_encrypted_and_consistent(tmp_path, monkeypatch) -> None:
+def test_concurrent_writer_waits_for_the_migration(tmp_path, monkeypatch) -> None:
     store = _old_store(tmp_path)
-    seen: dict[str, object] = {}
+    seen = []
 
     def inspect(store: MemoryStore, database: sqlite3.Connection) -> None:
-        backup = store.migration_backup_path
-        seen["mode"] = stat.S_IMODE(backup.stat().st_mode)
-        seen["plaintext"] = b"migration-marker" in backup.read_bytes()
-        copy = sqlite3.connect(backup)
-        seen["messages"] = copy.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
-        copy.close()
-        # A concurrent writer cannot slip a change between the copy and the steps.
         writer = sqlite3.connect(store.database_path, timeout=0.1)
         try:
             writer.execute("DELETE FROM messages")
         except sqlite3.OperationalError as error:
-            seen["writer"] = str(error)
+            seen.append(str(error))
         finally:
             writer.close()
 
     _next_generation(monkeypatch, inspect)
     MemoryStore(tmp_path)
 
-    assert seen == {
-        "mode": 0o600,
-        "plaintext": False,
-        "messages": 2,
-        "writer": "database is locked",
-    }
-    assert _messages(MemoryStore(tmp_path)) == [
-        "migration-marker user turn",
-        "migration-marker reply",
-    ]
-    assert not store.migration_backup_path.exists()
+    assert seen == ["database is locked"]
+    assert _messages(store) == ["migration-marker user turn", "migration-marker reply"]
+
+
+CRASHING_MIGRATION = """
+import os, sys
+from pathlib import Path
+from filo import memory
+
+def crash(store, database):
+    database.execute("DELETE FROM messages")
+    os._exit(1)
+
+memory.SCHEMA_GENERATION = 2
+memory.SCHEMA_VERSION = b"filo-2"
+memory.MIGRATIONS = {1: crash}
+memory.MemoryStore(Path(sys.argv[1]))
+"""
+
+
+def test_process_dying_mid_migration_leaves_the_store_unchanged(tmp_path) -> None:
+    store = _old_store(tmp_path)
+    before = store.export()
+
+    crashed = subprocess.run([sys.executable, "-c", CRASHING_MIGRATION, str(tmp_path)], check=False)
+
+    assert crashed.returncode == 1
+    assert MemoryStore(tmp_path).export() == before
 
 
 def _open_in_thread(directory: Path, outcomes: list[object]) -> threading.Thread:
@@ -168,19 +174,15 @@ def test_second_opener_waits_for_a_migration_and_runs_no_step(tmp_path, monkeypa
     assert MemoryStore(tmp_path)._read_state("schema_version") == b"filo-2"
 
 
-def test_older_filo_opening_mid_migration_is_rejected_and_keeps_the_copy(
-    tmp_path, monkeypatch
-) -> None:
+def test_older_filo_opening_mid_migration_is_rejected(tmp_path, monkeypatch) -> None:
     """A process running the previous release must not act on the marker it read before."""
     _old_store(tmp_path)
     started = threading.Event()
     release = threading.Event()
-    copy_present = []
 
     def slow(store: MemoryStore, database: sqlite3.Connection) -> None:
         started.set()
-        release.wait(10)
-        copy_present.append(store.migration_backup_path.exists())
+        release.wait(20)
 
     _next_generation(monkeypatch, slow)
     outcomes: list[object] = []
@@ -191,6 +193,7 @@ def test_older_filo_opening_mid_migration_is_rejected_and_keeps_the_copy(
             sys.executable,
             "-c",
             "import sys; from pathlib import Path; from filo.memory import MemoryStore\n"
+            "print('ready', flush=True)\n"
             "try:\n    MemoryStore(Path(sys.argv[1]))\nexcept Exception as error:\n"
             "    print(error)",
             str(tmp_path),
@@ -198,13 +201,14 @@ def test_older_filo_opening_mid_migration_is_rejected_and_keeps_the_copy(
         stdout=subprocess.PIPE,
         text=True,
     )
-    time.sleep(1.0)  # the older process is now waiting on the write lock
+    assert older.stdout is not None
+    assert older.stdout.readline().strip() == "ready"
+    time.sleep(0.5)  # imported; it is now waiting on the write lock
     release.set()
     migrating.join(10)
     output, _ = older.communicate(timeout=20)
 
     assert outcomes == ["opened"]
-    assert copy_present == [True]
     assert "unknown or newer schema" in output
 
 
@@ -216,16 +220,6 @@ def test_older_store_in_a_relative_directory_is_migrated(tmp_path, monkeypatch) 
     store = MemoryStore(Path("data"))
 
     assert store._read_state("schema_version") == b"filo-2"
-    assert not (tmp_path / "data" / "filo.db.pre-migration.partial").exists()
-
-
-def test_leftover_recovery_copy_of_a_verified_store_is_deleted(tmp_path) -> None:
-    store = _old_store(tmp_path)
-    store.migration_backup_path.write_bytes(store.database_path.read_bytes())
-
-    MemoryStore(tmp_path)
-
-    assert not store.migration_backup_path.exists()
 
 
 def test_newer_store_is_rejected_without_modification(tmp_path) -> None:
@@ -239,16 +233,14 @@ def test_newer_store_is_rejected_without_modification(tmp_path) -> None:
     assert store.database_path.read_bytes() == before
 
 
-def test_delete_all_removes_a_surviving_recovery_copy(tmp_path) -> None:
-    store = _old_store(tmp_path)
-    partial = tmp_path / "filo.db.pre-migration.partial"
-    store.migration_backup_path.write_bytes(store.database_path.read_bytes())
-    partial.write_bytes(b"partial")
+def test_process_started_before_an_upgrade_stops_writing(tmp_path, monkeypatch) -> None:
+    running = _old_store(tmp_path)
+    _next_generation(monkeypatch, lambda store, database: None)
+    MemoryStore(tmp_path)
+    monkeypatch.undo()  # back to the code the running process was started with
 
-    store.delete_all()
-
-    assert not store.migration_backup_path.exists()
-    assert not partial.exists()
+    with pytest.raises(MemoryError, match="upgraded by a newer Filo"):
+        running.start_session()
 
 
 def test_plain_connections_enforce_foreign_keys(tmp_path) -> None:

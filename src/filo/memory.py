@@ -37,7 +37,6 @@ SCHEMA_MARKER = re.compile(rb"filo-([1-9][0-9]*)")
 # the store, so it can decrypt and re-encrypt payloads, and the connection holding the exclusive
 # migration transaction; it must not commit.
 MIGRATIONS: dict[int, Callable[[MemoryStore, sqlite3.Connection], None]] = {}
-MIGRATION_BACKUP = "filo.db.pre-migration"
 LEGACY_THERAPIST_DATABASE = "thera.db"
 SCHEMA_STATEMENTS = """
 CREATE TABLE IF NOT EXISTS state (
@@ -881,10 +880,6 @@ class MemoryStore:
         if generation < SCHEMA_GENERATION:
             self._migrate(database, generation)
         self._apply_schema(fresh=False)
-        # Verified and about to commit under the lock, which any migrating process would hold:
-        # a copy left now, by this or an interrupted process, has served its purpose. SQLite's
-        # journal still rolls back a commit cut short after this point.
-        self._discard_migration_backup()
 
     def _apply_schema(self, *, fresh: bool) -> None:
         # Individual statements, unlike executescript, stay inside one transaction, so the
@@ -895,27 +890,23 @@ class MemoryStore:
                     database.execute(statement)
             if fresh:
                 self._write_state("schema_version", SCHEMA_VERSION)
+            # A plain integer every transaction can check without decrypting, so a process
+            # started before an upgrade stops instead of writing the old layout into it.
+            database.execute(f"PRAGMA user_version = {SCHEMA_GENERATION}")
             # Earlier filo-1 development stores indexed user messages as "message"; rounds
             # replaced them, and nothing else would ever delete those vectors.
             database.execute("DELETE FROM semantic_index WHERE entity_type = 'message'")
 
-    @property
-    def migration_backup_path(self) -> Path:
-        return self.directory / MIGRATION_BACKUP
-
     def _migrate(self, database: sqlite3.Connection, generation: int) -> None:
         """Bring an older store forward inside the caller's write transaction.
 
-        A recovery copy is taken first with SQLite's online backup API. SQLite refuses to back up
-        from a connection with an open write transaction, so a second, reading connection takes
-        it; the write lock already held keeps every other writer out. The steps then run, and the
-        result must pass integrity and foreign-key checks and decrypt its new marker before the
-        caller commits. Any failure rolls the whole transaction back, so the store is never
-        replaced from the copy: the copy only matters if the process dies mid-commit, and it holds
-        the same encrypted payloads as the store.
+        The steps run, and the result must pass integrity and foreign-key checks and decrypt its
+        new marker before the caller commits. Any failure rolls the whole transaction back, and
+        SQLite's rollback journal does the same for a process that dies before the commit
+        completes, so the store is either fully migrated or unchanged. No copy is taken: it would
+        never be used on any of those paths and would double the disk an upgrade needs.
         """
         try:
-            self._write_backup()
             database.execute("PRAGMA defer_foreign_keys = ON")
             for step in range(generation, SCHEMA_GENERATION):
                 MIGRATIONS[step](self, database)
@@ -925,29 +916,8 @@ class MemoryStore:
                 raise MemoryError("The migrated store failed verification.")
             if self._read_state("schema_version") != SCHEMA_VERSION:
                 raise MemoryError("The migrated store failed verification.")
-        except BaseException as error:
-            self._discard_migration_backup()
+        except Exception as error:
             raise MemoryError("Updating the data store failed; it was left unchanged.") from error
-
-    def _write_backup(self) -> None:
-        backup = self.migration_backup_path
-        partial = backup.with_name(f"{backup.name}.partial")
-        partial.unlink(missing_ok=True)
-        # Created with owner-only permissions before SQLite writes anything into it.
-        os.close(os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
-        source = sqlite3.connect(f"{self.database_path.resolve().as_uri()}?mode=ro", uri=True)
-        target = sqlite3.connect(partial)
-        try:
-            source.backup(target)
-        finally:
-            source.close()
-            target.close()
-        os.replace(partial, backup)
-
-    def _discard_migration_backup(self) -> None:
-        backup = self.migration_backup_path
-        for path in (backup, backup.with_name(f"{backup.name}.partial")):
-            path.unlink(missing_ok=True)
 
     def load_app_state(self) -> AppState:
         payload = self._read_state("app")
@@ -2757,9 +2727,6 @@ class MemoryStore:
             database.execute("DELETE FROM state WHERE name = ?", (f"secret:{name}",))
 
     def delete_all(self) -> None:
-        # A recovery copy left by an interrupted migration is a full copy of the conversations.
-        if not self._ephemeral:
-            self._discard_migration_backup()
         with self.transaction(), self._connect() as database:
             # The discard counter lives in the state table, which is wiped here;
             # it must still move forward so a view rendered before the wipe is
@@ -3421,6 +3388,7 @@ class MemoryStore:
             database.execute("PRAGMA foreign_keys = ON")
             database.execute("BEGIN IMMEDIATE")
             try:
+                _require_current_generation(database)
                 yield
             except BaseException:
                 if database.in_transaction:
@@ -3455,6 +3423,11 @@ class MemoryStore:
         )
         # The pragma is a no-op inside a transaction, so it is set before leaving autocommit.
         database.execute("PRAGMA foreign_keys = ON")
+        try:
+            _require_current_generation(database)
+        except BaseException:
+            database.close()
+            raise
         database.autocommit = False
         return database
 
@@ -4028,3 +4001,10 @@ def _require_quoted_time(expression: TimeExpression, evidence: str, message_time
 def _schema_generation(marker: bytes | None) -> int | None:
     match = SCHEMA_MARKER.fullmatch(marker or b"")
     return int(match.group(1)) if match else None
+
+
+def _require_current_generation(database: sqlite3.Connection) -> None:
+    """Stop a process started before an upgrade from writing the old layout into the new one."""
+    (generation,) = database.execute("PRAGMA user_version").fetchone()
+    if generation != SCHEMA_GENERATION:
+        raise MemoryError("The data store was upgraded by a newer Filo. Restart this process.")

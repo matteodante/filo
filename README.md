@@ -190,9 +190,10 @@ before consent.
 ## Storage upgrades
 
 Filo started its own store as a clean break from Therapist, whose data directory it never reads.
-From there on, a newer Filo upgrades an older Filo store in place when it opens it. It first keeps
-an encrypted, owner-only recovery copy next to the store and deletes it once the upgraded store
-checks out; an upgrade that fails its checks is rolled back and leaves the store unchanged. A store written by a newer Filo is
+From there on, a newer Filo upgrades an older Filo store in place when it opens it, in one
+transaction: an upgrade that fails its checks or is interrupted is rolled back and leaves the store
+unchanged. A Filo process started before the upgrade, such as the Telegram listener, stops and asks
+to be restarted. A store written by a newer Filo is
 rejected without modification.
 
 ## Development

@@ -529,14 +529,15 @@ Opening a store reads its marker, runs every pending step in order, and applies 
 statements inside one transaction that holds the SQLite write lock from the start, so a concurrent
 process waits and then finds the store already migrated, and a process running an older release
 rejects the newer marker instead of acting on one it read earlier. A process that cannot get the
-lock in time reports that another Filo process is updating the store. Before the first step,
-SQLite's online backup API copies the store to an owner-only `filo.db.pre-migration` beside it;
-the copy holds the same encrypted payloads, never plaintext. Before commit, the migrated store must
-pass `integrity_check` and `foreign_key_check`, with foreign keys enforced during the steps, and
-decrypt its new marker. Any failure rolls the transaction back and leaves the store unchanged; the
-copy is never written back over a store. It is deleted under the lock once the result is verified,
-a copy left by an interrupted process is deleted under the lock on the next successful open, and
-`delete-data` removes any that survives, including a partial one. Do
+lock in time reports that another Filo process is updating the store. Before commit, the migrated
+store must pass `integrity_check` and `foreign_key_check`, with foreign keys enforced during the
+steps, and decrypt its new marker. Any failure rolls the transaction back, and SQLite's rollback
+journal does the same for a process that dies before the commit completes, so a store is either
+fully migrated or unchanged. No recovery copy is taken: it would never be used on any of those paths
+and would double the disk an upgrade needs. The generation is also kept in SQLite's
+`user_version`, which every connection checks, so a process started before an upgrade, such as a
+Telegram listener left running, stops with a restart notice instead of writing the old layout into
+the migrated store. Do
 not add legacy aliases or schema fallbacks. Reject an unknown or newer schema version before
 creating any table, and refuse a data directory containing a Therapist `thera.db` before creating,
 chmodding, or reading anything in it. Every connection enforces SQLite foreign keys.

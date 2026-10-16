@@ -227,11 +227,16 @@ encryption audit, no plaintext.
 
 *Outcome:* the framework is in place with no steps yet, since `filo-1` is unreleased. Tests migrate
 a `filo-1` store to a test-only `filo-2`, covering a failing step, a migrated store that fails
-verification and is rolled back, a leftover recovery copy, a concurrent writer, a second opener,
-and a process on the older release opening mid-migration. A review found that a first design,
-which restored the copy over a store that failed verification after commit, could copy an empty
-database over a live store when two processes raced; verification now happens before commit and
-the copy is never written back. Plain connections now enforce foreign keys, which the old autocommit setting
+verification, a process killed mid-migration, a concurrent writer, a second opener, a process on
+the older release opening mid-migration, and one started before the upgrade.
+
+*Deviation:* no recovery copy. Two review rounds found that a first design, which restored a copy
+over a store failing verification after commit, could copy an empty database over a live store when
+two processes raced. With verification moved before commit, the whole migration is one
+transaction, and SQLite's rollback journal already restores the store when a step fails or the
+process dies, so the copy was never used and only doubled the disk an upgrade needs. Plain
+connections now enforce foreign keys, which the old autocommit setting had silently disabled, and
+every connection checks `user_version` so a process started before an upgrade stops writing. Plain connections now enforce foreign keys, which the old autocommit setting
 had silently disabled.
 
 **W0.4 Telegram turn idempotency and delivery.**
