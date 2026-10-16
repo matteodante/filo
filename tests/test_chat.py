@@ -15,6 +15,7 @@ from filo.chat import CASE_CONTEXT_PREAMBLE, MAX_REPLY_CHARS, ChatSession
 from filo.memory import (
     ClaimFit,
     ClaimOrigin,
+    InterventionState,
     MemoryKind,
     MemoryMode,
     MemoryStore,
@@ -606,6 +607,51 @@ def test_intervention_tool_creates_then_updates_single_record(tmp_path) -> None:
     assert updated[0].unwanted_effects == "I felt ashamed"
 
 
+def test_intervention_under_a_skill_no_longer_in_the_pack_can_still_be_stopped(tmp_path) -> None:
+    store = MemoryStore(tmp_path)
+    earlier = datetime.now(UTC) - timedelta(days=1)
+    session = store.start_session(earlier)
+    message_id = store.save_turn(session, "yes, I will try that", "Good.", [], earlier)
+    record = store.create_intervention(
+        skill="restore-activity",
+        description="Take a short walk after lunch",
+        state=InterventionState.AGREED,
+        linked_claim_ids=[],
+        evidence_message_id=message_id,
+        consent_quote="yes, I will try that",
+        evidence_text="yes, I will try that",
+        now=earlier,
+    )
+    assert "restore-activity" not in _pack().skill_ids
+
+    async def stop(messages: list[Any], _info: Any):
+        yield (
+            "Let's stop it and understand what happened."
+            if _has_return(messages)
+            else _tool(
+                "record_intervention",
+                {
+                    "action": {
+                        "record_id": record.id,
+                        "skill": record.skill,
+                        "description": record.description,
+                        "state": "stopped",
+                        "consent_evidence_quote": "the walks make me feel worse",
+                        "unwanted_effects": "the walks make me feel worse",
+                        "decision": "stop",
+                    }
+                },
+            )
+        )
+
+    ChatSession(FunctionModel(stream_function=stop), _pack(), store, "en-US").respond(
+        "Please stop it, the walks make me feel worse"
+    )
+    [updated] = store.list_interventions()
+    assert updated.state is InterventionState.STOPPED
+    assert updated.unwanted_effects == "the walks make me feel worse"
+
+
 def test_retrieve_case_context_can_refine_query_in_same_turn(tmp_path) -> None:
     async def stream(messages: list[Any], _info: Any):
         returns = sum(
@@ -731,7 +777,7 @@ def test_ai_reminder_is_due_periodically_in_long_sessions(tmp_path) -> None:
     start = datetime.now(UTC)
     for turn in range(22):
         chat.respond(f"Message {turn}", now=start + timedelta(minutes=turn))
-    assert [index for index, value in enumerate(due) if value] == [20]
+    assert [index for index, value in enumerate(due) if value] == [19]
 
     due.clear()
     chat.respond("Still here", now=start + timedelta(hours=3, minutes=1))

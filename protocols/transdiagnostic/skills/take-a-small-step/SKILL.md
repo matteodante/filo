@@ -21,7 +21,7 @@ without a prediction teaches nothing afterwards. Where withdrawal is the loop, i
 information, that motivation often follows action rather than preceding it.
 
 It does not build a timetable, hierarchy, or intense exposure, moralise about discipline, treat
-exhaustion or illness as avoidance, or confuse an unsafe or medically risky action with an
+exhaustion or illness as avoidance, or confuse an unsafe, coercive, or medically risky action with an
 experiment.
 
 ## Following up

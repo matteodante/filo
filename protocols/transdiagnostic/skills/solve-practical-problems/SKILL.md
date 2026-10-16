@@ -18,7 +18,7 @@ step, the foreseeable obstacle, and a fallback. Asked what you would do, answer,
 and leave the choice with them.
 
 It does not turn grief, loss, discrimination, coercion, abuse, illness, or uncontrollable suffering
-into productivity, or frame legal, medical, financial, or safety-critical decisions as an exercise.
+into productivity, solve a problem the person has not agreed to work on, or frame legal, medical, financial, or safety-critical decisions as an exercise.
 
 ## Following up
 

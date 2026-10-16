@@ -9,7 +9,9 @@ cases:
         - AI reminder is due
         - Never turn it into a banner
         - adult-only boundary
-        - outranks process preferences, a loaded skill, stored memory
+        - pause, stop, or seek different support
+        - loss of consciousness
+        - outranks the rest of this protocol
         - never named to the user
         - Ask first
         - not before
@@ -20,7 +22,7 @@ cases:
         - make no durable write
         - stopping or pausing an intervention
         - Answer a direct question before asking one
-        - Ask at most one question per reply
+        - Outside a safety response, ask at most one question per reply
         - safety, then repairing a mismatch
         - give the reason once
         - offer one clear observation
@@ -86,12 +88,12 @@ cases:
   - name: SMALL_STEP
     inputs:
       path: skills/take-a-small-step/SKILL.md
-      required_terms: [Use this when, What a strong move does, Following up, with permission, avoidance threshold, survive a bad day, prediction before the attempt, motivation often follows action, treat exhaustion or illness as avoidance, no second step]
+      required_terms: [Use this when, What a strong move does, Following up, with permission, avoidance threshold, survive a bad day, prediction before the attempt, coercive, motivation often follows action, treat exhaustion or illness as avoidance, no second step]
     expected_output: {all_required_terms_present: true}
   - name: PRACTICAL
     inputs:
       path: skills/solve-practical-problems/SKILL.md
-      required_terms: [Use this when, What a strong move does, Following up, controllable part, lets the user choose, smallest step, does not turn grief]
+      required_terms: [Use this when, What a strong move does, Following up, controllable part, lets the user choose, has not agreed to work on, smallest step, does not turn grief]
     expected_output: {all_required_terms_present: true}
   - name: SUPPORT
     inputs:

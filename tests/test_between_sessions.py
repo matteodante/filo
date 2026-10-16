@@ -43,7 +43,7 @@ def _experiment(
     session = store.start_session(when)
     message_id = store.save_turn(session, "yes, I will try that", "Good.", [], when)
     return store.create_intervention(
-        skill="change-avoidance-behavior",
+        skill="take-a-small-step",
         description=description,
         state=state,
         linked_claim_ids=[],

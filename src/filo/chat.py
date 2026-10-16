@@ -91,8 +91,9 @@ CONSOLIDATION_LIMITS = UsageLimits(request_limit=3, output_tokens_limit=MAX_REQU
 EXTRACTION_LIMITS = UsageLimits(request_limit=3, output_tokens_limit=2_000)
 MAX_EXTRACTION_ATTEMPTS = 3
 # A periodic reminder that Filo is an AI during long sessions, as companion-chatbot disclosure
-# laws ask (New York: at least every three hours). Due on every twentieth turn of a session, or
-# on the first turn after a three-hour mark since it started.
+# laws ask (New York: at least every three hours). The consent notice covers the start of an
+# interaction; after that it is due on every twentieth turn of a session, or on the first turn
+# after a three-hour mark since it started.
 AI_REMINDER_TURNS = 20
 AI_REMINDER_INTERVAL = timedelta(hours=3)
 ShortText = Annotated[str, Field(min_length=1, max_length=500)]
@@ -1081,12 +1082,15 @@ class ChatSession:
             consent_evidence_quote, an exact span of the current user message that keeps what the
             user declined. An update keeps the record's skill and follows a valid state transition.
             """
-            try:
-                metadata = ctx.deps.protocol.get_skill_metadata(action.skill)
-            except KeyError as error:
-                raise ModelRetry(str(error)) from error
-            if metadata.category not in {"intervention", "review"}:
-                raise ModelRetry("That skill cannot be recorded as an intervention.")
+            # Only a new record needs a skill in the current pack: an update keeps the record's
+            # own skill, which an older pack may have named, so stopping it always stays possible.
+            if action.record_id is None:
+                try:
+                    metadata = ctx.deps.protocol.get_skill_metadata(action.skill)
+                except KeyError as error:
+                    raise ModelRetry(str(error)) from error
+                if metadata.category not in {"intervention", "review"}:
+                    raise ModelRetry("That skill cannot be recorded as an intervention.")
             if set(action.linked_claim_ids) - set(ctx.deps.available_claims):
                 raise ModelRetry("Linked claims must come from available context.")
             if action.record_id:
@@ -1627,9 +1631,8 @@ def _ai_reminder_due(
     started = datetime.fromisoformat(session.started_at)
     previous = datetime.fromisoformat(session.last_activity_at)
     marks_now = (now - started) // AI_REMINDER_INTERVAL
-    return (
-        turns % AI_REMINDER_TURNS == 0 or marks_now > (previous - started) // AI_REMINDER_INTERVAL
-    )
+    marks_before = (previous - started) // AI_REMINDER_INTERVAL
+    return (turns + 1) % AI_REMINDER_TURNS == 0 or marks_now > marks_before
 
 
 def _persisted_run_messages(

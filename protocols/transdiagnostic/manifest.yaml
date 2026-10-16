@@ -3,7 +3,7 @@ status: experimental
 locales: [it-IT, en-US]
 population: adults-18-plus
 intended_use: Adult self-reflection and organization of user-provided thoughts; not diagnosis, treatment, monitoring, or emergency care.
-root_sha256: b33e9250aeefc3e61a1b00a6a59cdccea920b0675c86bcb04d037816af40f958
+root_sha256: 53f2b46009ff9ef19fdbf09d5814f88f6d5895409bfce66ea55513244bae5212
 skills:
   - id: stay-with-emotion
     path: skills/stay-with-emotion/SKILL.md
@@ -55,13 +55,13 @@ skills:
     locales: [it-IT, en-US]
   - id: take-a-small-step
     path: skills/take-a-small-step/SKILL.md
-    sha256: 533fcdbf35a8ff5e56f7b2343407a79e3fa13da676b8581ea0e0c6a3de9504de
+    sha256: 40b0274c006fa3658fd717ef3631421478c62ca6900c2795c880866ddffaf295
     category: intervention
     description: Use when something is avoided at a cost, a fear has never been tested, the days have shrunk while waiting for energy, or the person keeps not doing what they want to; agree one small behavioral step.
     locales: [it-IT, en-US]
   - id: solve-practical-problems
     path: skills/solve-practical-problems/SKILL.md
-    sha256: 6e10de6c2d65020fb079a9186cca07f3e5f1036aee0b478523c78b3997bef8da
+    sha256: 7b27f3e3d0f96f3c833b73801de27c6c0699fffdf2813355b1f21a582c70d085
     category: intervention
     description: Use when the person asks for practical help, a concrete external obstacle blocks something that matters, or a solvable problem is being carried as a mood; work one bounded problem to a chosen step.
     locales: [it-IT, en-US]
