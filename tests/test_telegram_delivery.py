@@ -22,7 +22,7 @@ from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 from therapist.chat import ChatSession
 from therapist.memory import MemoryMode, MemoryStore, RetentionPolicy
 from therapist.protocol import ProtocolPack
-from therapist.telegram import CONSENT_VERSION, TelegramBot, TelegramChannel
+from therapist.telegram import CONSENT_VERSION, TelegramBot, TelegramChannel, TelegramError
 
 models.ALLOW_MODEL_REQUESTS = False
 USER_TEXT = "I work from home"
@@ -52,6 +52,7 @@ def _http_error(code: int, retry_after: int | None = None) -> HTTPError:
 ERRORS: dict[str, Callable[[], BaseException]] = {
     "rate_limit": lambda: _http_error(429, retry_after=2),
     "server_error": lambda: _http_error(502),
+    "request_timeout": lambda: _http_error(408),
     "connection_reset": lambda: ConnectionResetError(104, "Connection reset by peer"),
     "remote_disconnected": lambda: http.client.RemoteDisconnected("closed"),
 }
@@ -379,3 +380,98 @@ def test_ephemeral_mode_keeps_queued_replies_off_disk(
     assert [text for _method, text in api.delivered].count(REPLY) == 1
     assert config.load_app_state().telegram_update_offset == 42
     assert config.export()["messages"] == []
+
+
+def _ephemeral_channel(
+    path: Path, model_calls: list[str], allowed_user_id: int = 42
+) -> TelegramChannel:
+    config = MemoryStore(path)
+    conversation = MemoryStore(ephemeral=True)
+    session = ChatSession(
+        _counting_model(model_calls, use_tool=False),
+        ProtocolPack.load(Path("protocols/transdiagnostic")),
+        conversation,
+        "en-US",
+        memory_mode=MemoryMode.EPHEMERAL,
+    )
+    return TelegramChannel(
+        TelegramBot("synthetic-token"),
+        session,
+        conversation,
+        allowed_user_id,
+        configuration_store=config,
+    )
+
+
+def test_ephemeral_restart_delivers_replies_queued_by_a_durable_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _crash_after_commit(tmp_path, monkeypatch)
+    restarted = FakeBotApi(_update())
+    monkeypatch.setattr("therapist.telegram.urlopen", restarted)
+    model_calls: list[str] = []
+    channel = _ephemeral_channel(tmp_path, model_calls)
+
+    with pytest.raises(KeyboardInterrupt):
+        channel.run()
+
+    assert model_calls == []
+    assert restarted.delivered[0][1] == REPLY
+    assert MemoryStore(tmp_path).load_app_state().telegram_outbox == []
+
+
+def test_queued_replies_are_never_sent_to_an_unpaired_chat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _crash_after_commit(tmp_path, monkeypatch)
+    state = store.load_app_state()
+    state.telegram_allowed_user_id = 43  # setup paired a different account
+    store.save_app_state(state)
+    restarted = FakeBotApi(_update())
+    monkeypatch.setattr("therapist.telegram.urlopen", restarted)
+    channel, store = _channel(tmp_path, [])
+    channel.allowed_user_id = 43
+
+    with pytest.raises(KeyboardInterrupt):
+        channel.run()
+
+    assert restarted.delivered == []
+    assert store.load_app_state().telegram_outbox == []
+
+
+def test_privacy_view_states_what_ephemeral_mode_still_saves(tmp_path: Path) -> None:
+    channel = _ephemeral_channel(tmp_path, [])
+
+    privacy = channel._privacy()
+
+    assert "writes nothing to disk" not in privacy
+    assert "ephemeral writes no conversation content to disk" in privacy
+    assert "update position is still saved" in privacy
+
+
+def test_typing_indicator_waits_out_flood_control(tmp_path: Path) -> None:
+    class RateLimitedBot:
+        def send_typing(self, chat_id: int) -> None:
+            raise TelegramError("Too Many Requests", error_code=429, retry_after=30)
+
+    class RecordingStop:
+        def __init__(self) -> None:
+            self.waits: list[float] = []
+
+        def wait(self, timeout: float) -> bool:
+            self.waits.append(timeout)
+            return len(self.waits) == 2
+
+    channel, _store = _channel(tmp_path, [])
+    channel.bot = RateLimitedBot()  # type: ignore[assignment]
+    stop = RecordingStop()
+
+    channel._keep_typing(42, stop)  # type: ignore[arg-type]
+
+    assert stop.waits == [30, 30]
+
+
+def test_request_timeout_is_transient() -> None:
+    assert not TelegramError("timeout", error_code=408).fatal
+    assert not TelegramError("flood", error_code=429).fatal
+    assert TelegramError("blocked", error_code=403).fatal

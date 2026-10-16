@@ -570,14 +570,17 @@ a committed turn is never handed to the model again and a turn that fails before
 neither replies nor offset behind. The listener drains the outbox in order before every poll,
 including after a restart, removes each entry only after Telegram accepts it, and honors
 `retry_after` on transient failures. Delivery is at least once: a crash or ambiguous transport failure
-after Telegram accepted a message but before its removal can send that one message twice. A
-permanent rejection of one queued message is logged and dropped so later replies are not wedged;
-an invalid or revoked token stops the listener. Every network failure, including resets, TLS
-errors, and truncated responses, surfaces as a transient `TelegramError`. The typing indicator is
-repeated every four seconds while a turn runs. In `ephemeral` mode queued replies stay in process
-memory and are queued only after the in-memory turn returns; only the update offset is written to
-the on-disk configuration store, so a crash before delivery loses those replies instead of writing
-conversation content to disk. Correcting or forgetting a claim, deleting a session or a date range,
+after Telegram accepted a message but before its removal can send that one message twice. Only a
+400 or 403 rejection of one queued message is logged and dropped, so later replies are not wedged;
+401 and 404 mean an invalid or revoked token and stop the listener, while 408, 429, 5xx, and every
+network failure, including resets, TLS errors, and truncated responses, surface as a transient
+`TelegramError` and are retried. A queued message whose chat is no longer the allowlisted user, for
+example after setup paired another account, is dropped without being sent. The typing indicator is
+repeated every four seconds while a turn runs and pauses for any longer `retry_after`. In
+`ephemeral` mode queued replies stay in process memory and are queued only after the in-memory turn
+returns; only the update offset is written to the on-disk configuration store, so a crash before
+delivery loses those replies instead of writing conversation content to disk. Replies already
+queued on disk by an earlier standard or transcript-only run are delivered first. Correcting or forgetting a claim, deleting a session or a date range,
 retention that removes data, and `delete-data` discard every undelivered queued reply, because a
 queued message is not linked to the records it quotes.
 

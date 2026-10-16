@@ -27,6 +27,10 @@ SESSION_PAGE_SIZE = 5
 INTERVENTION_PAGE_SIZE = 10
 DRAFT_INTERVAL_SECONDS = 0.25
 TYPING_INTERVAL_SECONDS = 4.0
+# Rejections that a retry cannot fix and that concern only the one message. An
+# invalid or revoked token (401, 404) is fatal instead, and anything ambiguous,
+# such as 408, 429 or 5xx, is retried.
+PERMANENT_DELIVERY_ERRORS = frozenset({400, 403})
 
 
 class TelegramError(RuntimeError):
@@ -42,7 +46,10 @@ class TelegramError(RuntimeError):
         super().__init__(message)
         self.error_code = error_code
         self.retry_after = retry_after
-        self.fatal = error_code is not None and 400 <= error_code < 500 and error_code != 429
+        # 408 and 429 ask the client to repeat the request; other 4xx codes do not.
+        self.fatal = (
+            error_code is not None and 400 <= error_code < 500 and error_code not in {408, 429}
+        )
 
 
 class TelegramBot:
@@ -269,23 +276,29 @@ class TelegramChannel:
     def deliver_pending(self) -> None:
         """Send queued replies in order, removing each one only after delivery."""
         while True:
-            pending = (
-                self._ephemeral_outbox
-                if self._ephemeral
-                else self.config_store.load_app_state().telegram_outbox
-            )
+            # The durable queue goes first: replies committed by an earlier run in
+            # standard or transcript-only mode still need delivery after a restart
+            # in ephemeral mode.
+            durable = self.config_store.load_app_state().telegram_outbox
+            from_memory = not durable and self._ephemeral
+            pending = self._ephemeral_outbox if from_memory else durable
             if not pending:
                 return
             delivery = pending[0]
-            try:
-                self._deliver(delivery)
-            except TelegramError as error:
-                if not error.fatal or error.error_code in {401, 404}:
-                    raise
-                # A permanent rejection of one message (for example a blocked
-                # bot) must not wedge every later reply behind it.
-                print(f"Telegram rejected a queued message permanently: {error}")
-            if self._ephemeral:
+            if delivery.chat_id != self.allowed_user_id:
+                # Queued for an account that is no longer paired; never send
+                # private content to it.
+                print("Telegram dropped a queued message for a chat that is no longer allowed.")
+            else:
+                try:
+                    self._deliver(delivery)
+                except TelegramError as error:
+                    if error.error_code not in PERMANENT_DELIVERY_ERRORS:
+                        raise
+                    # A permanent rejection of one message (for example a
+                    # blocked bot) must not wedge every later reply behind it.
+                    print(f"Telegram rejected a queued message permanently: {error}")
+            if from_memory:
                 self._ephemeral_outbox.pop(0)
                 continue
             # A local deletion may have emptied the queue meanwhile.
@@ -457,11 +470,15 @@ class TelegramChannel:
         # Telegram shows a chat action for about five seconds; a model turn can
         # take much longer, so repeat it until the turn ends.
         while True:
+            wait = TYPING_INTERVAL_SECONDS
             try:
                 self.bot.send_typing(chat_id)
             except TelegramError as error:
                 print(f"Telegram typing indicator error: {error}")
-            if stopped.wait(TYPING_INTERVAL_SECONDS):
+                # Flood control asks for silence until its deadline; typing is
+                # cosmetic, so it waits rather than delaying the reply further.
+                wait = max(wait, error.retry_after or 0)
+            if stopped.wait(wait):
                 return
 
     def _command_response(self, command: str, argument: str | None) -> str | None:
@@ -702,8 +719,8 @@ class TelegramChannel:
             "• The model provider receives the message and only selected context.\n"
             f"• Current memory mode: {self.session.memory_mode.value}.\n"
             "• In standard mode, archive, structured memory, and semantic index are encrypted "
-            "on the host; transcript-only writes no structured state; ephemeral writes nothing "
-            "to disk.\n"
+            "on the host; transcript-only writes no structured state; ephemeral writes no "
+            "conversation content to disk, though the Telegram update position is still saved.\n"
             f"• Local retention: raw messages={policy.raw_message_days or 'indefinite'}, "
             f"session summaries={policy.session_summary_days or 'indefinite'}, "
             f"stale hypotheses={policy.stale_hypothesis_days or 'indefinite'} days.\n"
