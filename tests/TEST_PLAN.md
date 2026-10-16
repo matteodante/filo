@@ -166,7 +166,7 @@ Offline coverage in `tests/test_evals_tooling.py` uses only `FunctionModel` and 
 - safety seeding and pass^3;
 - style metrics, blind resumable labeling, and the preregistered report.
 
-Live commands are opt-in, need `ANTHROPIC_API_KEY`, and write a ledger and results under
+Live commands are opt-in, need `FILO_EVAL_ANTHROPIC_API_KEY` (or `ANTHROPIC_API_KEY`), and write a ledger and results under
 `~/.thera-evals`:
 
 ```bash

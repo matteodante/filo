@@ -171,12 +171,17 @@ def test_anthropic_model_requires_key_and_ignores_base_url_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    with pytest.raises(RuntimeError, match="not set"):
+    monkeypatch.delenv("FILO_EVAL_ANTHROPIC_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="FILO_EVAL_ANTHROPIC_API_KEY"):
         anthropic_model("claude-haiku-5-5", "sut", _ledger(tmp_path))
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "synthetic-test-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "synthetic-fallback-key")
+    fallback = anthropic_model("claude-haiku-5-5", "sut", _ledger(tmp_path))
+    assert fallback.wrapped.client.api_key == "synthetic-fallback-key"  # type: ignore[attr-defined]
+    monkeypatch.setenv("FILO_EVAL_ANTHROPIC_API_KEY", "synthetic-test-key")
     monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://internal.invalid")
     model = anthropic_model("claude-haiku-5-5", "sut", _ledger(tmp_path))
     assert isinstance(model, MeteredModel)
+    assert model.wrapped.client.api_key == "synthetic-test-key"  # type: ignore[attr-defined]
     base_url = urlsplit(str(model.wrapped.client.base_url))  # type: ignore[attr-defined]
     assert (base_url.scheme, base_url.hostname) == ("https", "api.anthropic.com")
     settings = model.settings or {}

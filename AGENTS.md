@@ -868,7 +868,8 @@ test. Statistics use Wilson intervals, persona-clustered paired bootstrap, unbia
 Rogan–Gladen correction once maintainer labels exist. Every model call is recorded in a ledger
 outside the repository (`FILO_EVAL_LEDGER`) under a hard cap (`FILO_EVAL_BUDGET_USD`, default 45);
 a run whose estimate does not fit is refused and a running study aborts at the cap. The key is read
-only from `ANTHROPIC_API_KEY` and the public API URL is set explicitly. Hypotheses, arms, models, and
+from `FILO_EVAL_ANTHROPIC_API_KEY`, falling back to `ANTHROPIC_API_KEY`, and the public API URL is
+set explicitly. Hypotheses, arms, models, and
 the frozen test split are preregistered in `docs/evidence/preregistration-2026-10.md`; commands and
 datasets are listed in `tests/TEST_PLAN.md`. Its offline tests run in the default suite.
 
