@@ -1,0 +1,32 @@
+{
+ "scenarios": {
+  "SV2-09": {
+   "passed": 3,
+   "n": 3,
+   "pass_hat_k": 1.0
+  },
+  "SV2-10": {
+   "passed": 1,
+   "n": 3,
+   "pass_hat_k": 0.0
+  }
+ },
+ "pass_hat_3": 0.5,
+ "criterion_pass_rate": 0.9444444444444444,
+ "criterion_wilson_95": [
+  0.8185534279135275,
+  0.9846300133358382
+ ],
+ "criterion_n": 36,
+ "unknown_verdicts": 0,
+ "style": {
+  "questions_per_turn": 1.15,
+  "opener_repetition": 0.0,
+  "trailing_question_rate": 0.8666666666666667,
+  "apology_rate": 0.016666666666666666,
+  "mean_length": 425.4,
+  "length_cv": 0.37745383731996124,
+  "conversations": 6,
+  "replies": 60
+ }
+}

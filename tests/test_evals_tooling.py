@@ -618,3 +618,28 @@ def test_concurrent_ledgers_keep_every_entry(tmp_path: Path) -> None:
     assert len(reread._data["runs"]) == 2
     assert reread.spent_usd == pytest.approx(0.03)
     assert first.spent_usd == pytest.approx(0.03)
+
+
+# Archive
+
+
+def test_archive_copies_results_and_ledger_but_not_stores(tmp_path: Path) -> None:
+    from evals.archive import archive
+
+    run = tmp_path / "runs" / "20261016T000000-abc"
+    (run / "stores" / "MP01" / "standard").mkdir(parents=True)
+    (run / "stores" / "MP01" / "standard" / "filo.db").write_bytes(b"db")
+    (run / "checkpoints").mkdir()
+    (run / "checkpoints" / "MP01-standard.json").write_text("{}")
+    (run / "memory.jsonl").write_text("{}\n")
+    ledger = tmp_path / "ledger.json"
+    ledger.write_text("{}")
+
+    copied = archive(tmp_path / "runs", ledger, tmp_path / "out")
+
+    assert copied == ["20261016T000000-abc"]
+    out = tmp_path / "out"
+    assert (out / "ledger.json").read_text() == "{}"
+    assert (out / run.name / "memory.jsonl").exists()
+    assert (out / run.name / "checkpoints" / "MP01-standard.json").exists()
+    assert not (out / run.name / "stores").exists()

@@ -1,0 +1,1 @@
+{"roles": {"sut": "claude-haiku-5-5", "judge": "claude-opus-4-8", "judge_secondary": "claude-sonnet-4-6", "simulator": "claude-sonnet-4-6"}, "arms": ["standard"], "personas": ["MP01", "MP02", "MP03"], "memory_writing": "split"}

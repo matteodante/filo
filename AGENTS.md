@@ -1268,6 +1268,10 @@ from the first set of `FILO_EVAL_ANTHROPIC_API_KEY`, `CLAUDE_API_KEY`, `ANTHROPI
 URL is set explicitly. Hypotheses, arms, models, and
 the frozen test split are preregistered in `docs/evidence/preregistration-2026-10.md`; commands and
 datasets are listed in `tests/TEST_PLAN.md`. Its offline tests run in the default suite.
+Every live result is versioned: `python -m evals.archive` copies each run's configuration,
+transcripts, judgments with reasons, metrics, checkpoints, and the cost ledger into
+`docs/evidence/runs-<year>-<month>/`, leaving out only the encrypted test stores, which are binary
+and not needed to reproduce a reported number. All of it is synthetic.
 
 Run before handing off a change:
 

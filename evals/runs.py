@@ -1,4 +1,4 @@
-"""Run output locations. Results stay outside the repository; reports summarize them."""
+"""Run output locations. Runs write outside the repository; `evals.archive` versions them."""
 
 from __future__ import annotations
 
