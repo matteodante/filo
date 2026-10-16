@@ -373,6 +373,38 @@ def test_normal_turn_discloses_committed_memory_change(tmp_path: Path) -> None:
     assert "Saved fact: I work from home" in bot.messages[-1][1]
 
 
+def test_forgotten_claim_is_disclosed_by_id_without_its_content(tmp_path: Path) -> None:
+    bot = FakeBot()
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.telegram_consent_version = "alpha-5"
+    store.save_app_state(state)
+    active = store.start_session()
+    text = "my brother crashed the boat"
+    message_id = store.save_turn(active, text, "Understood.", [])
+    claim = store.add_user_reports(
+        [UserReport(kind=MemoryKind.EVENT, content=text, evidence_quote=text)],
+        message_id,
+        text,
+    )[0]
+
+    class ForgettingSession(FakeSession):
+        def respond(
+            self, text: str, *, on_event: object | None = None, on_commit: object | None = None
+        ) -> ChatTurn:
+            request_id = store.save_turn(active, text, "Done.", [])
+            store.forget_content(["my brother crashed the boat"], "forget", request_id, text)
+            return _committed(ChatTurn("Done."), on_commit)
+
+    channel = TelegramChannel(bot, ForgettingSession(), store, 42)  # type: ignore[arg-type]
+
+    channel.process_update(private_update(1, 42, "Please forget the boat thing"))
+
+    assert bot.rich_messages[-1] == (42, "Done.")
+    assert f"Memory forgotten [{claim.id}]" in bot.messages[-1][1]
+    assert "brother" not in bot.messages[-1][1]
+
+
 def test_normal_turn_sends_tool_input_and_output_before_reply(tmp_path: Path) -> None:
     bot = FakeBot()
     store = MemoryStore(tmp_path)

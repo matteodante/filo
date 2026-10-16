@@ -17,6 +17,7 @@ classifiers = [
 dependencies = [
   "cryptography>=50,<51",
   "huggingface-hub>=1,<2",
+  "numpy>=2,<3",
   "pydantic-ai-slim[anthropic,google,openai,sentence-transformers]>=2.22.0,<3",
   "pyyaml>=6,<7",
   "questionary>=2.1,<3",

@@ -81,9 +81,16 @@ choices, and a derived semantic index.
   active context.
 - Conflicts remain explicit; semantic similarity never establishes truth.
 
+- Claims record when you said something, and when it started only if you named a time; "last
+  spring" stays a season, never a guessed date.
+- Asking in the conversation to forget something you said, in any memory mode, stops it coming back
+  through claims, past conversations, and session summaries, even if it never became a claim. The
+  archive keeps it until you delete it locally.
+
 Retrieval combines lexical overlap, local multilingual embeddings, recency, focus, pending
-interventions, process preferences, conflicts, relevant sessions, and concrete excerpts. Results are
-bounded as complete JSON records. Missing embeddings fail closed.
+interventions, process preferences, conflicts, relevant sessions, and excerpts from every past
+exchange, not only recent ones. The most recent session and today's date are always in context.
+Results are bounded as complete JSON records. Missing embeddings fail closed.
 
 ## Privacy modes and retention
 
