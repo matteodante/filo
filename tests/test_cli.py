@@ -471,7 +471,7 @@ def test_interactive_chat_prints_tool_input_and_output(
         )
         return SimpleNamespace(text="Done.", notice=None, tool_trace=None)
 
-    session = SimpleNamespace(respond=respond)
+    session = SimpleNamespace(respond=respond, extract_pending=lambda: 0)
 
     assert _chat(session, store) == 0  # type: ignore[arg-type]
 
@@ -497,7 +497,7 @@ def test_plain_chat_does_not_persist_rejected_draft_in_redirected_output(
         on_event(TurnStreamEvent(TurnStreamKind.REPLY, "Validated reply."))  # type: ignore[operator]
         return SimpleNamespace(text="Validated reply.", notice=None)
 
-    assert _chat(SimpleNamespace(respond=respond), store) == 0  # type: ignore[arg-type]
+    assert _chat(SimpleNamespace(respond=respond, extract_pending=lambda: 0), store) == 0  # type: ignore[arg-type]
 
     output = capsys.readouterr().out  # type: ignore[attr-defined]
     assert "rejected draft" not in output
@@ -543,7 +543,7 @@ def test_plain_chat_replaces_draft_in_interactive_terminal(
     monkeypatch.setattr("filo.cli.Console", FakeConsole)
     monkeypatch.setattr("filo.cli.Live", FakeLive)
 
-    assert _chat(SimpleNamespace(respond=respond), store) == 0  # type: ignore[arg-type]
+    assert _chat(SimpleNamespace(respond=respond, extract_pending=lambda: 0), store) == 0  # type: ignore[arg-type]
     assert updates == ["filo> rejected draft", "filo> Validated reply."]
 
 

@@ -3,7 +3,7 @@ status: experimental
 locales: [it-IT, en-US]
 population: adults-18-plus
 intended_use: Adult self-reflection and organization of user-provided thoughts; not diagnosis, treatment, monitoring, or emergency care.
-root_sha256: 71e9d19e83601919096ab2d087b01cfa1b2921e8cf8cbe26fedb130eaf3037cd
+root_sha256: 69234b47759fa559f36c1be03724b0de0d9e2317a38816c4b7c8d25163cfb4a1
 skills:
   - id: stay-with-emotion
     path: skills/stay-with-emotion/SKILL.md

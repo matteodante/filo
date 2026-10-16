@@ -73,6 +73,9 @@ class FakeSession:
             on_event(TurnStreamEvent(TurnStreamKind.REPLY, reply))  # type: ignore[operator]
         return SimpleNamespace(text=reply)
 
+    def extract_pending(self) -> int:
+        return 0
+
     def end(self) -> None:
         self.end_calls += 1
         return None
@@ -316,6 +319,39 @@ def test_normal_turn_discloses_committed_memory_change(tmp_path: Path) -> None:
 
     assert bot.rich_messages[-1] == (42, "Understood.")
     assert "THIS TURN'S RECORD" in bot.messages[-1][1]
+    assert "Saved fact: I work from home" in bot.messages[-1][1]
+
+
+def test_reports_extracted_after_delivery_are_disclosed_after_the_reply(tmp_path: Path) -> None:
+    bot = FakeBot()
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.telegram_consent_version = "alpha-5"
+    store.save_app_state(state)
+    active = store.start_session()
+
+    class SplitSession(FakeSession):
+        message_id = 0
+
+        def respond(self, text: str, *, on_event: object | None = None) -> SimpleNamespace:
+            self.message_id = store.save_turn(active, text, "Understood.", [])
+            return SimpleNamespace(text="Understood.")
+
+        def extract_pending(self) -> int:
+            if not self.message_id:
+                return 0
+            report = UserReport(
+                kind=MemoryKind.FACT, content="I work from home", evidence_quote="I work from home"
+            )
+            store.add_user_reports([report], self.message_id, "I work from home")
+            self.message_id = 0
+            return 1
+
+    channel = TelegramChannel(bot, SplitSession(), store, 42)  # type: ignore[arg-type]
+
+    channel.process_update(private_update(1, 42, "I work from home"))
+
+    assert bot.rich_messages[-1] == (42, "Understood.")
     assert "Saved fact: I work from home" in bot.messages[-1][1]
 
 

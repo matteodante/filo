@@ -39,6 +39,23 @@ opt-in regression aids; they are not clinical validation.
   bounded and valid JSON;
 - vectors and payloads remain encrypted; missing embeddings fail closed.
 
+## Memory writing arms
+
+- the inline arm keeps `record_user_reports` and creates no extraction marker;
+- the split arm removes `record_user_reports` from the conversation agent, commits each standard
+  turn with a pending-extraction marker in the same transaction, and lets the post-turn extractor
+  record reports through the same tool-side and store-side gates, with actionable retry guidance;
+- a crash between the turn commit and extraction leaves a marker that a restarted process drains
+  once; a failed extraction commit keeps the marker and a retry writes once; provider failures keep
+  the marker and stop retrying after a bounded number of attempts;
+- markers drain before the next turn's retrieval and before explicit consolidation, and deleting
+  the turn removes its marker;
+- `transcript_only` and `ephemeral` create no markers, no claims, and no extractor call;
+- an under-18 disclosure withholds reports for the rest of the session, and a risk-premise turn
+  records nothing while later turns record normally;
+- wording a correction already handled is not recorded again by the extractor;
+- the conversation instructions carry when to write memory, not quote mechanics, in both arms.
+
 ## Privacy, retention, and clean break
 
 - standard persists every encrypted layer;

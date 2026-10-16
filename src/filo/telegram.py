@@ -190,6 +190,7 @@ class TelegramChannel:
         identity = self.bot.get_me()
         self.bot.delete_webhook()
         self.bot.configure_interface(self.allowed_user_id)
+        self.session.extract_pending()
         username = identity.get("username", "unknown")
         print(f"Telegram bot @{username} is listening. Press Ctrl-C to stop.")
         offset = self.config_store.load_app_state().telegram_update_offset
@@ -356,6 +357,11 @@ class TelegramChannel:
             self.bot.send_message(chat_id, reply)
         if changes:
             self.bot.send_message(chat_id, changes)
+        if succeeded:
+            # Split memory writing records the turn's reports only now, after delivery.
+            before = self._durable_snapshot()
+            if self.session.extract_pending() and (extracted := self._durable_changes(before)):
+                self.bot.send_message(chat_id, extracted)
         return True
 
     def _command_response(self, command: str, argument: str | None) -> str | None:

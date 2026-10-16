@@ -65,6 +65,10 @@ CREATE TABLE IF NOT EXISTS semantic_index (
     dimensions INTEGER NOT NULL, payload BLOB NOT NULL,
     PRIMARY KEY(entity_type, entity_id)
 );
+CREATE TABLE IF NOT EXISTS pending_extractions (
+    message_id INTEGER PRIMARY KEY, created_at TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT
+);
 """
 DEFAULT_STALE_HYPOTHESIS_DAYS = 180
 MIN_SEMANTIC_RELEVANCE = 0.2
@@ -232,11 +236,34 @@ class EvidenceRef(StrictModel):
 
 
 class UserReport(StrictModel):
-    kind: MemoryKind
-    content: str = Field(min_length=1, max_length=500)
-    evidence_quote: str = Field(min_length=1, max_length=500)
-    aliases: list[str] = Field(default_factory=list, max_length=5)
-    merge_into_id: str | None = None
+    kind: MemoryKind = Field(
+        description="fact or event for something that is or happened; preference or pattern for "
+        "what the user wants or what recurs."
+    )
+    content: str = Field(
+        min_length=1,
+        max_length=500,
+        description="For a fact or an event, exactly the evidence_quote text. For a preference or "
+        "a pattern, either that text or a shortening of it that only drops words, keeping the "
+        "remaining words in order and keeping every negation.",
+    )
+    evidence_quote: str = Field(
+        min_length=1,
+        max_length=500,
+        description="A span copied character for character from the current user message, at "
+        "least the whole clause that carries the report: include any negation or qualifier that "
+        "governs it (what the user was denying or ruling out). If the message corrects earlier "
+        "wording, quote only the replacement clause, never the superseded words.",
+    )
+    aliases: list[str] = Field(
+        default_factory=list,
+        max_length=5,
+        description="Optional retrieval keys, each an exact span of the current user message.",
+    )
+    merge_into_id: str | None = Field(
+        default=None,
+        description="ID of an available user report of the same kind that this repeats.",
+    )
 
 
 class ClaimCorrection(StrictModel):
@@ -289,6 +316,9 @@ class SessionRecord(StrictModel):
     end_reason: SessionEndReason | None = None
     context_warning_sent: bool = False
     last_context_tokens: int = Field(default=0, ge=0)
+    # Set when the user said in this session that they are under 18; the post-turn extractor then
+    # records no user report for the rest of the session.
+    user_reports_withheld: bool = False
 
 
 class InterventionRecord(StrictModel):
@@ -843,6 +873,94 @@ class MemoryStore:
                 selected.append(turn)
                 used += len(turn) + 1
         return "\n".join(reversed(selected))
+
+    def add_pending_extraction(self, message_id: int, now: datetime | None = None) -> None:
+        """Mark a user message whose direct reports are still to be extracted."""
+        with self._connect() as database:
+            database.execute(
+                "INSERT OR IGNORE INTO pending_extractions(message_id, created_at) VALUES (?, ?)",
+                (message_id, _iso(now)),
+            )
+
+    def pending_extractions(self, max_attempts: int) -> list[int]:
+        with self._connect() as database:
+            rows = database.execute(
+                "SELECT message_id FROM pending_extractions WHERE attempts < ? ORDER BY message_id",
+                (max_attempts,),
+            ).fetchall()
+        return [row[0] for row in rows]
+
+    def claim_pending_extraction(self, message_id: int) -> bool:
+        """Remove a marker inside the caller's transaction; False if another run removed it.
+
+        The delete takes the write lock first, so a concurrent run of the same marker waits and
+        then finds nothing to claim instead of writing the same reports twice.
+        """
+        with self._connect() as database:
+            cursor = database.execute(
+                "DELETE FROM pending_extractions WHERE message_id = ?", (message_id,)
+            )
+        return cursor.rowcount == 1
+
+    def record_extraction_failure(self, message_id: int, error_class: str) -> None:
+        with self._connect() as database:
+            database.execute(
+                "UPDATE pending_extractions SET attempts = attempts + 1, last_error = ? "
+                "WHERE message_id = ?",
+                (error_class, message_id),
+            )
+
+    def extraction_input(self, message_id: int) -> tuple[SessionRecord, str, str | None, str]:
+        """Return the session, user text, previous assistant reply, and time of a user message."""
+        with self._connect() as database:
+            row = database.execute(
+                "SELECT session_id, created_at, payload FROM messages "
+                "WHERE id = ? AND role = 'user'",
+                (message_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"No user message {message_id}.")
+            previous = database.execute(
+                "SELECT payload FROM messages WHERE session_id = ? AND role = 'assistant' "
+                "AND id < ? ORDER BY id DESC LIMIT 1",
+                (row[0], message_id),
+            ).fetchone()
+            session = database.execute(
+                "SELECT payload FROM sessions WHERE id = ?", (row[0],)
+            ).fetchone()
+        reply = self._decrypt_json(previous[0]).get("content") if previous else None
+        return (
+            self._decrypt_model(session[0], SessionRecord),
+            self._decrypt_json(row[2]).get("content", ""),
+            reply,
+            row[1],
+        )
+
+    def withhold_user_reports(self, session_id: str) -> None:
+        with self.transaction(), self._connect() as database:
+            row = database.execute(
+                "SELECT payload FROM sessions WHERE id = ?", (session_id,)
+            ).fetchone()
+            if row is None:
+                return
+            session = self._decrypt_model(row[0], SessionRecord)
+            session.user_reports_withheld = True
+            self.save_session(session)
+
+    def corrected_wording(self, message_id: int) -> list[str]:
+        """Quotes and superseded wording of claims corrected by one message."""
+        wording: list[str] = []
+        for item in self.list_claims(include_inactive=True):
+            corrections = [
+                reference.quote
+                for reference in item.evidence
+                if reference.message_id == message_id
+                and reference.quote
+                and reference.relation in {EvidenceRelation.CORRECTS, EvidenceRelation.CONTRADICTS}
+            ]
+            if corrections:
+                wording.extend([*corrections, *item.superseded_content])
+        return list(dict.fromkeys(wording))
 
     def add_user_reports(
         self,
@@ -1906,6 +2024,7 @@ class MemoryStore:
         with self._connect() as database:
             for table in (
                 "semantic_index",
+                "pending_extractions",
                 "messages",
                 "sessions",
                 "memory_items",
@@ -2092,6 +2211,10 @@ class MemoryStore:
             }
             database.executemany(
                 "DELETE FROM messages WHERE id = ?", ((item,) for item in message_ids)
+            )
+            database.executemany(
+                "DELETE FROM pending_extractions WHERE message_id = ?",
+                ((item,) for item in message_ids),
             )
         self._delete_semantic_entities("message", [str(item) for item in message_ids])
         for claim in self.list_claims(include_inactive=True):

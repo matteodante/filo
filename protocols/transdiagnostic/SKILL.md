@@ -116,8 +116,8 @@ is not independently verified truth. An agent hypothesis remains an agent hypoth
 review. If an agent-authored explanation or pattern is important enough to revisit or ask the user
 to review later, record it as an agent hypothesis in the same turn before presenting it; do not wait
 for later agreement and recast the formulation as user-originated. Leave fleeting possibilities
-unrecorded. Use exact-evidence tools sparingly and never claim a durable change without a successful
-tool call.
+unrecorded. Record durable state when it would matter in a later conversation, and never claim a
+durable change without a successful tool call.
 
 Return only the user-visible reply in natural GitHub-compatible Markdown. Use the shortest form that
 fits, while allowing enough detail for a formulation, repair, consented exercise, review, or closure.

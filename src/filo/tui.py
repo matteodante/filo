@@ -161,6 +161,8 @@ class FiloApp(App[None]):
             self.post_message(self.Finished(error=error))
         else:
             self.post_message(self.Finished(turn=turn))
+            # The reply is shown first; recording its reports after it adds no visible latency.
+            self.session.extract_pending()
 
     def _post_command_output(self, output: str) -> None:
         self.post_message(self.CommandOutput(output))

@@ -43,6 +43,7 @@ from filo.chat import (
     MAX_CONTEXT_WINDOW_TOKENS,
     MIN_CONTEXT_WINDOW_TOKENS,
     ChatSession,
+    MemoryWriting,
     TurnStreamEvent,
     TurnStreamKind,
 )
@@ -107,6 +108,13 @@ def build_parser() -> argparse.ArgumentParser:
     chat.add_argument("--context-window-tokens", type=_context_window_tokens)
     chat.add_argument("--memory-mode", type=_memory_mode_arg, choices=tuple(MemoryMode))
     chat.add_argument(
+        "--memory-writing",
+        type=MemoryWriting,
+        choices=tuple(MemoryWriting),
+        default=MemoryWriting.INLINE,
+        help="Experimental: who records direct user reports (default: inline)",
+    )
+    chat.add_argument(
         "--plain",
         action="store_true",
         help="Use the line-oriented interface instead of the full-screen TUI",
@@ -118,6 +126,13 @@ def build_parser() -> argparse.ArgumentParser:
     telegram.add_argument("--allowed-user-id", type=int)
     telegram.add_argument("--context-window-tokens", type=_context_window_tokens)
     telegram.add_argument("--memory-mode", type=_memory_mode_arg, choices=tuple(MemoryMode))
+    telegram.add_argument(
+        "--memory-writing",
+        type=MemoryWriting,
+        choices=tuple(MemoryWriting),
+        default=MemoryWriting.INLINE,
+        help="Experimental: who records direct user reports (default: inline)",
+    )
 
     service = commands.add_parser(
         "telegram-service",
@@ -368,6 +383,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
                 locale,
                 context_window_tokens=context_window_tokens,
                 memory_mode=memory_mode,
+                memory_writing=args.memory_writing,
             )
         except ValueError as error:
             print(f"Context configuration error: {error}")
@@ -1075,6 +1091,7 @@ def _memory(args: argparse.Namespace, store: MemoryStore) -> int:
 def _chat(session: ChatSession, store: MemoryStore) -> int:
     if not _ensure_chat_consent(store):
         return 1
+    session.extract_pending()
 
     print("Commands: /case, /memory, /sessions [id], /interventions,")
     print("          /correct <id> <text>,")
@@ -1134,11 +1151,13 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
         print(f"filo> {turn.text}")
         if turn.notice:
             print(f"notice> {turn.notice}")
+        session.extract_pending()
 
 
 def _chat_tui(session: ChatSession, store: MemoryStore) -> int:
     if not _ensure_chat_consent(store):
         return 1
+    session.extract_pending()
     from filo.tui import FiloApp
 
     app = FiloApp(
