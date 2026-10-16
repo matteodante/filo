@@ -17,6 +17,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 from pydantic_ai import Agent
+from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.embeddings import Embedder
 from pydantic_ai.models import Model
 
@@ -274,8 +275,11 @@ def store_metrics(persona: Persona, store: MemoryStore, judge: Model) -> dict[st
         if item["type"] not in {EventType.FORGET.value, EventType.FILLER.value}
     }
     matches: list[ClaimMatch] = []
+    match_error = None
     if claims:
-        agent = Agent(judge, output_type=StoreMatch, instructions=STORE_MATCH_INSTRUCTIONS)
+        agent = Agent(
+            judge, output_type=StoreMatch, instructions=STORE_MATCH_INSTRUCTIONS, output_retries=3
+        )
         payload = {
             "facts": [fact.model_dump() for fact in persona.facts],
             "timeline": timeline,
@@ -284,7 +288,10 @@ def store_metrics(persona: Persona, store: MemoryStore, judge: Model) -> dict[st
                 for index, claim in enumerate(claims)
             ],
         }
-        matches = agent.run_sync(blind(json.dumps(payload, ensure_ascii=False))).output.claims
+        try:
+            matches = agent.run_sync(blind(json.dumps(payload, ensure_ascii=False))).output.claims
+        except UnexpectedModelBehavior as error:  # recorded, so a replayed arm is never lost
+            match_error = type(error).__name__
     by_index = {match.index: match for match in matches if 0 <= match.index < len(claims)}
     matched_facts = {m.fact_id for m in by_index.values() if m.fact_id in disclosed}
     unsupported = sum(
@@ -315,8 +322,13 @@ def store_metrics(persona: Persona, store: MemoryStore, judge: Model) -> dict[st
     return {
         "user_claims": len(claims),
         "disclosed_facts": len(disclosed),
-        "extraction_recall": len(matched_facts) / len(disclosed) if disclosed else None,
-        "extraction_precision": (len(claims) - unsupported) / len(claims) if claims else None,
+        "extraction_recall": len(matched_facts) / len(disclosed)
+        if disclosed and not match_error
+        else None,
+        "extraction_precision": (len(claims) - unsupported) / len(claims)
+        if claims and not match_error
+        else None,
+        "match_error": match_error,
         "unsupported_claims": unsupported,
         "outdated_claims": len(outdated),
         "update_applied": outdated_retired / len(outdated) if outdated else None,
