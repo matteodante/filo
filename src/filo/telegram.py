@@ -2,26 +2,39 @@
 
 from __future__ import annotations
 
+import dataclasses
+import hashlib
+import http.client
 import json
 import re
 import secrets
+import sqlite3
+import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from urllib.error import HTTPError, URLError
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from filo.chat import ChatSession, TurnStreamEvent, TurnStreamKind
-from filo.memory import MemoryStore
+from filo.chat import ChatSession, ChatTurn, TurnStreamEvent, TurnStreamKind
+from filo.memory import MemoryMode, MemoryStore, TelegramDelivery
 
 API_ROOT = "https://api.telegram.org"
+TELEGRAM_SECRET = "telegram_bot_token"
 CONSENT_VERSION = "alpha-5"
 MESSAGE_LIMIT = 4_000
 MEMORY_PAGE_SIZE = 10
 SESSION_PAGE_SIZE = 5
 INTERVENTION_PAGE_SIZE = 10
 DRAFT_INTERVAL_SECONDS = 0.25
+TYPING_INTERVAL_SECONDS = 4.0
+TYPING_JOIN_SECONDS = 1.0
+# Rejections that a retry cannot fix and that concern only the one message. An
+# invalid or revoked token (401, 404) is fatal instead, and anything ambiguous,
+# such as 408, 429 or 5xx, is retried.
+PERMANENT_DELIVERY_ERRORS = frozenset({400, 403})
 
 
 class TelegramError(RuntimeError):
@@ -37,7 +50,14 @@ class TelegramError(RuntimeError):
         super().__init__(message)
         self.error_code = error_code
         self.retry_after = retry_after
-        self.fatal = error_code is not None and 400 <= error_code < 500 and error_code != 429
+        # 408 and 429 ask the client to repeat the request; other 4xx codes do not.
+        self.fatal = (
+            error_code is not None and 400 <= error_code < 500 and error_code not in {408, 429}
+        )
+
+
+class _ConfigurationChanged(Exception):
+    """Setup changed the pairing or bot token while this listener was running."""
 
 
 class TelegramBot:
@@ -149,9 +169,12 @@ class TelegramBot:
                 error_code=error_code,
                 retry_after=retry_after,
             ) from error
-        except (URLError, TimeoutError, json.JSONDecodeError) as error:
+        except (OSError, http.client.HTTPException, ValueError) as error:
+            # Covers URLError, timeouts, resets, TLS failures, truncated bodies,
+            # and malformed JSON. Only the class name is kept: messages can
+            # carry the request URL, which contains the bot token.
             raise TelegramError(
-                "Telegram is unavailable or returned an invalid response."
+                f"Telegram is unavailable or returned an invalid response ({type(error).__name__})."
             ) from error
         if not isinstance(body, dict) or body.get("ok") is not True:
             description = (
@@ -181,12 +204,72 @@ class TelegramChannel:
     store: MemoryStore
     allowed_user_id: int
     configuration_store: MemoryStore | None = None
+    # Ephemeral mode writes no conversation content to disk, so its queued
+    # replies live only here and are lost if the process stops.
+    _ephemeral_outbox: list[TelegramDelivery] = dataclasses.field(
+        default_factory=list, init=False, repr=False
+    )
+
+    def __post_init__(self) -> None:
+        # The configuration this listener started with. A later change by setup
+        # deauthorizes the old account or bot even while this process runs.
+        self._configured_as = self._configuration()
+
+    def _configuration(self) -> tuple[int | None, str | None]:
+        """The persisted pairing and a fingerprint of the stored bot token, never the token."""
+        token = self.config_store.load_secret(TELEGRAM_SECRET)
+        fingerprint = hashlib.sha256(token).hexdigest() if token else None
+        return self.config_store.load_app_state().telegram_allowed_user_id, fingerprint
 
     @property
     def config_store(self) -> MemoryStore:
         return self.configuration_store or self.store
 
+    @property
+    def _ephemeral(self) -> bool:
+        return self.session.memory_mode is MemoryMode.EPHEMERAL
+
+    def _allows(self, user_id: object, paired: int | None) -> bool:
+        """Whether this listener may talk to ``user_id`` under the persisted ``paired`` account.
+
+        Once setup pairs another account, or delete-data removes the pairing,
+        even a running listener stops exchanging messages with the old one,
+        while an explicit --allowed-user-id keeps working as long as the
+        pairing it started with is unchanged.
+        """
+        return user_id == self.allowed_user_id and (
+            paired == self._configured_as[0] or user_id == paired
+        )
+
+    def _paired(self, user_id: object) -> bool:
+        return self._allows(user_id, self.config_store.load_app_state().telegram_allowed_user_id)
+
+    def _check_configuration(self) -> None:
+        # Consuming updates after setup re-paired or replaced the bot would
+        # confirm the new configuration's messages to Telegram and move the
+        # offset past them, so this listener reloads first.
+        if self._configuration() != self._configured_as:
+            raise _ConfigurationChanged
+
     def run(self) -> None:
+        while True:
+            try:
+                self._listen()
+            except _ConfigurationChanged:
+                state = self.config_store.load_app_state()
+                token = self.config_store.load_secret(TELEGRAM_SECRET)
+                if not token or not state.telegram_allowed_user_id:
+                    print("Telegram is no longer configured; the listener is stopping.")
+                    return
+                print("Telegram configuration changed; reloading it.")
+                # Reloading in the same process does not depend on a service
+                # manager restarting it, which the Windows scheduled task and a
+                # systemd unit after delete-data would not do.
+                self.bot = TelegramBot(token.decode())
+                self.allowed_user_id = state.telegram_allowed_user_id
+                self._configured_as = self._configuration()
+
+    def _listen(self) -> None:
         identity = self.bot.get_me()
         self.bot.delete_webhook()
         self.bot.configure_interface(self.allowed_user_id)
@@ -194,13 +277,21 @@ class TelegramChannel:
         print(f"Telegram bot @{username} is listening. Press Ctrl-C to stop.")
         offset = self.config_store.load_app_state().telegram_update_offset
         while True:
+            self._check_configuration()
             try:
+                self.deliver_pending()
                 updates = self.bot.get_updates(offset)
             except TelegramError as error:
                 if error.fatal:
                     raise
-                print(f"Telegram polling error: {error}")
+                print(f"Telegram polling or delivery error: {error}")
                 time.sleep(error.retry_after or 3)
+                continue
+            except sqlite3.OperationalError as error:
+                if not _locked(error):
+                    raise
+                print("The local store is busy; retrying.")
+                time.sleep(1)
                 continue
             for update in updates:
                 update_id = update.get("update_id")
@@ -208,71 +299,185 @@ class TelegramChannel:
                     continue
                 if offset is not None and update_id < offset:
                     continue
+                self._check_configuration()
                 try:
-                    self.process_update(update)
+                    self.accept_update(update)
+                except sqlite3.OperationalError as error:
+                    # A CLI command held the store past the busy timeout. The
+                    # update was not consumed, so the next poll returns it.
+                    if not _locked(error):
+                        raise
+                    print("The local store is busy; retrying.")
+                    time.sleep(1)
+                    break
+                offset = update_id + 1
+                try:
+                    self.deliver_pending()
                 except TelegramError as error:
                     print(f"Telegram delivery error: {error}")
                     if error.fatal:
                         raise
                     time.sleep(error.retry_after or 3)
                     break
-                offset = update_id + 1
-                state = self.config_store.load_app_state()
-                state.telegram_update_offset = offset
-                self.config_store.save_app_state(state)
+                except sqlite3.OperationalError as error:
+                    if not _locked(error):
+                        raise
+                    print("The local store is busy; retrying.")
+                    time.sleep(1)
+                    break
 
     def process_update(self, update: dict[str, Any]) -> bool:
+        handled = self.accept_update(update)
+        self.deliver_pending()
+        return handled
+
+    def accept_update(self, update: dict[str, Any]) -> bool:
+        """Handle one update and persist its replies with the offset that consumes it.
+
+        A model turn stores its replies inside the turn transaction, so once the
+        turn is committed the update is never handed to the model again.
+        """
+        update_id = update.get("update_id")
+        outbox: list[TelegramDelivery] = []
+
+        def enqueue(*, consent: bool = False, rendered_at_epoch: int | None = None) -> bool:
+            queued = self.config_store.queue_telegram_output(
+                [] if self._ephemeral else outbox,
+                update_offset=update_id + 1 if isinstance(update_id, int) else None,
+                consent_version=CONSENT_VERSION if consent else None,
+                rendered_at_epoch=rendered_at_epoch,
+            )
+            if queued and self._ephemeral:
+                self._ephemeral_outbox.extend(outbox)
+            return queued
+
+        handled, queued = self._handle_update(update, outbox, enqueue)
+        if not queued:
+            enqueue()
+        return handled
+
+    def deliver_pending(self) -> None:
+        """Send queued replies in order, removing each one only after delivery."""
+        cursor = 0
+        while True:
+            # The durable queue goes first: replies committed by an earlier run in
+            # standard or transcript-only mode still need delivery after a restart
+            # in ephemeral mode.
+            durable = self.config_store.list_telegram_output(limit=1, after_id=cursor)
+            if durable:
+                entry_id, delivery = durable[0]
+                cursor = entry_id
+            elif self._ephemeral and self._ephemeral_outbox:
+                entry_id, delivery = None, self._ephemeral_outbox[0]
+            else:
+                return
+            paired = self.config_store.load_app_state().telegram_allowed_user_id
+            if delivery.chat_id == paired != self.allowed_user_id:
+                # Queued for the persisted pairing while this listener runs
+                # with --allowed-user-id: leave it for that account's listener
+                # and keep delivering the rest.
+                continue
+            if not self._allows(delivery.chat_id, paired):
+                # Queued for an account that is no longer paired; never send
+                # private content to it.
+                print("Telegram dropped a queued message for a chat that is no longer allowed.")
+            else:
+                try:
+                    self._deliver(delivery)
+                except TelegramError as error:
+                    if error.error_code not in PERMANENT_DELIVERY_ERRORS:
+                        raise
+                    # A permanent rejection of one message (for example a
+                    # blocked bot) must not wedge every later reply behind it.
+                    print(f"Telegram rejected a queued message permanently: {error}")
+            if entry_id is None:
+                self._ephemeral_outbox.pop(0)
+            else:
+                self.config_store.remove_telegram_output(entry_id)
+
+    def _deliver(self, delivery: TelegramDelivery) -> None:
+        if not delivery.rich:
+            self.bot.send_message(delivery.chat_id, delivery.text)
+            return
+        try:
+            self.bot.send_rich_message(delivery.chat_id, delivery.text)
+        except TelegramError as error:
+            print(f"Telegram rich message delivery error: {error}")
+            if error.error_code != 400:
+                raise
+            self.bot.send_message(delivery.chat_id, delivery.text)
+
+    def _handle_update(
+        self,
+        update: dict[str, Any],
+        outbox: list[TelegramDelivery],
+        enqueue: Callable[..., bool],
+    ) -> tuple[bool, bool]:
+        """Return whether the update was handled and whether its replies are already queued."""
         message = update.get("message")
         if not isinstance(message, dict):
-            return False
+            return False, False
         chat = message.get("chat")
         sender = message.get("from")
         if not isinstance(chat, dict) or not isinstance(sender, dict):
-            return False
+            return False, False
         chat_id = chat.get("id")
         if (
             chat.get("type") != "private"
-            or sender.get("id") != self.allowed_user_id
             or sender.get("is_bot") is True
             or not isinstance(chat_id, int)
+            or not self._paired(sender.get("id"))
         ):
-            return False
+            return False, False
+
+        def send(text: str, *, rich: bool = False) -> None:
+            if rich:
+                outbox.append(TelegramDelivery(chat_id=chat_id, text=text, rich=True))
+                return
+            outbox.extend(
+                TelegramDelivery(chat_id=chat_id, text=chunk) for chunk in split_message(text)
+            )
+
         text = message.get("text")
         if not isinstance(text, str) or not text.strip():
-            self.bot.send_message(chat_id, self._unsupported_message())
-            return True
+            send(self._unsupported_message())
+            return True, False
         text = text.strip()
         if len(text) > MESSAGE_LIMIT:
-            self.bot.send_message(chat_id, self._message_too_long())
-            return True
+            send(self._message_too_long())
+            return True, False
         command = _command_name(text)
         state = self.config_store.load_app_state()
         if command == "/start":
-            self.bot.send_message(
-                chat_id,
-                self._consent_notice(state.telegram_consent_version == CONSENT_VERSION),
-            )
-            return True
+            send(self._consent_notice(state.telegram_consent_version == CONSENT_VERSION))
+            return True, False
 
         consent = "I UNDERSTAND"
         if state.telegram_consent_version != CONSENT_VERSION:
             if text == f"/consent {consent}":
-                state.telegram_consent_version = CONSENT_VERSION
-                self.config_store.save_app_state(state)
-                self.bot.send_message(chat_id, self._consent_recorded())
-            else:
-                self.bot.send_message(chat_id, self._consent_notice(False))
-            return True
+                # Consent, its confirmation, and the offset commit together, so a
+                # crash cannot record one without the others.
+                send(self._consent_recorded())
+                enqueue(consent=True)
+                return True, True
+            send(self._consent_notice(False))
+            return True, False
 
+        if command == "/end":
+            send(self._command_response(command, None) or self._unknown_command())
+            return True, False
         if command:
-            response = self._command_response(command, _command_argument(text))
-            self.bot.send_message(chat_id, response or self._unknown_command())
-            return True
+            # These views render stored records. A local deletion between the
+            # read and the queue write would otherwise let a discarded record
+            # reach Telegram, so the view is rendered again when one intervened.
+            while True:
+                epoch = self.config_store.telegram_output_epoch()
+                outbox.clear()
+                response = self._command_response(command, _command_argument(text))
+                send(response or self._unknown_command())
+                if enqueue(rendered_at_epoch=epoch):
+                    return True, True
         before = self._durable_snapshot()
-        try:
-            self.bot.send_typing(chat_id)
-        except TelegramError as error:
-            print(f"Telegram typing indicator error: {error}")
         draft_id = secrets.randbits(31) or 1
         last_draft_at = 0.0
         draft_retry_at = 0.0
@@ -313,9 +518,33 @@ class TelegramChannel:
                     except TelegramError as fallback_error:
                         print(f"Telegram plain draft delivery error: {fallback_error}")
 
-        succeeded = False
+        def queue_turn(turn: ChatTurn) -> None:
+            for tool_event in undelivered_tool_events:
+                send(tool_event)
+            if turn.notice:
+                send(turn.notice)
+            send(turn.text, rich=_safe_rich_markdown(turn.text))
+            changes = self._durable_changes(before)
+            if changes:
+                send(changes)
+            if self._ephemeral or enqueue(rendered_at_epoch=epoch):
+                return
+            # A local deletion landed while this reply was being written, and the
+            # reply or its change summary may quote what it removed. The turn
+            # stays committed; only the notice below is sent.
+            outbox.clear()
+            send(self._memory_changed())
+            enqueue()
+
+        epoch = self.config_store.telegram_output_epoch()
+
+        typing_stopped = threading.Event()
+        typing = threading.Thread(
+            target=self._keep_typing, args=(chat_id, typing_stopped), daemon=True
+        )
+        typing.start()
         try:
-            turn = self.session.respond(text, on_event=render)
+            self.session.respond(text, on_event=render, on_commit=queue_turn)
         except Exception as error:  # Provider SDKs expose different error types.
             # The class name alone cannot separate a refused request from an
             # unreachable provider. Add the HTTP status when the SDK exposes
@@ -332,31 +561,40 @@ class TelegramChannel:
                 f"Model error while handling Telegram message: "
                 f"{type(error).__name__}{status_note}{cause_note}: {summary}"
             )
-            reply = self._model_error()
-            notice = None
-        else:
-            succeeded = True
-            reply = turn.text
-            notice = getattr(turn, "notice", None)
-        changes = self._durable_changes(before)
-        if succeeded:
-            for tool_event in undelivered_tool_events:
-                self.bot.send_message(chat_id, tool_event)
-        if notice:
-            self.bot.send_message(chat_id, notice)
-        if _safe_rich_markdown(reply):
+            # Any failure inside the turn transaction rolled the queued replies
+            # back with it, so the caller queues this notice instead.
+            outbox.clear()
+            send(self._model_error())
+            return True, False
+        finally:
+            typing_stopped.set()
+            # A sendChatAction already in flight can take up to the request
+            # timeout; the finished reply must not wait for it.
+            typing.join(timeout=TYPING_JOIN_SECONDS)
+        # An ephemeral turn commits to memory only; its replies are queued by
+        # the caller once the turn has returned, never inside that commit.
+        return True, not self._ephemeral
+
+    def _memory_changed(self) -> str:
+        return (
+            "Your memory changed while I was answering, so I did not send that reply. "
+            "Please send your message again."
+        )
+
+    def _keep_typing(self, chat_id: int, stopped: threading.Event) -> None:
+        # Telegram shows a chat action for about five seconds; a model turn can
+        # take much longer, so repeat it until the turn ends.
+        while True:
+            wait = TYPING_INTERVAL_SECONDS
             try:
-                self.bot.send_rich_message(chat_id, reply)
+                self.bot.send_typing(chat_id)
             except TelegramError as error:
-                print(f"Telegram rich message delivery error: {error}")
-                if error.error_code != 400:
-                    raise
-                self.bot.send_message(chat_id, reply)
-        else:
-            self.bot.send_message(chat_id, reply)
-        if changes:
-            self.bot.send_message(chat_id, changes)
-        return True
+                print(f"Telegram typing indicator error: {error}")
+                # Flood control asks for silence until its deadline; typing is
+                # cosmetic, so it waits rather than delaying the reply further.
+                wait = max(wait, error.retry_after or 0)
+            if stopped.wait(wait):
+                return
 
     def _command_response(self, command: str, argument: str | None) -> str | None:
         if command == "/help":
@@ -596,8 +834,8 @@ class TelegramChannel:
             "• The model provider receives the message and only selected context.\n"
             f"• Current memory mode: {self.session.memory_mode.value}.\n"
             "• In standard mode, archive, structured memory, and semantic index are encrypted "
-            "on the host; transcript-only writes no structured state; ephemeral writes nothing "
-            "to disk.\n"
+            "on the host; transcript-only writes no structured state; ephemeral writes no "
+            "conversation content to disk, though the Telegram update position is still saved.\n"
             f"• Local retention: raw messages={policy.raw_message_days or 'indefinite'}, "
             f"session summaries={policy.session_summary_days or 'indefinite'}, "
             f"stale hypotheses={policy.stale_hypothesis_days or 'indefinite'} days.\n"
@@ -754,7 +992,7 @@ def _status_label(value: str) -> str:
 def _http_error_details(error: HTTPError) -> tuple[str, int, int | None]:
     try:
         body = json.loads(error.read())
-    except (OSError, json.JSONDecodeError):
+    except (OSError, http.client.HTTPException, ValueError):
         return f"HTTP {error.code}", error.code, None
     if not isinstance(body, dict):
         return f"HTTP {error.code}", error.code, None
@@ -771,3 +1009,7 @@ def _http_error_details(error: HTTPError) -> tuple[str, int, int | None]:
         error_code if isinstance(error_code, int) else error.code,
         retry_after,
     )
+
+
+def _locked(error: sqlite3.OperationalError) -> bool:
+    return "locked" in str(error) or "busy" in str(error)

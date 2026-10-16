@@ -1,12 +1,11 @@
 from io import BytesIO
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 from urllib.error import HTTPError
 
 import pytest
 
-from filo.chat import TurnStreamEvent, TurnStreamKind
+from filo.chat import ChatTurn, TurnStreamEvent, TurnStreamKind
 from filo.memory import MemoryKind, MemoryMode, MemoryStore, UserReport
 from filo.telegram import (
     TelegramBot,
@@ -66,16 +65,24 @@ class FakeSession:
         self.end_calls = 0
         self.memory_mode = MemoryMode.STANDARD
 
-    def respond(self, text: str, *, on_event: object | None = None) -> SimpleNamespace:
+    def respond(
+        self, text: str, *, on_event: object | None = None, on_commit: object | None = None
+    ) -> ChatTurn:
         self.received.append(text)
         reply = f"reply: {text}"
         if on_event:
             on_event(TurnStreamEvent(TurnStreamKind.REPLY, reply))  # type: ignore[operator]
-        return SimpleNamespace(text=reply)
+        return _committed(ChatTurn(reply), on_commit)
 
     def end(self) -> None:
         self.end_calls += 1
         return None
+
+
+def _committed(turn: ChatTurn, on_commit: object | None) -> ChatTurn:
+    if on_commit:
+        on_commit(turn)  # type: ignore[operator]
+    return turn
 
 
 def private_update(update_id: int, user_id: int, text: str) -> dict[str, Any]:
@@ -172,18 +179,19 @@ def test_run_persists_update_watermark_after_dispatch(tmp_path: Path) -> None:
     assert channel.store.load_app_state().telegram_update_offset == 8
 
 
-def test_run_retries_delivery_without_advancing_offset(
+def test_run_queues_delivery_and_retries_without_reprocessing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     class FailingDeliveryBot(FakeBot):
-        def send_message(self, chat_id: int, text: str) -> None:
-            raise TelegramError(
-                "rate limited",
-                error_code=429,
-                retry_after=7,
-            )
+        failures = 1
 
-    bot = FailingDeliveryBot([[private_update(7, 42, "/start")]])
+        def send_message(self, chat_id: int, text: str) -> None:
+            if self.failures:
+                self.failures -= 1
+                raise TelegramError("rate limited", error_code=429, retry_after=7)
+            super().send_message(chat_id, text)
+
+    bot = FailingDeliveryBot([[private_update(7, 42, "/start")], []])
     store = MemoryStore(tmp_path)
     sleeps: list[int] = []
     monkeypatch.setattr("filo.telegram.time.sleep", sleeps.append)
@@ -192,8 +200,11 @@ def test_run_retries_delivery_without_advancing_offset(
     with pytest.raises(KeyboardInterrupt):
         channel.run()
 
-    assert store.load_app_state().telegram_update_offset is None
+    state = store.load_app_state()
+    assert state.telegram_update_offset == 8
+    assert store.list_telegram_output() == []
     assert sleeps == [7]
+    assert len(bot.messages) == 1
 
 
 def test_split_message_preserves_content_with_telegram_safe_chunks() -> None:
@@ -291,7 +302,9 @@ def test_normal_turn_discloses_committed_memory_change(tmp_path: Path) -> None:
     active = store.start_session()
 
     class RecordingSession(FakeSession):
-        def respond(self, text: str, *, on_event: object | None = None) -> SimpleNamespace:
+        def respond(
+            self, text: str, *, on_event: object | None = None, on_commit: object | None = None
+        ) -> ChatTurn:
             message_id = store.save_turn(active, text, "Understood.", [])
             store.add_user_reports(
                 [
@@ -308,7 +321,7 @@ def test_normal_turn_discloses_committed_memory_change(tmp_path: Path) -> None:
                 on_event(  # type: ignore[operator]
                     TurnStreamEvent(TurnStreamKind.REPLY, "Understood.")
                 )
-            return SimpleNamespace(text="Understood.")
+            return _committed(ChatTurn("Understood."), on_commit)
 
     channel = TelegramChannel(bot, RecordingSession(), store, 42)  # type: ignore[arg-type]
 
@@ -327,7 +340,9 @@ def test_normal_turn_sends_tool_input_and_output_before_reply(tmp_path: Path) ->
     store.save_app_state(state)
 
     class ToolSession(FakeSession):
-        def respond(self, text: str, *, on_event: object | None = None) -> SimpleNamespace:
+        def respond(
+            self, text: str, *, on_event: object | None = None, on_commit: object | None = None
+        ) -> ChatTurn:
             self.received.append(text)
             assert on_event is not None
             on_event(  # type: ignore[operator]
@@ -345,12 +360,15 @@ def test_normal_turn_sends_tool_input_and_output_before_reply(tmp_path: Path) ->
             on_event(  # type: ignore[operator]
                 TurnStreamEvent(TurnStreamKind.REPLY, "Done.")
             )
-            return SimpleNamespace(
-                text="Done.",
-                tool_trace=(
-                    'TOOL INPUT · record_user_reports\n{"content": "detail"}\n\n'
-                    'TOOL OUTPUT · record_user_reports · success\n{"staged": 1}'
+            return _committed(
+                ChatTurn(
+                    "Done.",
+                    tool_trace=(
+                        'TOOL INPUT · record_user_reports\n{"content": "detail"}\n\n'
+                        'TOOL OUTPUT · record_user_reports · success\n{"staged": 1}'
+                    ),
                 ),
+                on_commit,
             )
 
     channel = TelegramChannel(bot, ToolSession(), store, 42)  # type: ignore[arg-type]
@@ -462,13 +480,15 @@ def test_channel_throttles_streamed_drafts_with_one_id(
     store.save_app_state(state)
 
     class StreamingSession(FakeSession):
-        def respond(self, text: str, *, on_event: object | None = None) -> SimpleNamespace:
+        def respond(
+            self, text: str, *, on_event: object | None = None, on_commit: object | None = None
+        ) -> ChatTurn:
             assert on_event is not None
             for partial in ("**One", "**One two", "**One two three**"):
                 on_event(  # type: ignore[operator]
                     TurnStreamEvent(TurnStreamKind.REPLY, partial)
                 )
-            return SimpleNamespace(text="**One two three**")
+            return _committed(ChatTurn("**One two three**"), on_commit)
 
     times = iter((1.0, 1.1, 1.3))
     monkeypatch.setattr("filo.telegram.time.monotonic", lambda: next(times))
@@ -492,10 +512,12 @@ def test_channel_bounds_rejected_draft_to_plain_message_limit(tmp_path: Path) ->
     store.save_app_state(state)
 
     class LongDraftSession(FakeSession):
-        def respond(self, text: str, *, on_event: object | None = None) -> SimpleNamespace:
+        def respond(
+            self, text: str, *, on_event: object | None = None, on_commit: object | None = None
+        ) -> ChatTurn:
             assert on_event is not None
             on_event(TurnStreamEvent(TurnStreamKind.REPLY, "x" * 5_000))  # type: ignore[operator]
-            return SimpleNamespace(text="Done.")
+            return _committed(ChatTurn("Done."), on_commit)
 
     channel = TelegramChannel(bot, LongDraftSession(), store, 42)  # type: ignore[arg-type]
     channel.process_update(private_update(1, 42, "Stream this"))
@@ -517,11 +539,13 @@ def test_channel_rate_limits_draft_attempts_after_failure(
             raise TelegramError("rate limited", error_code=429, retry_after=5)
 
     class StreamingSession(FakeSession):
-        def respond(self, text: str, *, on_event: object | None = None) -> SimpleNamespace:
+        def respond(
+            self, text: str, *, on_event: object | None = None, on_commit: object | None = None
+        ) -> ChatTurn:
             assert on_event is not None
             for partial in ("One", "One two", "One two three", "One two three four"):
                 on_event(TurnStreamEvent(TurnStreamKind.REPLY, partial))  # type: ignore[operator]
-            return SimpleNamespace(text="Done.")
+            return _committed(ChatTurn("Done."), on_commit)
 
     bot = RateLimitedDraftBot()
     store = MemoryStore(tmp_path)
@@ -548,11 +572,13 @@ def test_channel_uses_plain_delivery_for_unsafe_markdown(tmp_path: Path) -> None
     store.save_app_state(state)
 
     class UnsafeSession(FakeSession):
-        def respond(self, text: str, *, on_event: object | None = None) -> SimpleNamespace:
+        def respond(
+            self, text: str, *, on_event: object | None = None, on_commit: object | None = None
+        ) -> ChatTurn:
             reply = "![remote image](https://example.com/image.png)"
             assert on_event is not None
             on_event(TurnStreamEvent(TurnStreamKind.REPLY, reply))  # type: ignore[operator]
-            return SimpleNamespace(text=reply)
+            return _committed(ChatTurn(reply), on_commit)
 
     channel = TelegramChannel(bot, UnsafeSession(), store, 42)  # type: ignore[arg-type]
 
@@ -622,12 +648,14 @@ def test_channel_retries_missing_tool_events_separately_without_duplicates(
     store.save_app_state(state)
 
     class ToolSession(FakeSession):
-        def respond(self, text: str, *, on_event: object | None = None) -> SimpleNamespace:
+        def respond(
+            self, text: str, *, on_event: object | None = None, on_commit: object | None = None
+        ) -> ChatTurn:
             assert on_event is not None
             on_event(TurnStreamEvent(TurnStreamKind.TOOL_INPUT, "TOOL INPUT · test"))  # type: ignore[operator]
             on_event(TurnStreamEvent(TurnStreamKind.TOOL_OUTPUT, "TOOL OUTPUT · test"))  # type: ignore[operator]
             on_event(TurnStreamEvent(TurnStreamKind.REPLY, "Done."))  # type: ignore[operator]
-            return SimpleNamespace(text="Done.")
+            return _committed(ChatTurn("Done."), on_commit)
 
     channel = TelegramChannel(bot, ToolSession(), store, 42)  # type: ignore[arg-type]
     channel.process_update(private_update(1, 42, "Use a tool"))

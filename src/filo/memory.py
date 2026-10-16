@@ -65,8 +65,12 @@ CREATE TABLE IF NOT EXISTS semantic_index (
     dimensions INTEGER NOT NULL, payload BLOB NOT NULL,
     PRIMARY KEY(entity_type, entity_id)
 );
+CREATE TABLE IF NOT EXISTS telegram_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, payload BLOB NOT NULL
+);
 """
 DEFAULT_STALE_HYPOTHESIS_DAYS = 180
+BUSY_TIMEOUT_SECONDS = 10.0
 MIN_SEMANTIC_RELEVANCE = 0.2
 
 
@@ -206,6 +210,12 @@ class RetentionPolicy(StrictModel):
     raw_message_days: int | None = Field(default=None, ge=1)
     session_summary_days: int | None = Field(default=None, ge=1)
     stale_hypothesis_days: int | None = Field(default=None, ge=1)
+
+
+class TelegramDelivery(StrictModel):
+    chat_id: int
+    text: str = Field(min_length=1)
+    rich: bool = False
 
 
 class AppState(StrictModel):
@@ -1036,6 +1046,7 @@ class MemoryStore:
         now: datetime | None = None,
     ) -> MemoryItem:
         with self.transaction():
+            self._discard_telegram_output()
             item = self._get_claim(correction.memory_id)
             if item.lifecycle is not ClaimLifecycle.ACTIVE:
                 raise ValueError("Only an active claim can be corrected.")
@@ -1195,6 +1206,7 @@ class MemoryStore:
 
     def forget_claim(self, item_id: str, now: datetime | None = None) -> MemoryItem:
         with self.transaction():
+            self._discard_telegram_output()
             item = self._get_claim(item_id)
             item.lifecycle = ClaimLifecycle.ARCHIVED
             item.conflict_ids = []
@@ -1790,7 +1802,20 @@ class MemoryStore:
         }
         if dry_run:
             return result
+        # A queued Telegram reply older than a cutoff that removed data may quote
+        # it; replies queued since then, such as those a crash left behind, stay.
+        removal_cutoffs = [
+            current - timedelta(days=days)
+            for days, removed in (
+                (policy.raw_message_days, message_ids),
+                (policy.session_summary_days, summaries),
+                (policy.stale_hypothesis_days, hypotheses),
+            )
+            if days and removed
+        ]
         with self.transaction():
+            if removal_cutoffs:
+                self._discard_telegram_output(before=max(removal_cutoffs))
             self._delete_message_ids(message_ids)
             for session in summaries:
                 _clear_session_reflection(session)
@@ -1815,6 +1840,7 @@ class MemoryStore:
                 ).fetchone()
             if exists is None:
                 return False
+            self._discard_telegram_output()
             self._delete_message_ids([row[0] for row in rows])
             with self._connect() as database:
                 database.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
@@ -1890,6 +1916,9 @@ class MemoryStore:
             "interventions": [item.model_dump(mode="json") for item in self.list_interventions()],
             "sessions": [session.model_dump(mode="json") for session in self.list_sessions()],
             "messages": messages,
+            "telegram_outbox": [
+                item.model_dump(mode="json") for _id, item in self.list_telegram_output()
+            ],
         }
 
     def load_secret(self, name: str) -> bytes | None:
@@ -1903,7 +1932,11 @@ class MemoryStore:
             database.execute("DELETE FROM state WHERE name = ?", (f"secret:{name}",))
 
     def delete_all(self) -> None:
-        with self._connect() as database:
+        with self.transaction(), self._connect() as database:
+            # The discard counter lives in the state table, which is wiped here;
+            # it must still move forward so a view rendered before the wipe is
+            # not queued after it.
+            epoch = self.telegram_output_epoch() + 1
             for table in (
                 "semantic_index",
                 "messages",
@@ -1912,10 +1945,12 @@ class MemoryStore:
                 "interventions",
                 "process_preferences",
                 "support_choices",
+                "telegram_outbox",
                 "state",
             ):
                 database.execute(f"DELETE FROM {table}")
-        self._write_state("schema_version", SCHEMA_VERSION)
+            self._write_state("schema_version", SCHEMA_VERSION)
+            self._write_state("telegram_output_epoch", str(epoch).encode())
 
     def _save_claim(self, item: MemoryItem) -> None:
         with self._connect() as database:
@@ -2226,6 +2261,73 @@ class MemoryStore:
             app.pending_hypothesis_id = None
             self.save_app_state(app)
 
+    def queue_telegram_output(
+        self,
+        deliveries: list[TelegramDelivery],
+        *,
+        update_offset: int | None = None,
+        consent_version: str | None = None,
+        rendered_at_epoch: int | None = None,
+        now: datetime | None = None,
+    ) -> bool:
+        """Queue replies and record the update that produced them in one transaction.
+
+        With ``rendered_at_epoch``, nothing is written and False is returned if a
+        deletion discarded queued output after the replies were rendered, since
+        they may quote what it removed.
+        """
+        with self.transaction():
+            if rendered_at_epoch is not None and rendered_at_epoch != self.telegram_output_epoch():
+                return False
+            with self._connect() as database:
+                database.executemany(
+                    "INSERT INTO telegram_outbox(created_at, payload) VALUES (?, ?)",
+                    [(_iso(now), self._encrypt_model(item)) for item in deliveries],
+                )
+            if update_offset is None and consent_version is None:
+                return True
+            app = self.load_app_state()
+            if update_offset is not None:
+                app.telegram_update_offset = max(app.telegram_update_offset or 0, update_offset)
+            if consent_version is not None:
+                app.telegram_consent_version = consent_version
+            self.save_app_state(app)
+        return True
+
+    def telegram_output_epoch(self) -> int:
+        """Count of deletions that discarded queued Telegram output."""
+        payload = self._read_state("telegram_output_epoch")
+        return 0 if payload is None else int(payload)
+
+    def list_telegram_output(
+        self, limit: int | None = None, *, after_id: int = 0
+    ) -> list[tuple[int, TelegramDelivery]]:
+        with self._connect() as database:
+            rows = database.execute(
+                "SELECT id, payload FROM telegram_outbox WHERE id > ? ORDER BY id LIMIT ?",
+                (after_id, -1 if limit is None else limit),
+            ).fetchall()
+        return [
+            (row[0], TelegramDelivery.model_validate_json(self._decrypt(row[1]))) for row in rows
+        ]
+
+    def remove_telegram_output(self, entry_id: int) -> None:
+        with self._connect() as database:
+            database.execute("DELETE FROM telegram_outbox WHERE id = ?", (entry_id,))
+
+    def _discard_telegram_output(self, before: datetime | None = None) -> None:
+        # An undelivered Telegram reply can quote what is being deleted, and
+        # nothing ties a queued message to the records it mentions, so a
+        # deletion drops every queued reply that could predate it.
+        self._write_state("telegram_output_epoch", str(self.telegram_output_epoch() + 1).encode())
+        with self._connect() as database:
+            if before is None:
+                database.execute("DELETE FROM telegram_outbox")
+            else:
+                database.execute(
+                    "DELETE FROM telegram_outbox WHERE created_at < ?", (_iso(before),)
+                )
+
     def _clean_pending_ids(self) -> None:
         app = self.load_app_state()
         claim_ids = {item.id for item in self.list_claims()}
@@ -2261,15 +2363,36 @@ class MemoryStore:
         if self._transaction is not None:
             yield
             return
-        database = self._ephemeral_database or self._open_connection()
+        if self._ephemeral_database is not None:
+            self._transaction = self._ephemeral_database
+            try:
+                with self._ephemeral_database:
+                    yield
+            finally:
+                self._transaction = None
+            return
+        # BEGIN IMMEDIATE takes the write lock before the first read. A deferred
+        # transaction that reads and then writes cannot wait for a concurrent
+        # writer (the Telegram listener and a CLI command share this file):
+        # SQLite fails the lock upgrade at once with "database is locked"
+        # instead of honoring the busy timeout.
+        database = sqlite3.connect(
+            self.database_path, autocommit=True, timeout=BUSY_TIMEOUT_SECONDS
+        )
         self._transaction = database
         try:
-            with database:
+            database.execute("PRAGMA foreign_keys = ON")
+            database.execute("BEGIN IMMEDIATE")
+            try:
                 yield
+            except BaseException:
+                if database.in_transaction:
+                    database.execute("ROLLBACK")
+                raise
+            database.execute("COMMIT")
         finally:
             self._transaction = None
-            if not self._ephemeral:
-                database.close()
+            database.close()
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -2289,7 +2412,9 @@ class MemoryStore:
                 database.close()
 
     def _open_connection(self) -> sqlite3.Connection:
-        database = sqlite3.connect(self.database_path, autocommit=False)
+        database = sqlite3.connect(
+            self.database_path, autocommit=False, timeout=BUSY_TIMEOUT_SECONDS
+        )
         database.execute("PRAGMA foreign_keys = ON")
         return database
 

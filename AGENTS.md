@@ -111,7 +111,8 @@ Known gaps in the current state of the repository. Close them or record why they
 let them accumulate silently.
 
 - Forward schema migrations are required from the Filo store onward, but the migration framework
-  does not exist yet. Build it before the first change to the Filo schema.
+  does not exist yet. Build it before the first change to the Filo schema after the first Filo
+  release.
 - The installers pin the release named in `pyproject.toml`. Until the first release tagged under
   the Filo name exists, that tag still contains the Therapist package and the installers cannot
   complete, so `README.md` documents the checkout installation instead of the bootstrap. The
@@ -359,7 +360,8 @@ it does not replace full-disk encryption or protect a compromised operating-syst
 
 Memory modes are explicit. `standard` persists every encrypted layer; `transcript_only` persists
 only transcript and successful model history and exposes no structured write tools; `ephemeral`
-uses an in-process encrypted SQLite store and writes nothing to disk. Mode changes do not erase
+uses an in-process encrypted SQLite store and writes no conversation content to disk; Telegram
+still persists its update offset in the configuration store. Mode changes do not erase
 earlier data. `RetentionPolicy` independently controls raw-message, session-summary, and stale-
 hypothesis days; all values default to `None`. Apply it at startup, before retrieval when configured,
 or through explicit CLI commands. There is no worker.
@@ -368,7 +370,10 @@ The rename to Filo was an intentional clean break: Filo uses a fresh data direct
 reads, migrates, or modifies a Therapist store. From the Filo store onward, every schema change must
 ship a forward migration so that years of memory survive upgrades; the migration framework is a
 separate work item and does not exist yet. Do not add legacy aliases, schema fallbacks, or plaintext
-backups. The Filo schema marker is `filo-1`. Reject an unknown or future schema version before
+backups. The Filo schema marker is `filo-1`. The `filo-1` baseline is frozen at the first Filo
+release; until then no store carrying it exists outside development, so schema additions such as
+the `telegram_outbox` table amend `filo-1` directly, and from that release on every change ships a
+forward migration (W0.3). Reject an unknown or future schema version before
 creating any table, and refuse a data directory containing a Therapist `thera.db` before creating,
 chmodding, or reading anything in it.
 
@@ -577,11 +582,53 @@ limit, and persists the validated output with `sendRichMessage`. An HTTP 400 ric
 falls back to plain text; ambiguous transport failures, rate limits, and server failures never
 trigger a second delivery format. Failed tool-event deliveries are retried separately and in order
 before the final reply. Durable-change notices remain separate plain-text messages. Incoming text
-and outgoing content stay below Telegram's limits. The encrypted update offset survives restarts and
-advances only after all output for the update is delivered; transient failures honor Telegram's
-`retry_after` before the update is retried. A crash or ambiguous transport failure between model
-state commit and offset persistence can still cause one update to be processed again; full durable
-inbox idempotency is deferred until `ChatSession` can atomically accept an external idempotency key.
+and outgoing content stay below Telegram's limits. Every reply for an update is written to an
+encrypted `telegram_outbox` table, one row per message, in the same transaction as the advanced
+update offset (and, for `/consent`, the recorded consent); for a model turn that
+write happens inside the turn's storage transaction through `ChatSession.respond(on_commit=...)`, so
+a committed turn is never handed to the model again and a turn that fails before commit leaves
+neither replies nor offset behind. The listener drains the outbox in order before every poll,
+including after a restart, deletes each row by ID only after Telegram accepts it, so no process ever
+writes back a stale copy of the queue, and honors
+`retry_after` on transient failures. Delivery is at least once: a crash or ambiguous transport failure
+after Telegram accepted a message but before its removal can send that one message twice. Only a
+400 or 403 rejection of one queued message is logged and dropped, so later replies are not wedged;
+401 and 404 mean an invalid or revoked token and stop the listener, while 408, 429, 5xx, and every
+network failure, including resets, TLS errors, and truncated responses, surface as a transient
+`TelegramError` and are retried. A queued message whose chat is no longer the allowlisted user is
+dropped without being sent; the listener rereads the pairing before every send, so once setup pairs
+another account even a listener that is still running stops delivering to the old one. The typing indicator is
+repeated every four seconds while a turn runs and pauses for any longer `retry_after`. In
+`ephemeral` mode queued replies stay in process memory and are queued only after the in-memory turn
+returns; only the update offset is written to the on-disk configuration store, so a crash before
+delivery loses those replies instead of writing conversation content to disk. Replies already
+queued on disk by an earlier standard or transcript-only run are delivered first. Correcting or
+forgetting a claim, deleting a session or a date range, and `delete-data` discard every undelivered
+queued reply, because a queued message is not linked to the records it quotes; retention discards
+only replies queued before the cutoff that removed data, so the startup retention pass keeps replies
+a crash left queued. The listener records the persisted pairing and a SHA-256 fingerprint of the
+stored bot token (never the token) when it starts; when either changes it stops before confirming
+or recording any further update and reloads the configuration in the same process, so no platform
+depends on a service manager to restart it, and it stops cleanly when nothing is configured any
+more. Queued rows addressed to a pairing other than the one a listener runs with are skipped, not
+dropped, so an `--allowed-user-id` listener and the paired one never block each other. Store
+transactions begin with `BEGIN IMMEDIATE` and a ten-second busy timeout, and the listener retries
+an update when the store stays locked instead of exiting. Each such discard increments a stored counter, and a transparency view
+(`/status`, `/case`, `/memory`, `/sessions`, `/interventions`, `/privacy`) is queued only if the
+counter is unchanged since it was rendered, in the queue's own transaction; otherwise it is rendered
+again, so a deletion that lands mid-render cannot let the old view through. A model reply and its
+change summary pass the same check against the counter read before the turn: if a deletion landed
+while the reply was written, the committed turn is kept but only a short notice asking the user to
+resend is queued. `delete-data` advances the counter rather than resetting it. Accepted limits:
+retention keeps a recently queued reply that may quote content it just removed, since discarding
+it would lose the replies the queue recovers after a crash; live tool events and drafts of a turn
+already running can still reach the previously paired chat if re-pairing happens mid-turn, while
+its final reply is dropped; and correcting or forgetting a claim discards unrelated queued replies
+too, preferring privacy over delivery. Incoming updates pass the same reread pairing check as delivery, so a listener
+still running after re-pairing or `delete-data` stops handing the old account's messages to the
+model. A turn waits at most one second for an in-flight typing request before its reply is queued.
+`filo setup` applies only the fields it changed to the state as it is when it saves, so a listener's
+offset and consent written while setup waits at a prompt are not rolled back.
 
 `filo telegram-service install` validates the saved configuration and starts the listener without
 putting secrets in process arguments. It writes a mode-`0600` LaunchAgent in
@@ -790,7 +837,8 @@ plainly distinguishes AI-supported conversation or self-help from diagnosis and 
 - Telegram rejects unauthorized/non-private input before model invocation, requires channel-specific
   consent, persists its update offset, exposes read-only state with evidence and pagination, reports
   durable turn changes, keeps privileged memory operations local, honors flood-control delays, and
-  does not advance the update offset after failed delivery.
+  queues each committed turn's output with its update offset so a delivery failure or crash never
+  re-runs the model.
 - Telegram background installation uses the native per-user service or task manager, keeps secrets
   out of process arguments and native definitions, and supports status, restart, and clean removal
   on macOS, Linux, and Windows.
