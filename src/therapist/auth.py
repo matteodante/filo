@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import errno
 import json
 import math
 import os
@@ -10,7 +12,7 @@ import sys
 import threading
 import time
 import webbrowser
-from collections.abc import Callable, Generator, Iterator
+from collections.abc import AsyncGenerator, Callable, Generator, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -113,7 +115,10 @@ def login_codex(
             _required_str(result, "authorization_code"),
             _required_str(result, "code_verifier"),
         )
-        save_credential(store, credential)
+        # A running listener may be refreshing the previous login; writing
+        # under its lock keeps that refresh from overwriting this one.
+        with _exclusive_lock(store.directory / LOCK_NAME):
+            save_credential(store, credential)
         return credential
     raise AuthError("ChatGPT login timed out after 15 minutes.")
 
@@ -128,7 +133,8 @@ def save_credential(store: MemoryStore, credential: CodexCredential) -> None:
 
 
 def logout_codex(store: MemoryStore) -> None:
-    store.delete_secret(SECRET_NAME)
+    with _exclusive_lock(store.directory / LOCK_NAME):
+        store.delete_secret(SECRET_NAME)
 
 
 class CodexTokenSource:
@@ -152,36 +158,44 @@ class CodexTokenSource:
         self._refresh = refresh or _refresh
         self._lock_path = store.directory / LOCK_NAME
         self._thread_lock = threading.Lock()
-        self._credential = load_credential(store)
-        if self._credential is None:
-            raise AuthError("Not logged in. Run `thera auth login` first.")
+        self._issued_after_rejection: set[str] = set()
+        self.current()
 
     def current(self) -> CodexCredential:
-        credential = self._credential
-        if credential is not None and not self._expiring(credential):
-            return credential
-        return self._refreshed(credential)
+        # Read the store on every request so a logout or a new login made by
+        # another process takes effect on the next turn.
+        stored = load_credential(self._store)
+        if stored is None:
+            raise AuthError("Not logged in. Run `thera auth login` first.")
+        if not self._expiring(stored):
+            return stored
+        return self._refreshed(stored)
 
-    def after_rejection(self, rejected: CodexCredential) -> CodexCredential:
-        """Return a different credential after the backend rejected ``rejected``."""
-        return self._refreshed(rejected)
+    def after_rejection(self, rejected: CodexCredential) -> CodexCredential | None:
+        """Return a different credential after a 401, or None when retrying cannot help.
+
+        A token that was itself obtained because of a 401 and is rejected again
+        points at a problem a refresh does not fix, so it is not refreshed again:
+        each refresh rotates the refresh token.
+        """
+        if rejected.access_token in self._issued_after_rejection:
+            return None
+        credential = self._refreshed(rejected)
+        self._issued_after_rejection.add(credential.access_token)
+        return credential
 
     def _expiring(self, credential: CodexCredential) -> bool:
         return credential.expires_at <= self._clock() + REFRESH_MARGIN_SECONDS
 
-    def _refreshed(self, stale: CodexCredential | None) -> CodexCredential:
+    def _refreshed(self, stale: CodexCredential) -> CodexCredential:
         with self._thread_lock, _exclusive_lock(self._lock_path):
             stored = load_credential(self._store)
             if stored is None:
-                self._credential = None
                 raise AuthError("Not logged in. Run `thera auth login` first.")
-            replaced = stored != stale
-            if replaced and not self._expiring(stored):
-                self._credential = stored
+            if stored != stale and not self._expiring(stored):
                 return stored
             credential = self._refresh(stored.refresh_token)
             save_credential(self._store, credential)
-            self._credential = credential
             return credential
 
 
@@ -197,8 +211,25 @@ class CodexAuth(httpx.Auth):
         response = yield request
         if response.status_code != 401:
             return
-        _authorize(request, self._tokens.after_rejection(credential))
-        yield request
+        replacement = self._tokens.after_rejection(credential)
+        if replacement is not None:
+            _authorize(request, replacement)
+            yield request
+
+    async def async_auth_flow(
+        self, request: httpx.Request
+    ) -> AsyncGenerator[httpx.Request, httpx.Response]:
+        # Store reads, lock waits, and refreshes block, so they run in a worker
+        # thread instead of stalling the event loop that streams the reply.
+        credential = await asyncio.to_thread(self._tokens.current)
+        _authorize(request, credential)
+        response = yield request
+        if response.status_code != 401:
+            return
+        replacement = await asyncio.to_thread(self._tokens.after_rejection, credential)
+        if replacement is not None:
+            _authorize(request, replacement)
+            yield request
 
 
 def _authorize(request: httpx.Request, credential: CodexCredential) -> None:
@@ -215,10 +246,14 @@ def _exclusive_lock(path: Path) -> Iterator[None]:
 
             while True:
                 try:
-                    msvcrt.locking(descriptor, msvcrt.LK_LOCK, 1)
+                    msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
                     break
-                except OSError:
-                    continue  # LK_LOCK gives up after ten seconds; keep waiting.
+                except OSError as error:
+                    # msvcrt reports a lock held elsewhere as EACCES or
+                    # EDEADLOCK; anything else is a real failure.
+                    if error.errno not in {errno.EACCES, errno.EDEADLOCK}:
+                        raise
+                    time.sleep(0.05)
             try:
                 yield
             finally:

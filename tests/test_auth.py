@@ -3,6 +3,7 @@ import base64
 import json
 import subprocess
 import sys
+import threading
 import time
 from io import BytesIO
 from pathlib import Path
@@ -326,3 +327,72 @@ def test_tokens_stay_out_of_errors_and_representations(
     for secret in ("refresh-secret-value", credential.access_token):
         assert secret not in rendered
     assert "refresh-secret-value" not in capsys.readouterr().out
+
+
+def test_repeated_unauthorized_responses_refresh_only_once(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path)
+    auth.save_credential(store, _credential("stale", expires_at=10**10))
+    spent: list[str] = []
+
+    def refresh(token: str) -> CodexCredential:
+        spent.append(token)
+        return _credential("fresh", expires_at=10**10, refresh=f"refresh-{len(spent)}")
+
+    tokens = auth.CodexTokenSource(store, refresh=refresh)
+
+    async def calls() -> list[int]:
+        transport = httpx.MockTransport(lambda _request: httpx.Response(401))
+        async with httpx.AsyncClient(auth=auth.CodexAuth(tokens), transport=transport) as client:
+            return [
+                (await client.post("https://codex.invalid/responses")).status_code for _ in range(3)
+            ]
+
+    assert asyncio.run(calls()) == [401, 401, 401]
+    assert spent == ["refresh"]  # a refreshed token that is still rejected is not rotated again
+
+
+def test_logout_takes_effect_in_a_running_token_source(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path)
+    auth.save_credential(store, _credential("account", expires_at=10**10))
+    tokens = auth.CodexTokenSource(store)
+
+    auth.logout_codex(store)
+
+    with pytest.raises(auth.AuthError, match="Not logged in"):
+        tokens.current()
+
+
+def test_login_waits_for_a_refresh_holding_the_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = MemoryStore(tmp_path)
+    access = _token("new-login")
+
+    def fake_request(url: str, payload: dict[str, object], *, form: bool = False):
+        if url == auth.DEVICE_USER_CODE_URL:
+            return {"device_auth_id": "device", "user_code": "ABCD", "interval": 1}
+        if url == auth.DEVICE_TOKEN_URL:
+            return {"authorization_code": "code", "code_verifier": "verifier"}
+        return {"access_token": access, "refresh_token": "refresh", "expires_in": 3600}
+
+    monkeypatch.setattr(auth, "_request_json", fake_request)
+    login = threading.Thread(
+        target=auth.login_codex,
+        args=(store,),
+        kwargs={
+            "notify": lambda _message: None,
+            "open_browser": lambda _url: None,
+            "sleep": lambda _seconds: None,
+            "monotonic": lambda: 0,
+        },
+    )
+
+    with auth._exclusive_lock(store.directory / auth.LOCK_NAME):
+        login.start()
+        login.join(timeout=0.5)
+        assert login.is_alive()
+        assert auth.load_credential(store) is None
+    login.join(timeout=10)
+
+    assert not login.is_alive()
+    assert auth.load_credential(store).account_id == "new-login"  # type: ignore[union-attr]
