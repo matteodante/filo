@@ -12,7 +12,14 @@ from test_telegram_delivery import FakeBotApi, _channel, _update
 
 from filo.chat import CASE_CONTEXT_PREAMBLE, ChatSession
 from filo.cli import _chat_command, main
-from filo.memory import InterventionState, MemoryKind, MemoryStore, RetentionPolicy, UserReport
+from filo.memory import (
+    InterventionState,
+    MemoryKind,
+    MemoryMode,
+    MemoryStore,
+    RetentionPolicy,
+    UserReport,
+)
 from filo.protocol import ProtocolPack
 from filo.recap import build_recap, render_recap
 from filo.wellbeing import ITEMS_EN, ITEMS_IT, parse_answers, wellbeing_command, wellbeing_offer
@@ -359,3 +366,12 @@ def test_telegram_wellbeing_and_end_offer(tmp_path: Path, monkeypatch: pytest.Mo
     send(53, "/end")
     assert "I will not ask again" not in api.delivered[-1][1]
     assert "WHO-5" in send(54, "/recap")
+
+
+def test_transcript_only_mode_records_no_wellbeing_check(tmp_path: Path) -> None:
+    store = MemoryStore(tmp_path)
+    session = ChatSession("test", PACK, store, "en-US", memory_mode=MemoryMode.TRANSCRIPT_ONLY)
+
+    assert _chat_command("/wellbeing 3 3 3 3 3", session, store)
+
+    assert store.list_wellbeing_checks() == []

@@ -27,10 +27,14 @@ against official screening criteria and records the proportionate release decisi
 | --- | --- | --- | --- | --- |
 | Conversation | Free text that can reveal health, relationships, beliefs, and other highly personal information | Generate a reply and maintain continuity | Local process, then the selected model provider if remote | Standard/transcript-only retain encrypted transcripts; ephemeral does not persist; provider terms apply externally |
 | Structured memory | Exact evidence, user reports, agent hypotheses, conflicts, formulation links, process feedback, interventions/outcomes/harms, support choices, and summaries | Longitudinal recall and user correction | Encrypted local SQLite in standard mode only | Configurable local retention or explicit correction, forgetting, selective deletion, or full deletion |
+| Wellbeing self-check | Optional WHO-5 answers (five numbers) recorded on the user's request | Let the user follow their own wellbeing over time; no screening, cutoff, or label | Encrypted local SQLite; Telegram if recorded there | Raw-message retention, `filo memory forget`, export, and full deletion; none in transcript-only mode |
 | Semantic retrieval | Encrypted derived vectors and bounded candidate messages | Rank relevant local context | Local device | Rebuildable cache; affected rows removed on correction or forgetting |
 | Credentials | Provider keys, Codex tokens, Telegram token and allowlisted ID | Authenticate user-selected services | Encrypted local store; service recipient on use | Local until logout or data deletion; provider terms apply |
 | Telegram transport | Messages, replies, tool events, and requested memory views | Deliver the private bot conversation | Telegram plus selected model provider | Telegram and provider terms apply; local deletion cannot delete their copies |
 | Public support | Synthetic reproduction and repository metadata only | Maintain the project | GitHub | GitHub terms and repository history apply |
+
+The wellbeing self-check row was added on 2026-10-16 with Wave 5 of the improvement program and
+awaits the maintainer's review of this screening.
 
 The public channels prohibit real conversations, health information, secrets, identifiers, database
 files, and exports. The application has no telemetry, advertising, analytics, automatic crash

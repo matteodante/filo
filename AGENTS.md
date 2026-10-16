@@ -49,7 +49,10 @@ Build a small bilingual, single-adult-user agent that:
 - optionally uses a personal ChatGPT Plus/Pro Codex subscription through experimental OAuth;
 - keeps behavioral instructions and source references in Git-versioned protocol packs;
 - lets the user inspect, confirm, correct, forget, export, and delete memory;
-- records offered, agreed, tried, stopped, and untried interventions for later review;
+- records offered, agreed, tried, stopped, and untried interventions for later review, and asks
+  how an agreed experiment went on the first turn of the next session;
+- recaps recent weeks on request from its own records, and offers an opt-in WHO-5 wellbeing
+  self-check that is never a diagnosis;
 - accepts the same conversation through a private, allowlisted Telegram bot;
 - remains small enough for one maintainer to understand.
 
@@ -253,7 +256,10 @@ staged write tools: `record_user_reports`, `record_hypothesis`, `correct_claim`,
 evidence-supported mutation adds value. Read results accumulate, identical writes are idempotent,
 and write invariants are validated across the complete staged turn. The model may use no tool and
 may load no skill. It may load at most one verified skill, with no keyword router or preliminary
-classifier. Write tools are absent outside standard memory mode.
+classifier. Write tools are absent outside standard memory mode. `retrieve_case_context` also
+takes an optional `recap_weeks`; it then returns only the recap that `/recap` renders (see the CLI
+contract), within the same size limit, so a natural-language "what changed lately" is answered
+from stored records.
 
 Who records direct user reports is a setting, `MemoryWriting`, so both designs can be measured.
 `inline`, the default, is the design above. `split` removes `record_user_reports` from the
@@ -411,7 +417,8 @@ model on every turn.
   relationships, course, functioning, explanatory model, preferences, maintaining factors,
   strengths, hypotheses, and focus from active memory claim IDs.
 - `InterventionRecord`: one offered or agreed technique with consent state, linked claims,
-  prediction, outcome, user appraisal, and follow-up information. It is not a goal.
+  prediction (what the person expects, in their words), `planned_for` (when they mean to try it,
+  in their words), outcome, user appraisal, and follow-up information. It is not a goal.
 - `CaseContextEnvelope`: today's date, the most recent closed session with the time elapsed since
   it (always present, whatever the message is about), bounded user reports, hypotheses, conflicts,
   relevant earlier sessions, active interventions, process preferences, support choices, round
@@ -420,7 +427,13 @@ model on every turn.
   the root protocol already puts risk handling above them. The formulation reaches the model only
   through relevant claims: each carries the formulation fields it supports. Relevant hypotheses
   the user said do not fit arrive as `rejected_hypotheses`, still reviewable, so they are not
-  proposed again.
+  proposed again. On the first turn of a session, `follow_up_due` lists up to three agreed
+  experiments from before the session with no reported outcome; they are kept among the active
+  interventions, and one sentence of the case-data preamble asks the model to ask how each went and
+  adapt. This is data and envelope code only; the root protocol text is unchanged.
+- `WellbeingCheck`: one optional WHO-5 self-report, five answers from 0 to 5, stored encrypted in
+  `wellbeing_checks` with its time. The score is shown as the raw total out of 25 and the
+  percentage out of 100 with the change from the previous check, never with a cutoff or label.
 - `SemanticIndex`: encrypted packed float32 vectors for active memory items, active interventions,
   session reflections, process preferences, support choices, and archived rounds. It is derived,
   excluded from export, safe to discard, and never establishes truth or provenance.
@@ -502,7 +515,8 @@ uses an in-process encrypted SQLite store and writes no conversation content to 
 still persists its update offset in the configuration store. Mode changes do not erase
 earlier data. `RetentionPolicy` independently controls raw-message, session-summary, and stale-
 hypothesis days; all values default to `None`. Apply it at startup, before retrieval when configured,
-or through explicit CLI commands. There is no worker.
+or through explicit CLI commands. There is no worker. Wellbeing checks are raw self-reports and
+share the raw-message limit; `transcript_only` records none, and `ephemeral` keeps them in memory.
 
 The `pending_extractions` table holds only a user-message ID, a timestamp, an attempt count, and an
 exception class name, never content. It was added to the unreleased `filo-1` schema directly, and
@@ -583,6 +597,8 @@ filo memory show
 filo memory case
 filo memory sessions
 filo memory interventions
+filo memory recap [--weeks N]
+filo memory wellbeing
 filo memory review <id> fits|partly_fits|does_not_fit|unsure <evidence>
 filo memory correct <id> <text>
 filo memory forget <id>
@@ -713,6 +729,8 @@ Interactive chat commands:
 /memory
 /sessions [id]
 /interventions
+/recap [weeks]
+/wellbeing [on|off|five answers]
 /confirm <id>
 /correct <id> <text>
 /forget <id>
@@ -751,6 +769,22 @@ reload, and after any local deletion: it is kept only while the persistent store
 `ephemeral` mode the kind, the exception class, and the time of the last failure, never its content,
 are stored encrypted under their own state key for `filo doctor`; the Telegram log records only the
 kind, the exception classes, and the HTTP status.
+
+`/recap [weeks]` (default 4, at most 52) and `filo memory recap` list, from stored records only and
+with each record's ID: recurring session themes (a theme in at least two sessions), session
+summaries, interventions updated in the period with what was planned, expected, and observed, user
+reports first seen in the period, hypotheses reviewed in it, claims corrected in it, and wellbeing
+checks. Nothing is generated, so a recap cannot say more than memory holds. It is read-only and,
+like every command, outside the conversation history.
+
+`/wellbeing` shows the five WHO-5 statements in the official English wording or, for an Italian
+locale, the published Italian translation, the 5-to-0 answer scale, the person's recent trend, and
+the attribution. `/wellbeing` followed by five answers records a check; `/wellbeing on` and `off`
+set reminders. The check is offered unprompted once, after `/end` closes a session, and after that
+only when reminders are on, at most every two weeks counting from both the last offer and the last
+check. It is never offered mid-conversation. `filo memory wellbeing` prints the trend, and
+`filo memory forget <id>` or `/forget <id>` deletes one check. It is a personal record, not
+screening, diagnosis, or monitoring, and no clinical cutoff from the WHO-5 documentation is shown.
 
 `/quit` only leaves the process. It does not close the conversation session. A later message closes
 and consolidates the previous session if at least eight hours elapsed. `/end` closes it immediately.
@@ -791,7 +825,11 @@ increments its stored version and requires renewed consent.
 Telegram is a conversation and read-only transparency surface, not a remote administration surface.
 `/crisis` returns the same static localized resources as the CLI, without a model call or storage,
 and is answered before consent so it never sits behind the notice.
-`/retry` sends the last failed message again.
+`/retry` sends the last failed message again. `/recap [weeks]` renders the same read-only recap as
+the CLI. `/wellbeing` shows the check; with five answers it records one, and `on`/`off` sets the
+reminder opt-in. Recording runs once, outside the re-rendered view loop, so a deletion landing
+mid-render cannot record a check twice; it is the one write a Telegram command makes besides
+consent, and it is the person's own self-report.
 `/status`, `/case`, `/memory [page]`, `/sessions [page|id]`, `/interventions [page]`, and `/privacy`
 show the agent identity, active session, bounded paginated structured state, evidence links, data
 flow, and limitations. `/start`, `/help`, and `/end` manage consent, guidance, and the conversational
@@ -1203,7 +1241,10 @@ uv run ruff check .
 - Qwen3-Embedding-0.6B: https://huggingface.co/Qwen/Qwen3-Embedding-0.6B
 - WHO responsible AI for mental health, 2026:
   https://www.who.int/news/item/20-03-2026-towards-responsible-ai-for-mental-health-and-well-being--experts-chart-a-way-forward
-- WHO-5: https://www.who.int/publications/m/item/WHO-UCN-MSD-MHE-2024.01
+- WHO-5: https://www.who.int/publications/m/item/WHO-UCN-MSD-MHE-2024.01 (English original,
+  © WHO 2024, CC BY-NC-SA 3.0 IGO; Italian translation by the Psychiatric Research Unit, WHO
+  Collaborating Centre in Mental Health, published there and not created by WHO; both verified
+  2026-10-16)
 - NICE NG222: https://www.nice.org.uk/guidance/ng222
 - NICE NG225: https://www.nice.org.uk/guidance/ng225
 - NIST AI 600-1:

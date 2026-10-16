@@ -34,6 +34,24 @@ installs the complete verified license next to the downloaded executable as `uv-
 
 Upstream: <https://github.com/astral-sh/uv/tree/0.11.31>
 
+## WHO-5 Well-Being Index
+
+`src/filo/wellbeing.py` reproduces the five statements, the answer scale, and the instructions of
+the World Health Organization-Five Well-Being Index (WHO-5) without modification, and shows the
+attribution with every `/wellbeing` view.
+
+- English original: World Health Organization. The World Health Organization-Five Well-Being Index
+  (WHO-5). Geneva: World Health Organization; 2024. License: CC BY-NC-SA 3.0 IGO
+  (<https://creativecommons.org/licenses/by-nc-sa/3.0/igo>). WHO does not endorse Filo.
+- Italian: the translation by the Psychiatric Research Unit, WHO Collaborating Centre in Mental
+  Health, Frederiksborg General Hospital (© Psychiatric Research Unit), published by WHO with the
+  WHO-5. WHO states that it did not create the translation and is not responsible for its content
+  or accuracy; the English version is the binding one.
+
+Source: <https://www.who.int/publications/m/item/WHO-UCN-MSD-MHE-2024.01>, checked 2026-10-16. The
+WHO-5 text stays under its own licence and is not relicensed by this repository; its
+non-commercial term must be reviewed before any commercial or hosted distribution of Filo.
+
 ## Local embedding model
 
 Setup downloads `Qwen/Qwen3-Embedding-0.6B` at commit

@@ -76,6 +76,8 @@ _TEXT = {
         "none": "No checks recorded yet.",
         "invalid": "Send five whole numbers from 0 to 5, one per statement, e.g. "
         "/wellbeing 3 4 2 3 4",
+        "transcript_only": "The transcript-only memory mode keeps no wellbeing checks, so this "
+        "one was not recorded.",
         "invite": "Optional: Filo can keep a short wellbeing check (WHO-5, five statements, "
         "about a minute), with a reminder at most every two weeks. Send /wellbeing to see it "
         "and /wellbeing on to enable reminders. I will not ask again.",
@@ -101,6 +103,8 @@ _TEXT = {
         "none": "Nessun controllo registrato finora.",
         "invalid": "Invia cinque numeri interi da 0 a 5, uno per affermazione, per esempio "
         "/wellbeing 3 4 2 3 4",
+        "transcript_only": "Nella modalità di memoria solo trascrizione i controlli del benessere "
+        "non vengono salvati, quindi questo non è stato registrato.",
         "invite": "Facoltativo: Filo può tenere un breve controllo del benessere (WHO-5, cinque "
         "affermazioni, circa un minuto), con un promemoria al massimo ogni due settimane. Invia "
         "/wellbeing per vederlo e /wellbeing on per attivare i promemoria. Non te lo chiederò "
@@ -161,6 +165,7 @@ def wellbeing_command(
     checks: MemoryStore,
     settings: MemoryStore,
     locale: str,
+    can_record: bool = True,
     now: datetime | None = None,
 ) -> str:
     """Handle /wellbeing, /wellbeing on|off, and /wellbeing with five answers.
@@ -180,6 +185,8 @@ def wellbeing_command(
         answers = parse_answers(argument)
         if answers is None:
             return text["invalid"]
+        if not can_record:
+            return text["transcript_only"]
         check = checks.record_wellbeing_check(answers, now)
         return "\n".join(
             [

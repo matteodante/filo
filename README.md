@@ -171,6 +171,12 @@ server is not on `http://localhost:8080/v1`. That path carries no support claim,
 PydanticAI providers stay technical escape hatches. Telegram checks private-chat type and numeric
 allowlist and keeps configuration secrets out of process arguments.
 
+Between sessions, Filo remembers an experiment you agreed to try (what, when, and what you
+expected) and asks how it went at the start of the next session. `/recap [weeks]` lists recurring
+themes, what you tried, and what changed, from your records only. `/wellbeing` is an optional
+WHO-5 self-check: it is offered once, and reminders every two weeks come only if you turn them on.
+It shows your scores and their trend and is never a diagnosis.
+
 When a reply fails, Filo says why and what to do: a usage limit with its reset time, a ChatGPT login
 to renew (`filo auth login`), a conversation too long for the model (`/end`), or a temporary
 problem. `/retry` sends the failed message again. `filo doctor` shows the login, the Telegram

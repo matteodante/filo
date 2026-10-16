@@ -520,6 +520,7 @@ class TelegramChannel:
                     checks=self.store,
                     settings=self.config_store,
                     locale=self.session.locale,
+                    can_record=self.session.memory_mode is not MemoryMode.TRANSCRIPT_ONLY,
                 )
             )
             return True, False

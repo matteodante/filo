@@ -1442,6 +1442,7 @@ def _chat_command(
                     checks=session.memory,
                     settings=store,
                     locale=session.locale,
+                    can_record=session.memory_mode is not MemoryMode.TRANSCRIPT_ONLY,
                 )
             )
         elif name == "/forget" and len(parts) >= 2 and parts[1].startswith("wb_"):
