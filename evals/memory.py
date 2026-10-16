@@ -33,7 +33,7 @@ from evals.datasets import (
 from evals.judge import Judgment, blind, judge_criterion
 from evals.models import Roles, anthropic_model
 from evals.runs import failed_reply, read_jsonl, run_directory, write_jsonl
-from filo.chat import ChatSession
+from filo.chat import ChatSession, MemoryWriting
 from filo.memory import ClaimLifecycle, MemoryMode, MemoryStore
 from filo.protocol import ProtocolPack
 
@@ -113,6 +113,9 @@ class ArmResult:
     errors: list[str] = field(default_factory=list)
 
 
+MEMORY_WRITING = MemoryWriting.INLINE  # set by --memory-writing; W2.3 compares the two arms
+
+
 def timeline_anchor(persona: Persona, today: datetime) -> datetime:
     """Place the timeline so the probe day is today, keeping retrieval recency realistic."""
     return (today - timedelta(days=persona.probe_day)).replace(
@@ -145,7 +148,14 @@ def replay_history(
 ) -> None:
     """Run every session through the production ChatSession with simulated timestamps."""
     store = MemoryStore(directory, embedding_model="eval:injected", embedder=embedder)
-    chat = ChatSession(model, pack, store, persona.profile.language, memory_mode=ARMS[arm])
+    chat = ChatSession(
+        model,
+        pack,
+        store,
+        persona.profile.language,
+        memory_mode=ARMS[arm],
+        memory_writing=MEMORY_WRITING,
+    )
     last = anchor
     for index, (plan, generated) in enumerate(zip(persona.sessions, turns.sessions, strict=True)):
         start = anchor + timedelta(days=plan.day)
@@ -154,6 +164,8 @@ def replay_history(
             last = start + position * TURN_SPACING
             try:
                 answer = chat.respond(text, last).text
+                if MEMORY_WRITING is MemoryWriting.SPLIT:
+                    chat.extract_pending()  # as the CLI and Telegram do after delivering a reply
             except Exception as error:  # a failed product turn is a result, not a harness crash
                 answer = failed_reply(error)
                 result.errors.append(f"session {index} turn {position}: {answer}")
@@ -188,7 +200,14 @@ def run_probe(
             copy = Path(scratch) / "store"
             shutil.copytree(source, copy)
             store = MemoryStore(copy, embedding_model="eval:injected", embedder=embedder)
-        chat = ChatSession(model, pack, store, persona.profile.language, memory_mode=ARMS[arm])
+        chat = ChatSession(
+            model,
+            pack,
+            store,
+            persona.profile.language,
+            memory_mode=ARMS[arm],
+            memory_writing=MEMORY_WRITING,
+        )
         try:
             return chat.respond(probe.question, when).text
         except Exception as error:  # judged like any other answer, so it fails `correct`
@@ -417,11 +436,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sut", default=None)
     parser.add_argument("--judge", default=None)
     parser.add_argument("--no-process-judging", action="store_true")
+    parser.add_argument("--memory-writing", choices=[m.value for m in MemoryWriting])
     parser.add_argument("--resume", default=None, help="Run ID whose missing personas to complete.")
     parser.add_argument("--dry-run", action="store_true", help="Print the estimate and stop.")
     args = parser.parse_args(argv)
 
     roles = Roles.from_env(sut=args.sut, judge=args.judge)
+    global MEMORY_WRITING
+    if args.memory_writing:
+        MEMORY_WRITING = MemoryWriting(args.memory_writing)
     arms = [arm for arm in args.arms.split(",") if arm]
     if unknown := set(arms) - set(ARMS):
         parser.error(f"unknown arms: {sorted(unknown)}")
@@ -456,7 +479,14 @@ def main(argv: list[str] | None = None) -> int:
     judge = anthropic_model(roles.judge, "judge", ledger)
     write_jsonl(
         output / "config.jsonl",
-        [{"roles": roles.__dict__, "arms": arms, "personas": [p.id for p in personas]}],
+        [
+            {
+                "roles": roles.__dict__,
+                "arms": arms,
+                "personas": [p.id for p in personas],
+                "memory_writing": MEMORY_WRITING.value,
+            }
+        ],
     )
     for persona in personas:
         turns = generated.for_persona(persona.id)
