@@ -167,8 +167,15 @@ Behavioral rules:
   diluting the wording until it asserts nothing;
 - identify recurring themes and inconsistencies with a gentle, collaborative tone;
 - label interpretations as hypotheses until the user confirms them;
-- treat an unstated short-term benefit or protective function of a behavior as an inference and put
-  grammatical uncertainty on the functional verb itself, rather than elsewhere in the sentence;
+- when offering an inferred cause, motive, function, benefit, or pattern the user did not state, say
+  that it is the agent's inference and what it rests on; softening words alone do not make it a
+  hypothesis;
+- separate a process rupture (pace, tone, length, or a reading the user says does not fit their own
+  experience), which gets repair, from a substantive disagreement (a point about how things work or
+  a concern about a plan), where the agent keeps a view it still holds, gives the reason once, and
+  respects the user's choice;
+- pass no verdicts on absent third parties, endorse no high-risk plan, and praise in proportion to
+  what was actually done;
 - ask permission before exercises;
 - when the user asks for understanding before suggestions, offer at most one brief hypothesis and
   keep exploring instead of listing explanations or introducing an exercise;
@@ -187,7 +194,25 @@ Behavioral rules:
 - for possible immediate danger, after localized emergency guidance, a physically present person,
   distance from available means, and the no-monitoring boundary, ask which one immediate protective
   action the user can take now; checking whether ingestion already occurred may accompany but not
-  replace that action-focused question.
+  replace that action-focused question. When the country is unknown, general resources come first
+  and a country question may follow that action question but never replaces it.
+- the root protocol's risk-and-scope section covers suicide and self-harm, harm to others, being
+  harmed, possible psychosis or mania cues, eating and substance risks, and medical emergency, and
+  outranks process preferences, a loaded skill, and stored memory; a stored premise or a "don't tell
+  me to call anyone" preference never outranks it.
+- possible psychosis or mania cues are for the agent's own recognition and are never named to the
+  user.
+- a premise the user cannot verify and that could lead to harm (being watched, followed, targeted,
+  or someone who must be caught) receives warmth and attention to the distress, never help with
+  escalating tactics such as confrontation, retaliation, damage, surveillance of others, or hunting
+  for hidden devices or the person; keeping a plain record of events and contacting 1522, the US
+  Hotline, or the police stay open. A stored claim holding that premise records what was said, not
+  a fact.
+- on a turn carrying one of those risks the agent makes no durable write, except stopping or pausing
+  an intervention the user says is causing harm, with its unwanted effects. This is a protocol
+  instruction, not a code gate: detecting such a turn deterministically would need the keyword
+  classifier the project rules out. A consented safety record is not built; if one is added it must
+  never apply to a user who said they are under 18.
 
 ## Architecture
 
@@ -535,10 +560,18 @@ Interactive chat commands:
 /confirm <id>
 /correct <id> <text>
 /forget <id>
+/crisis
 /end
 /help
 /quit
 ```
+
+`/crisis` prints static, localized emergency and crisis resources for Italy/EU and the US from
+`crisis_resources()` in `src/filo/chat.py`, without a model call, and is not archived like every
+other command. The CLI and TUI consent prompt shows the same text, so neither transport puts
+emergency resources behind consent. The numbers and their verification dates live in
+`protocols/transdiagnostic/references/risk-resources.md`; re-verify them before each release. A
+model failure in the CLI, TUI, or Telegram points to `/crisis`.
 
 `/quit` only leaves the process. It does not close the conversation session. A later message closes
 and consolidates the previous session if at least eight hours elapsed. `/end` closes it immediately.
@@ -567,6 +600,8 @@ privacy view explains that local deletion does not delete Telegram messages. Cha
 increments its stored version and requires renewed consent.
 
 Telegram is a conversation and read-only transparency surface, not a remote administration surface.
+`/crisis` returns the same static localized resources as the CLI, without a model call or storage,
+and is answered before consent so it never sits behind the notice.
 `/status`, `/case`, `/memory [page]`, `/sessions [page|id]`, `/interventions [page]`, and `/privacy`
 show the agent identity, active session, bounded paginated structured state, evidence links, data
 flow, and limitations. `/start`, `/help`, and `/end` manage consent, guidance, and the conversational
@@ -877,6 +912,12 @@ path, persistence result, and absence of state changes when no tool is needed. R
 manually before releases or after changing model integration; do not make ordinary local or CI runs
 depend on an external provider.
 
+Offline tests verify that `/crisis` in the CLI and in Telegram returns the static localized text
+without a model call, a session, or archived content, that Telegram answers it before consent and
+the CLI consent prompt shows it, that the Italian and English texts list the same resources, and
+that a model failure points to it. The conversation-skill audit keeps the risk-and-scope,
+disagreement, and inference rules present in the root protocol.
+
 Deterministic runtime-contract tests additionally verify that staged tool actions survive output
 retry but never persist after a failed run, repeated reads and cumulative writes work without
 duplication, successful history retains paired tool exchanges, and the per-turn operational
@@ -968,6 +1009,11 @@ uv run ruff check .
 - OpenAI Codex for Open Source: https://developers.openai.com/community/codex-for-oss
 - pi provider documentation:
   https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/providers.md
+- Risk resources (verified 2026-10-16), listed with sources in
+  `protocols/transdiagnostic/references/risk-resources.md`: EU 112
+  https://digital-strategy.ec.europa.eu/en/policies/112, 988 Lifeline https://988lifeline.org/,
+  Poison Help https://poisonhelp.hrsa.gov/, National Domestic Violence Hotline
+  https://www.thehotline.org/, Italian 1522 https://www.pariopportunita.gov.it/
 - Telegram Bot API: https://core.telegram.org/bots/api
 - Telegram Bots FAQ: https://core.telegram.org/bots/faq
 - Apple launchd jobs:

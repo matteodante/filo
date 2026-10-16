@@ -190,7 +190,8 @@ class FiloApp(App[None]):
                 await self._reply.remove()
                 self._reply = None
             await self._mount_static(
-                f"Model error: {type(message.error).__name__}: {message.error}",
+                f"Model error: {type(message.error).__name__}: {message.error}\n"
+                "If you may be in danger, /crisis shows emergency resources.",
                 "message error",
             )
         elif message.turn is not None:

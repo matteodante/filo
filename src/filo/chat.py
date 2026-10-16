@@ -260,6 +260,43 @@ async def _stream_model_events(
             )
 
 
+# Static on purpose: shown by /crisis without a model call, so it still works when the
+# provider is down. Sources and verification dates: protocols/transdiagnostic/references/
+# risk-resources.md.
+CRISIS_RESOURCES = {
+    "en-US": (
+        "Filo is an AI: it cannot monitor you or contact anyone for you.\n\n"
+        "If you or someone else may be in danger now, call your local emergency number: 112 "
+        "across the EU and on most mobile networks, 911 in the US. Get a person who is "
+        "physically near you, and move away from anything you could use to hurt yourself "
+        "if that is safe.\n\n"
+        "US: call or text 988, or chat at chat.988lifeline.org, for a suicidal or emotional "
+        "crisis. Poison Help: 1-800-222-1222. Domestic violence: 1-800-799-7233, or text "
+        "START to 88788.\n"
+        "Italy: 112 for any emergency. Violence or stalking: 1522, free and around the clock, "
+        "or chat at 1522.eu. Telefono Amico, someone to talk to: 02 2327 2327.\n\n"
+        "Pick one of these you can do right now."
+    ),
+    "it-IT": (
+        "Filo è un'AI: non può tenerti d'occhio né contattare qualcuno al posto tuo.\n\n"
+        "Se tu o qualcun altro potete essere in pericolo adesso, chiama il 112, il numero "
+        "di emergenza in Italia e in tutta l'UE (negli USA è il 911). Chiama una persona che "
+        "sia fisicamente vicina a te e, se puoi farlo in sicurezza, allontanati da ciò che "
+        "potresti usare per farti del male.\n\n"
+        "Italia: violenza o stalking, 1522, gratuito e attivo giorno e notte, anche in chat "
+        "su 1522.eu. Telefono Amico, per parlare con qualcuno: 02 2327 2327.\n"
+        "USA: chiama o scrivi al 988, o usa la chat su chat.988lifeline.org, per una crisi "
+        "suicidaria o emotiva. Centro antiveleni: 1-800-222-1222. Violenza domestica: "
+        "1-800-799-7233, oppure scrivi START al 88788.\n\n"
+        "Scegli una di queste cose che puoi fare adesso."
+    ),
+}
+
+
+def crisis_resources(locale: str) -> str:
+    return CRISIS_RESOURCES.get(locale, CRISIS_RESOURCES["en-US"])
+
+
 def _joined_text_parts(parts: dict[int, str]) -> str:
     return "".join(parts[index] for index in sorted(parts))
 
@@ -943,9 +980,8 @@ class ChatSession:
             "explanation or pattern that is important enough to revisit or ask the user to review "
             "later, call record_hypothesis in that same turn before presenting it. Do not wait for "
             "the user's later agreement and then store it as a user-originated formulation. "
-            "Any short-term benefit or protective function you attribute to a behavior is an "
-            "inference unless the user stated it. Put grammatical uncertainty on the functional "
-            "verb itself; tentative wording elsewhere does not repair an assertive function claim. "
+            "When you offer an inference the user did not state, say that it is yours and what "
+            "it rests on. "
             "Treat fit and lifecycle separately. "
             "Exact evidence gates are enforced by tools: every durable record still requires an "
             "exact quote from the current message. A fact or an event must store that quote "

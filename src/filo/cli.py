@@ -45,6 +45,7 @@ from filo.chat import (
     ChatSession,
     TurnStreamEvent,
     TurnStreamKind,
+    crisis_resources,
 )
 from filo.memory import (
     ClaimCorrection,
@@ -1080,12 +1081,12 @@ def _memory(args: argparse.Namespace, store: MemoryStore) -> int:
 
 
 def _chat(session: ChatSession, store: MemoryStore) -> int:
-    if not _ensure_chat_consent(store):
+    if not _ensure_chat_consent(store, session.locale):
         return 1
 
     print("Commands: /case, /memory, /sessions [id], /interventions,")
     print("          /correct <id> <text>,")
-    print("          /forget <id>, /end, /help, /quit")
+    print("          /forget <id>, /crisis, /end, /help, /quit")
     while True:
         try:
             user_text = input("you> ").strip()
@@ -1137,6 +1138,7 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
                 live.stop()
         if failure is not None:
             print(f"Model error: {failure}")
+            print("If you may be in danger, /crisis shows emergency resources.")
             continue
         print(f"filo> {turn.text}")
         if turn.notice:
@@ -1144,7 +1146,7 @@ def _chat(session: ChatSession, store: MemoryStore) -> int:
 
 
 def _chat_tui(session: ChatSession, store: MemoryStore) -> int:
-    if not _ensure_chat_consent(store):
+    if not _ensure_chat_consent(store, session.locale):
         return 1
     from filo.tui import FiloApp
 
@@ -1166,7 +1168,7 @@ def _uses_tui(args: argparse.Namespace) -> bool:
     return not args.plain and sys.stdin.isatty() and sys.stdout.isatty()
 
 
-def _ensure_chat_consent(store: MemoryStore) -> bool:
+def _ensure_chat_consent(store: MemoryStore, locale: str = "en-US") -> bool:
     state = store.load_app_state()
     consent = "I UNDERSTAND"
     if state.consent_version != "alpha-4":
@@ -1182,6 +1184,8 @@ def _ensure_chat_consent(store: MemoryStore) -> bool:
             "By continuing, you confirm that you are at least 18 and accept these data flows."
         )
         print(notice)
+        # Emergency resources never wait behind consent, as in Telegram.
+        print(crisis_resources(locale))
         if input(f"Type {consent} to continue: ").strip() != consent:
             print("Consent not recorded.")
             return False
@@ -1202,7 +1206,9 @@ def _chat_command(
     try:
         if name == "/help":
             output("/case /memory /sessions [id] /correct <id> <text>")
-            output("/interventions /forget <id> /end /quit")
+            output("/interventions /forget <id> /crisis /end /quit")
+        elif name == "/crisis":
+            output(crisis_resources(session.locale))
         elif name == "/case":
             output(store.load_formulation().model_dump_json(indent=2))
         elif name == "/memory":

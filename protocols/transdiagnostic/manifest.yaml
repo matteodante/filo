@@ -3,7 +3,7 @@ status: experimental
 locales: [it-IT, en-US]
 population: adults-18-plus
 intended_use: Adult self-reflection and organization of user-provided thoughts; not diagnosis, treatment, monitoring, or emergency care.
-root_sha256: 71e9d19e83601919096ab2d087b01cfa1b2921e8cf8cbe26fedb130eaf3037cd
+root_sha256: 15efe45286c28316221b635a3c7e180ba20b77af84634d877b8c484b0ba905b8
 skills:
   - id: stay-with-emotion
     path: skills/stay-with-emotion/SKILL.md
@@ -37,7 +37,7 @@ skills:
     locales: [it-IT, en-US]
   - id: repair-misattunement
     path: skills/repair-misattunement/SKILL.md
-    sha256: b9fd93af0ad822d3c21a3112ac4b9d95b59ed2941d7b3a6764a8afa1a4ba7700
+    sha256: 1fcad428c0d53ff6a39a1240440db3b6f0b65ab0efa00411d04bcc5589c57f5a
     category: repair
     description: Repair a specific mismatch before further formulation or technique.
     locales: [it-IT, en-US]
@@ -96,6 +96,12 @@ skills:
     description: Discuss desired human support, barriers, different needs, and pressure-free closure.
     locales: [it-IT, en-US]
 references:
+  - path: references/risk-resources.md
+    sha256: 19defc0cfc8ef64cecc101d24eae454ce5159686fe2c158150401de3f1afd321
+    url: https://digital-strategy.ec.europa.eu/en/policies/112
+    revision: current-page
+    verified_at: 2026-10-16
+    license: links-and-original-summary-only
   - path: references/sources.md
     sha256: 19749bbfc97acc969b9e8486ca3f0e727f313bd5659d44f0abe95b0a6a46a16f
     url: https://www.who.int/publications/i/item/9789240105935
