@@ -905,6 +905,9 @@ still running after re-pairing or `delete-data` stops handing the old account's 
 model. A turn waits at most one second for an in-flight typing request before its reply is queued.
 `filo setup` applies only the fields it changed to the state as it is when it saves, so a listener's
 offset and consent written while setup waits at a prompt are not rolled back.
+An update whose handler raises anything but an operating-system or SQLite error is consumed with a
+short notice to the paired user and only its exception class is logged, so one bad message can
+never crash-loop the listener; machine errors leave the update unconsumed for a retry.
 
 `filo telegram-service install` validates the saved configuration and starts the listener without
 putting secrets in process arguments. It writes a mode-`0600` LaunchAgent in
@@ -913,7 +916,11 @@ limited-privilege per-user scheduled task on Windows. The listener starts with t
 Linux operation beyond logout depends on the host's user manager/lingering policy. `status`,
 `restart`, and `uninstall` inspect, restart, or stop the process and remove only this native
 definition. macOS operational output is written to the application data directory's
-`filo-telegram.log`; Linux output is available through the user journal.
+`filo-telegram.log`; Linux output is available through the user journal. On macOS a job counts as
+running only when `launchctl print` reports `state = running`, since launchd keeps a crashing
+`KeepAlive` job loaded. `filo doctor` also reports a listener still installed under the Therapist
+name, which an upgrade leaves running and which would conflict with the Filo listener on the same
+bot.
 
 A background service does not inherit an interactive shell profile, so install records the resolved
 `FILO_LOCAL_BASE_URL` in the LaunchAgent's `EnvironmentVariables` or the systemd unit's

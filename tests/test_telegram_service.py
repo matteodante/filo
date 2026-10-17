@@ -36,7 +36,8 @@ class FakeRunner:
         elif command[:2] == ["launchctl", "print"]:
             default = 0 if self.loaded else 1
         code = self.responses.get(tuple(command), default)
-        return subprocess.CompletedProcess(command, code, stdout="active\n", stderr="")
+        stdout = "\tstate = running\n" if command[:2] == ["launchctl", "print"] else "active\n"
+        return subprocess.CompletedProcess(command, code, stdout=stdout, stderr="")
 
 
 def test_macos_service_install_status_and_uninstall(tmp_path: Path) -> None:
@@ -230,3 +231,26 @@ def test_windows_uninstall_reports_missing_task(tmp_path: Path) -> None:
 
     assert uninstall(platform="win32", runner=runner) is False
     assert all("/Delete" not in command for command in runner.commands)
+
+
+def test_macos_status_reports_a_loaded_but_crashing_job_as_not_running(tmp_path: Path) -> None:
+    def runner(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        output = "gui/501/x = {\n\tstate = not running\n\truns = 14\n}\n"
+        return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
+
+    assert status(platform="darwin", home=tmp_path, runner=runner).running is False
+
+
+def test_a_leftover_therapist_listener_is_found(tmp_path: Path) -> None:
+    from filo.telegram_service import LEGACY_LAUNCHD_PLIST, LEGACY_SYSTEMD_UNIT, legacy_definition
+
+    assert legacy_definition(platform="darwin", home=tmp_path) is None
+    plist = tmp_path / "Library" / "LaunchAgents" / LEGACY_LAUNCHD_PLIST
+    plist.parent.mkdir(parents=True)
+    plist.write_text("<plist/>")
+    assert legacy_definition(platform="darwin", home=tmp_path) == plist
+    unit = tmp_path / ".config" / "systemd" / "user" / LEGACY_SYSTEMD_UNIT
+    unit.parent.mkdir(parents=True)
+    unit.write_text("[Unit]")
+    assert legacy_definition(platform="linux", home=tmp_path) == unit
+    assert legacy_definition(platform="win32", home=tmp_path) is None

@@ -749,3 +749,30 @@ def test_channel_retries_missing_tool_events_separately_without_duplicates(
         (42, "TOOL OUTPUT · test"),
     ]
     assert bot.rich_messages == [(42, "Done.")]
+
+
+def test_a_failing_command_is_consumed_with_a_notice_and_never_retried(tmp_path: Path) -> None:
+    class FailingEnd(FakeSession):
+        def end(self) -> None:
+            raise RuntimeError("login required")
+
+    bot = FakeBot()
+    store = _consented(MemoryStore(tmp_path))
+    channel = TelegramChannel(bot, FailingEnd(), store, 42)  # type: ignore[arg-type]
+
+    assert channel.process_update(private_update(7, 42, "/end")) is True
+
+    assert "Something went wrong" in bot.messages[-1][1]
+    assert "login required" not in bot.messages[-1][1]
+    assert store.load_app_state().telegram_update_offset == 8
+
+
+def test_recap_ignores_digits_that_are_not_decimal(tmp_path: Path) -> None:
+    bot = FakeBot()
+    store = _consented(MemoryStore(tmp_path))
+    channel = TelegramChannel(bot, FakeSession(), store, 42)  # type: ignore[arg-type]
+
+    assert channel.process_update(private_update(1, 42, "/recap ²")) is True
+
+    assert "Something went wrong" not in bot.messages[-1][1]
+    assert store.load_app_state().telegram_update_offset == 2
