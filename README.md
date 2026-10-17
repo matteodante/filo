@@ -155,7 +155,8 @@ filo chat [--plain] [--memory-mode standard|transcript-only|ephemeral]
 filo telegram [--memory-mode standard|transcript-only|ephemeral]
 filo telegram-service install|status|restart|uninstall
 filo auth login|status|logout
-filo memory show|case|sessions|interventions
+filo memory show|case|sessions|interventions|wellbeing
+filo memory recap [--weeks N]
 filo memory review <id> fits|partly_fits|does_not_fit|unsure <evidence>
 filo memory correct <id> <exact-replacement>
 filo memory forget <id>
@@ -169,6 +170,12 @@ filo delete-data
 filo protocol validate
 filo doctor
 ```
+
+In chat: `/case`, `/memory`, `/sessions [id]`, `/interventions`, `/correct <id> <text>`,
+`/forget <id>`, `/recap [weeks]`, `/wellbeing`, `/retry`, `/crisis`, `/end`, `/help`, and `/quit`.
+The Telegram bot adds `/start`, `/status`, and `/privacy`; its memory views are read-only, and
+correcting or forgetting by ID, login, export, and deletion stay in the local CLI. Asking in the
+conversation to correct or forget something works in both.
 
 The supported first-alpha provider is a personal ChatGPT Plus/Pro account through the experimental
 `codex:` OAuth path. A running chat or Telegram listener renews the ChatGPT token on its own before

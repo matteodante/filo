@@ -63,14 +63,16 @@ opt-in regression aids; they are not clinical validation.
   process forgot meanwhile;
 - after an under-18 disclosure consolidation records only "Not recorded.".
 
-## Privacy, retention, and clean break
+## Privacy, retention, and schema upgrades
 
 - standard persists every encrypted layer;
 - transcript-only persists transcript/history but exposes no structured write tools;
-- ephemeral writes no file or persistent record;
+- ephemeral writes no conversation content to disk (Telegram keeps only its update offset);
 - configured retention dry-run is non-mutating; apply propagates to derived state;
 - session and date deletion propagate to messages, semantic entries, formulation, summaries,
   interventions, excerpts, and pending IDs;
+- a data directory holding a Therapist `thera.db` is refused before anything in it is created,
+  changed, or read;
 - unknown or newer schema versions fail before use without modification; an older Filo store is
   migrated forward in one transaction; a failing step or verification and a process killed
   mid-migration leave it unchanged, a concurrent writer and a second opener wait, a process running
@@ -92,6 +94,7 @@ set_focus
 record_process_feedback
 record_intervention
 record_support_choice
+forget_content
 ```
 
 Tests cover invalid IDs/evidence, repeated and idempotent calls, cumulative turn invariants,

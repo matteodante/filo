@@ -41,7 +41,8 @@ The current mode is shown by `filo privacy show`, Telegram `/status`, and Telegr
   interventions, support choices, and semantic index.
 - `transcript-only`: encrypted transcript/history only; no new structured or semantic mutations.
 - `ephemeral`: in-process context only; no transcript, history, claims, formulation, intervention,
-  support choice, or semantic index item is persisted.
+  support choice, wellbeing check, or semantic index item is persisted. Telegram still saves its
+  update position in the local configuration store.
 
 Changing mode does not retroactively delete data.
 
@@ -74,8 +75,12 @@ background worker.
 
 `filo delete-session <id>`, `filo delete-before <date>`, claim forgetting, corrections, retention,
 and `filo delete-data` propagate to derived semantic entries, formulation links, summaries,
-excerpts, intervention content, and pending IDs where applicable. `filo export` returns decrypted
-JSON; a file export is plaintext and must be protected.
+excerpts, intervention content, and pending IDs where applicable. Asking in the conversation to
+forget something you said, in any memory mode, stops it returning through claims, support choices,
+conversational preferences, past conversation rounds, and session summaries, even if it never
+became a claim; correcting a detail in the conversation retires the earlier wording the same way.
+The archive keeps those messages until local deletion. `filo export` returns decrypted JSON; a file
+export is plaintext and must be protected.
 
 Telegram replies, tool traces, and change summaries that Telegram has not yet accepted are kept
 encrypted in a local queue table until delivery, and appear in `filo export` while pending. Every
@@ -87,11 +92,13 @@ Local deletion cannot delete data already held by a model provider or Telegram, 
 exports, backups, terminal capture, screenshots, or system-level logs. Delete Telegram messages or
 the chat separately. Provider deletion must be handled under that provider's controls.
 
-## Clean-break schema
+## Schema upgrades
 
-This revision does not migrate older stores and does not create plaintext backups. An incompatible
-database is rejected before use. Use a new data directory or deliberately delete the old local
-store after preserving any export you need.
+Filo never reads, migrates, or modifies a data directory of Therapist, its earlier name; a directory
+that still holds `thera.db` is refused. A newer Filo upgrades an older Filo store in place in one
+transaction, which is rolled back and leaves the store unchanged if it fails its checks or is
+interrupted. No plaintext backup is created. A store written by a newer or unknown version is
+rejected without modification.
 
 ## Reporting
 

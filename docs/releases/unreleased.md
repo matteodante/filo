@@ -1,89 +1,151 @@
-# Unreleased clean-break refactor
+# Filo — first release under the new name (draft)
 
-This is an engineering change record, not a published release or clinical-validation claim.
+Draft release notes for the first Filo release (planned as `v0.4.0`), covering what changed for
+users since Therapist `v0.3.1`. It is not a published release. Fill in the version, the live
+evaluation results, and the artifact checksums before publication, as `RELEASING.md` requires.
 
-- Separated root protocol, verified skill catalog, dynamically loaded skill body, successful
-  history, and bounded JSON case data.
-- Expanded the experimental pack to fifteen conversational-process skills; status remains
-  `experimental`, with no reviewers invented.
-- Later consolidated the pack to eleven skills (W3.3): contract and planning, monitoring and
-  maintenance, avoidance and activity, and one thought and rumination each became one skill, every
-  catalog entry starts with "Use when", and the root was shortened.
-- Rewrote every skill in positive form: entry conditions first, then procedure, then the remaining
-  prohibitions. Added staying with emotion, self-criticism and shame, examining one thought,
-  repetitive thinking, and restoring activity, and gave the root explicit rules for answering
-  competence questions, life questions, and direct questions, plus a precedence order for choosing
-  among skills.
-- Allowed a preference or pattern to shorten its evidence quote by dropping the user's own words in
-  their original order, recorded as `grounded_paraphrase`; facts and events still store the quote
-  verbatim. No quoted field may be taken out of the clause that qualified it, including intervention
-  consent. Correcting or forgetting a restated claim now retires the quotes that supported it.
-- Added a maintainer tool for recomputing manifest digests, removed unused per-skill agent interface
-  descriptors, and moved background research out of `protocols/` into `docs/research/`.
-- Replaced overloaded memory status with independent origin, fit, lifecycle, evidence relation,
-  conflict, and staleness semantics.
-- Added exact-evidence tools for user reports, hypotheses, corrections, reviews, conversational
-  preferences, interventions/outcomes/unwanted effects, focus, and support choices.
-- Added structured retrieval for reports, hypotheses, conflicts, sessions, preferences,
-  interventions, support choices, and excerpts.
-- Replaced the one-call-per-tool restriction with cumulative turn invariants. Repeated reads and
-  distinct evidence-supported writes remain bounded, idempotent, and atomically committed.
-- Added standard, transcript-only, and ephemeral modes; optional local retention; session/date
-  deletion; a 4,000-character reply cap; and observable turn metadata.
-- This revision intentionally provides no migration or legacy compatibility. Old stores are
-  rejected without modification and require a fresh data directory.
-- Updated consent/privacy text, deterministic tests, bilingual role-play specifications, and the
-  exportable human-review artifact.
+Filo is an experimental, free, non-commercial, adult-only self-hosted alpha for technical
+contributors and informed self-hosters. It is an AI for private self-reflection, not therapy,
+diagnosis, medical advice, emergency care, clinical validation, or human monitoring. Its output can
+be wrong.
 
-Remaining limitations include no clinical review or validation, no background retention worker, no
-provider/Telegram deletion control, and opt-in live provider evaluation. Current results and release
-blockers are recorded in `docs/release-readiness-2026-08-04.md`.
+## Install
 
-## Rename to Filo
+macOS or Linux:
 
-Therapist is renamed to **Filo** as a clean break. The old name contradicted the project's own
-boundary: Filo is an AI for adult self-reflection, not therapy, and the name now matches that.
-Formerly published as Therapist (v0.1–v0.3); the earlier release notes keep the old name because
-they record what shipped.
+```bash
+curl -LsSf https://raw.githubusercontent.com/matteodante/filo/main/install.sh | sh
+```
 
-- Distribution `therapist-cli` → `filo-cli`; Python package `therapist` → `filo`; command
-  `thera` → `filo`; environment prefix `THERA_` → `FILO_`, including the live-test flags.
-- Default data directory `~/.therapist` → `~/.filo`, database `thera.db` → `filo.db`. Filo never
-  reads, migrates, or modifies a Therapist directory.
-- Native Telegram listener: LaunchAgent `io.github.matteodante.filo.telegram`, systemd user unit
-  `filo-telegram.service`, Windows scheduled task `Filo Telegram`, and macOS log
-  `filo-telegram.log`.
-- Protocol pack `therapist.transdiagnostic` → `filo.transdiagnostic`. The root protocol now names
-  the assistant Filo and adds one rule: it never describes itself as a therapist, psychologist, or
-  counselor, or as offering therapy, treatment, or psychological support. All other safety and
-  boundary rules are unchanged.
-- The model tool `load_therapeutic_skill` is now `load_skill`, and the catalog and errors say
-  "conversation skill", because tool traces are visible in the CLI and Telegram.
-- The terminal consent notice moves to `alpha-4` and the Telegram notice to `alpha-5`, so both ask
-  for consent again.
-- Repository URLs point to `github.com/matteodante/filo`.
-- Schema policy: the Filo store starts fresh with schema marker `filo-1`, and from now on every
-  schema change must ship a forward migration. Unknown or future schema versions, including a
-  Therapist store renamed to `filo.db`, are rejected before any table is created. A data directory
-  that still contains `thera.db` is refused before Filo creates, chmods, or reads anything in it.
-- An existing database without the `filo-1` marker is now rejected even when it has a `state`
-  table, and a fresh store creates its tables and marker in one transaction.
-- The `filo-1` baseline stays open until the first Filo release: schema additions made before it,
-  such as the encrypted `telegram_outbox` table, amend `filo-1` directly because no store carrying
-  that marker exists outside development. From the first Filo release on, every schema change ships
-  a forward migration.
-- Until the first Filo release, the README documents the checkout installation, because the
-  bootstrap installers still pin the pre-rename `v0.3.1` tag.
-- Removed the outdated TUI screenshot, which still showed the old name and tool set.
+Windows PowerShell:
 
-### Upgrading an existing Therapist installation
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/matteodante/filo/main/install.ps1 | iex"
+```
 
-1. Uninstall the old Telegram service with the old binary: `thera telegram-service uninstall`.
+The installer pins the immutable release source, installs the `filo` command as an isolated tool
+with the tested dependency versions, runs guided setup, and finishes with `filo doctor`.
+
+## Therapist is now Filo
+
+The old name contradicted the project's own boundary: Filo is an AI for adult self-reflection, not
+therapy. The rename is a clean break.
+
+- The command is `filo` (was `thera`); the package is `filo-cli` (was `therapist-cli`).
+- Environment variables use the `FILO_` prefix (was `THERA_`), for example `FILO_LOCAL_BASE_URL`.
+- Data lives in `~/.filo/filo.db` (was `~/.therapist/thera.db`).
+- The repository is `github.com/matteodante/filo`; the old URL redirects.
+- The Telegram background service is `io.github.matteodante.filo.telegram` on macOS,
+  `filo-telegram.service` on Linux, and the `Filo Telegram` task on Windows.
+- The assistant calls itself Filo and never describes itself as a therapist, psychologist, or
+  counselor, or as offering therapy, treatment, or psychological support.
+- The consent notices changed, so the terminal and the Telegram bot both ask for consent again.
+
+### Moving from Therapist
+
+Filo never reads, migrates, or modifies Therapist data. A data directory that still contains
+`thera.db` is refused. Your Therapist conversations and memory stay in `~/.therapist` until you
+delete them; `thera export` before uninstalling keeps a plaintext copy, which needs protecting.
+
+1. Uninstall the old Telegram service with the old binary: `thera telegram-service uninstall`. Two
+   listeners on one bot make each other fail; `filo doctor` reports an old Therapist listener it
+   finds on macOS or Linux.
 2. Remove the old tool: `uv tool uninstall therapist-cli`.
-3. Install Filo with the installer for the first release published under the Filo name.
-4. Run `filo setup`. ChatGPT login and Telegram configuration start fresh, because nothing is read
-   from the old store.
-5. The old `~/.therapist` directory is left untouched. Delete it manually once it is no longer
-   needed.
-6. Optionally rename the bot in `@BotFather`; its token keeps working either way, and its
-   privacy-policy URL should point to `https://github.com/matteodante/filo/blob/main/PRIVACY.md`.
+3. Install Filo with the command above and run `filo setup`. ChatGPT login and Telegram start
+   fresh, because nothing is read from the old store.
+4. Delete `~/.therapist` once you no longer need it.
+5. Optionally rename the bot in `@BotFather`; its token keeps working, and its privacy-policy URL
+   should point to `https://github.com/matteodante/filo/blob/main/PRIVACY.md`.
+
+### Upgrades from now on
+
+From this release on, a newer Filo upgrades an older Filo store in place when it opens it, in one
+verified transaction: an upgrade that fails its checks or is interrupted is rolled back and leaves
+the store unchanged. A Filo process started before the upgrade, such as a running Telegram listener,
+stops and asks to be restarted. A store written by a newer Filo is rejected without modification.
+
+## What changed
+
+**Between sessions**
+- When you agree to try something, Filo keeps what it is, when you mean to try it, and what you
+  expect, in your words, and asks how it went at the start of the next session.
+- `/recap [weeks]` (default 4, at most 52) and `filo memory recap` list recurring themes, what you
+  tried and how it went, and what changed, from your records only. You can also ask for it in
+  plain words.
+- `/wellbeing` is an optional WHO-5 self-check. It is offered once, at `/end`; reminders every two
+  weeks come only if you turn them on with `/wellbeing on`. It shows your scores and their trend,
+  with no cutoffs or labels, and is never a diagnosis. Scores are never sent to the model provider;
+  `filo memory wellbeing` lists them and `/forget <id>` deletes one.
+
+**Simpler memory**
+- Concrete details of your life stay in the encrypted conversation archive, where retrieval finds
+  them across every past exchange, not only recent ones. Structured claims are kept only for
+  recurring patterns and stated preferences, plus hypotheses, interventions, and support choices.
+  A preregistered measurement on synthetic personas found that extracting facts added little over
+  searching the conversations themselves (`docs/evidence/results-2026-10.md`).
+- Correct a detail in the conversation ("actually I'm still in Rome") and the old wording stops
+  coming back, while your correction stays.
+- Ask in the conversation to forget something you said, in any memory mode, and it stops coming
+  back through claims, preferences, support choices, past conversations, and session summaries,
+  even if it never became a claim. The archive keeps the messages until you delete them locally.
+- Claims record when you said something, and when it started only if you named a time.
+- What you say about another person is kept as your account, never as established fact about them.
+- Long sessions are summarized in parts, so the summary is not drawn only from the end.
+
+**Conversation**
+- The behavior pack has eleven skills and a short root protocol. The agent offers one owned
+  observation when it has enough to go on, suggests one small step when change is wanted, keeps a
+  view under pushback unless you give a reason, and in long sessions mentions from time to time
+  that it is an AI.
+- Risk handling covers harm to others, being harmed, possible psychosis or mania, eating and
+  substance risks, and medical emergencies, and takes precedence over preferences and memory.
+  Ambiguous wording is asked about before emergency resources are given.
+- `/crisis`, in chat and in the Telegram bot, shows emergency and crisis resources for Italy/EU and
+  the US in your locale. It is static text with no model call, so it works when the provider is
+  down; in Telegram it works before consent.
+- Italian replies no longer assume your grammatical gender.
+
+**Reliability**
+- A failed reply says why and what to do: a usage limit with its reset time, a ChatGPT login to
+  renew (`filo auth login`), a conversation too long for the model (`/end`), or a temporary problem.
+  `/retry` sends the failed message again.
+- A running chat or Telegram listener renews the ChatGPT token on its own and picks up a logout or a
+  new login without a restart.
+- Telegram replies are queued in the same transaction as the turn and its update position, so a
+  crash or a lost connection no longer runs a message twice; the queued reply is delivered later.
+- A message that makes the listener fail is answered with a short notice and skipped instead of
+  crash-looping the service. A second `filo telegram` on the same data directory refuses to start.
+- `filo doctor` shows the login and its expiry, the Telegram service, the `local:` endpoint, and
+  the last failed turn. On macOS a crashing listener is no longer reported as running.
+- Installs use the locked, tested dependency versions; on Linux the CPU build of PyTorch avoids
+  several gigabytes of unused CUDA libraries.
+
+## Provider and data flow
+
+Unchanged in kind. The supported configuration is a personal ChatGPT Plus/Pro account through the
+experimental `codex:` OAuth provider, now through PydanticAI's `openai-codex` model. A `local:`
+server on your own hardware receives model input without reaching a third-party provider and
+carries no support claim. Embeddings, wellbeing scores, and encrypted application state stay local.
+See `PRIVACY.md`.
+
+## Verification
+
+To be completed at release: the offline gates and the live Codex memory, safety (three repeats),
+and role-play gates on the release commit, with model, protocol commit, locales, and residual
+failures. The October 2026 synthetic measurements used `claude-haiku-5-5` as the system under
+test; their caveats are in `docs/evidence/results-2026-10.md`.
+
+## Known limitations
+
+- No clinical review or validation. Evaluation results are engineering regression aids on
+  synthetic data.
+- The `local:` provider has no live evaluation of any kind.
+- A real Telegram round-trip is not yet recorded as evidence.
+- Telegram delivery is at least once: when Telegram may have accepted a message before a connection
+  dropped, a retry can send it twice.
+- Local deletion cannot remove copies held by the model provider, Telegram, exports, or backups.
+- Retention has no background worker; it runs at startup or on request.
+- `filo doctor` does not detect an old Therapist scheduled task on Windows; uninstall it with
+  `thera telegram-service uninstall`.
+- On macOS 15 and later, the background listener needs a local-network exemption to reach a
+  `local:` server on another host (see `AGENTS.md`).

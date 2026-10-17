@@ -36,12 +36,17 @@ AI Act or medical-device obligations; that conclusion is part of the requested r
   agent hypotheses, explicit conflicts, formulation, conversational preferences, intervention
   lifecycle/outcomes/unwanted effects, and support choices in encrypted SQLite.
 - Transcript-only stores encrypted transcript/history without new structured state; ephemeral mode
-  writes nothing to disk. Local retention is optional and has no background worker.
+  writes no conversation content to disk (Telegram still saves its update position). Local
+  retention is optional and has no background worker.
+- An optional WHO-5 wellbeing self-check records five self-reported numbers when the user sends
+  them and shows the score and its trend, without cutoffs, labels, or screening; the scores are
+  never sent to the model provider.
 - Root protocol instructions, successful history, and a separately labelled bounded JSON case-data
   envelope remain distinct. One verified skill may be loaded dynamically; no skill is valid.
 - It performs local semantic retrieval with a pinned Hugging Face embedding model.
 - The user can inspect, review, correct, forget, export, selectively delete, and fully delete local
-  state. This revision has no legacy migration path and rejects old stores without modification.
+  state. A Therapist data directory is never read or migrated; Filo stores migrate forward in one
+  verified transaction, and unknown or newer stores are rejected without modification.
 - It gives contextual possible-danger language and resource guidance but does not perform a clinical
   risk assessment, diagnosis, score, alert, human escalation, or emergency monitoring.
 - The first alpha support claim uses a personal ChatGPT Plus/Pro account through experimental

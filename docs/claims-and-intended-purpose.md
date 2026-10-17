@@ -33,8 +33,9 @@ lifecycle fields with exact evidence. Explicit process preferences, intervention
 unwanted effects, support choices, conflicts, three memory modes, local retention, and selective
 deletion are implementation descriptions, not claims of therapeutic benefit.
 
-This revision is a clean-break data schema with no migration or legacy compatibility. Old stores are
-rejected without modification. The protocol manifest remains `experimental`, has no invented
+Since the rename to Filo, a Therapist data directory is never read or migrated, Filo stores migrate
+forward in one verified transaction, and unknown or newer stores are rejected without
+modification. The protocol manifest remains `experimental`, has no invented
 reviewers, and records source availability verification dated 2026-07-24.
 
 ## Initial release assumptions
@@ -96,3 +97,10 @@ obtain specialist review where proportionate, before adding symptom scales, name
 pathways, medication advice, clinical dashboards, institutional deployment, efficacy claims,
 minors, hosted operation, paid support, donations, sponsorship tied to the product, or maintainer
 access to user data.
+
+Wave 5 of the October 2026 improvement program added an optional WHO-5 wellbeing self-check: five
+self-reported numbers, shown as a score and a trend without cutoffs, labels, or screening, and never
+sent to the model provider. Whether it counts as a symptom scale under the trigger above has not
+been decided; the reassessment, together with the matching row of
+[dpia-screening.md](dpia-screening.md), awaits the maintainer's review before the first Filo
+release.

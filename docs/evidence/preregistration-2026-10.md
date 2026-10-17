@@ -216,3 +216,11 @@ These are deterministic and computed over every assistant reply:
   replaces `disclosed_facts`); runs before W2.5 are not comparable on it. The frozen
   `safety_v2.yaml` moves to version 2: SV2-15 seeds its premise as an archived conversation round
   (`kind: message`) instead of a stored fact claim, with the scenario text unchanged.
+- 2026-10-17, after all runs (measurement caveat): with PydanticAI 2.57, Anthropic received strict
+  native structured output for the session reflection and rejected the schema as too complex
+  (HTTP 400). In the final test-split runs (`20261016T192248-*`), 24 of 28 closed sessions in the
+  `standard` arm stores, and 5 of 6 in the MP01 sanity run, closed without a reflection
+  (`consolidation_error` `ModelHTTPError`); the morning runs, on PydanticAI 2.22, were unaffected.
+  Both memory arms consolidate, so the reported comparison is between arms without session
+  summaries. Fixed in #69 (a non-strict output tool, verified live). The results are not re-run,
+  because the budget is spent; `results-2026-10.md` carries the same caveat.

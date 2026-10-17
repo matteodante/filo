@@ -47,8 +47,9 @@ Before creating a tag, link durable evidence for every item below in the release
 - deterministic tests, lint, formatting, protocol validation, installer syntax, wheel installation,
   packaging metadata, dependency audit, and the configured real-provider memory evaluation pass;
 - protocol/context separation, dynamic one-skill loading, no-skill conversation, epistemic
-  provenance, all memory modes, retention, selective deletion, and clean-break schema rejection
-  pass deterministic tests;
+  provenance, all memory modes, retention, selective deletion, refusal of a Therapist data
+  directory, forward schema migrations, and rejection of a newer or unknown schema pass
+  deterministic tests;
 - public claims, runtime consent, privacy notice, support guidance, examples, and release notes remain
   consistent with [docs/claims-and-intended-purpose.md](docs/claims-and-intended-purpose.md);
 - license, protocol-source references, bundled embedding-model license, and generated artifacts have
@@ -65,8 +66,10 @@ Use [docs/compliance-assessment-brief.md](docs/compliance-assessment-brief.md) w
 becomes proportionate, [docs/dpia-screening.md](docs/dpia-screening.md) for the data-protection
 screening, and [docs/article-50-assessment.md](docs/article-50-assessment.md) for the transparency
 record.
-Use [docs/release-readiness-2026-08-04.md](docs/release-readiness-2026-08-04.md) as the current
-engineering evidence and open-blocker record.
+Use [docs/release-readiness-2026-08-04.md](docs/release-readiness-2026-08-04.md) for the evidence
+of the Therapist releases, the October 2026 measurements in
+[docs/evidence/](docs/evidence/results-2026-10.md) for the Filo code, and the AGENTS.md open work as
+the current open-blocker record.
 
 ## Accepted alpha governance risks
 
@@ -86,13 +89,12 @@ The installers pin a tag, and every tag up to `v0.3.1` ships the Therapist packa
 command. The first Filo release therefore moves the installer pin and the public install path
 together:
 
-0. Rename the GitHub repository from `therapist` to `filo` first, then confirm that
-   `https://github.com/matteodante/therapist` redirects and that
-   `https://raw.githubusercontent.com/matteodante/filo/main/install.sh` resolves. Until then the
-   README checkout command, the policy links, and the installers' source URL all point at a
-   repository that does not exist yet. On `main`, the installers fail closed in the meantime:
-   their `filo` URL 404s before the rename, and after it the pinned `v0.3.1` tag still ships
-   Therapist, which the installer reports instead of installing.
+0. Rename the GitHub repository from `therapist` to `filo`. Done on 2026-10-17: the README
+   checkout command, the policy links, and the installers' source URL now resolve. On release
+   day, confirm again that `https://github.com/matteodante/therapist` redirects and that
+   `https://raw.githubusercontent.com/matteodante/filo/main/install.sh` resolves. Until the
+   release, the installers on `main` fail closed: the pinned `v0.3.1` tag still ships Therapist,
+   which the installer reports instead of installing.
 1. Bump the version in `pyproject.toml`, `src/filo/__init__.py`, `install.sh`, and `install.ps1`.
 2. Restore the one-line bootstrap commands in the README `Install` section, replacing the checkout
    installation, and drop the matching item from the AGENTS.md open work.
@@ -183,8 +185,8 @@ Human-written notes must include:
 
 1. the public claim and mandatory limitation;
 2. the exact intended audience and excluded uses;
-3. important changes, including the explicit absence of migration and the fresh-data-directory
-   requirement for this clean-break schema;
+3. important changes, including the schema policy: a Therapist data directory is never read or
+   migrated, and Filo stores are migrated forward in place;
 4. local and external data flows;
 5. models/providers and locales exercised by live evaluations;
 6. known limitations, residual safety failures, and upstream warnings;

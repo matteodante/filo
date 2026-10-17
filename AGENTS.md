@@ -120,14 +120,30 @@ let them accumulate silently.
   complete, so `README.md` documents the checkout installation instead of the bootstrap. The
   first Filo release restores the README bootstrap commands in the same change that moves the
   pin; `RELEASING.md` carries that step.
-- `v0.2.0` and `v0.3.0` are released. The 2026-08-11 and 2026-08-18 addenda in
-  `docs/release-readiness-2026-08-04.md` hold their evidence, including which `v0.3.0` gates reused
-  the earlier live results and why.
+- The GitHub repository was renamed from `matteodante/therapist` to `matteodante/filo` on
+  2026-10-17 and the old URL redirects. On release day, confirm the redirect and that
+  `https://raw.githubusercontent.com/matteodante/filo/main/install.sh` resolves (`RELEASING.md`,
+  step 0).
+- The live Codex gates (`tests/test_live_codex_memory.py`, `tests/test_live_codex_safety.py` with
+  three repeats, and the role-play eval) have not been re-run on the final code of the October 2026
+  improvement program. They need the maintainer's ChatGPT login and must pass before the first Filo
+  release.
 - A real Telegram message round-trip is still undocumented. The 2026-08-11 evidence reaches an
   established polling connection, not a delivered exchange, and the bot is now configured on the
   maintainer machine, so complete the smoke and record it.
+- The WHO-5 row of the DPIA processing map (`docs/dpia-screening.md`) and the matching change
+  trigger in `docs/claims-and-intended-purpose.md` await the maintainer's review.
+- A claim counts as relevant on a single shared lexical word (rounds and sessions need two), so at
+  scale claims fill the case envelope up to its character cap
+  (`docs/evidence/offline-instruments-2026-10.md`, section 3). Requiring two shared tokens for
+  claims as well changes what is retrieved and needs its own measurement.
+- Measurement caveat: in the final Wave 1 test-split runs, most sessions closed without a
+  reflection because strict native structured output for the session reflection was rejected
+  (fixed in #69). The comparison between memory arms therefore holds between arms without session
+  summaries and was not re-run; see `docs/evidence/results-2026-10.md`.
 - The `local:` provider has no live baseline. Every role-play, memory, and safety result on record
-  was produced against `codex:gpt-5.6-sol`, so nothing is known about how a self-hosted model
+  was produced against `codex:gpt-5.6-sol` or, in the October 2026 measurement system,
+  `claude-haiku-5-5`, so nothing is known about how a self-hosted model
   behaves on the safety floors. Run the three live gates against a `local:` model before that path
   is described as anything more than an unevaluated escape hatch, and keep it out of any support
   claim until then.
@@ -341,8 +357,13 @@ runs, but nothing written back comes from that snapshot. A session is written ba
 `reflection_withheld` flag another process stored meanwhile, and never reopens a session another
 process closed. Closing drops the reflection when that flag is set or a round the model summarized
 was excluded since, so a forget or correction landing during the model call cannot be summarized;
-a round excluded before the call was never shown to the model and costs nothing. A
-consolidation error marked `fatal`, such as the evaluation budget cap, is raised instead. When the
+a round excluded before the call was never shown to the model and costs nothing. The reflection
+is returned through a plain output tool (`ToolOutput(SessionReflection, strict=False)`) and
+validated by Pydantic: strict native structured output rejected the schema as too complex
+(Anthropic, HTTP 400), which closed every session without a reflection. Formulation links and
+unlinks are lists of `{field, claim_ids}` entries rather than a free-keyed mapping, which strict
+schemas cannot express. A consolidation error marked `fatal`, such as the evaluation budget cap,
+is raised instead. When the
 user said they are under 18, the
 instructions ask for the reflection "Not recorded." with nothing else. Both agent runs use
 PydanticAI's complete synchronous API with an event stream handler so the
@@ -361,8 +382,9 @@ tie-breaker. Claims are index keys that point back to rounds: a matching claim l
 cites. The query is embedded once per retrieval and scored against every entity type by one matrix
 product. The envelope's query is the current message plus the session's two previous user
 messages, so a follow-up still retrieves what it refers to; the `retrieve_case_context` tool uses
-the model's own query. Items are kept only above a semantic floor of 0.40 or, for rounds and
-sessions, with at least two shared lexical tokens, then cut to the top few per type. The floor was
+the model's own query. Items are kept only above a semantic floor of 0.40 (0.35 for archived
+rounds) or, for rounds and sessions, with at least two shared lexical tokens, then cut to the top
+few per type. The floor was
 calibrated for Qwen3-Embedding-0.6B with `scripts/calibrate_semantic_floor.py` on synthetic
 Italian/English pairs, where the previous 0.20 let 90% of unrelated pairs through and 0.40 lets 4%
 through while keeping two thirds of related pairs. The semantic index is an encrypted, derived
@@ -761,7 +783,6 @@ Interactive chat commands:
 /interventions
 /recap [weeks]
 /wellbeing [on|off|five answers]
-/confirm <id>
 /correct <id> <text>
 /forget <id>
 /retry
@@ -816,7 +837,8 @@ the attribution. `/wellbeing` followed by five answers records a check; `/wellbe
 set reminders. The check is offered unprompted once, after `/end` closes a session, and after that
 only when reminders are on, at most every two weeks counting from both the last offer and the last
 check. It is never offered mid-conversation, nor in `ephemeral` or `transcript_only` mode, which
-keep no checks and so record no offer either. In Telegram, a recorded check, its reply, and the
+keep no checks on disk and so record no offer either (`ephemeral` holds a check sent on request in
+process memory only). In Telegram, a recorded check, its reply, and the
 update offset commit in one transaction, so a redelivered update cannot record it twice.
 `delete-before` also deletes the checks older than its date. `filo memory wellbeing` prints the trend, and
 `filo memory forget <id>` or `/forget <id>` deletes one check. It is a personal record, not
