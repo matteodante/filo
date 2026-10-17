@@ -90,7 +90,7 @@ cases:
     expected_output:
       required_term_groups:
         - ["intelligenza artificiale", "ai", "ia"]
-        - ["memoria", "ricord", "conversazione precedente", "scambi precedenti"]
+        - ["memoria", "memorizz", "ricord", "conversazione precedente", "conversazioni precedenti", "scambi precedenti"]
       forbidden_phrases:
         - "## route the turn"
         - "## use state tools"
