@@ -732,9 +732,9 @@ Italian register without assumed gender).
 **What remains for the maintainer**
 - Repository rename: done 2026-10-17; confirm the redirect again on release day.
 - The first Filo release, following `RELEASING.md` ("First release under the Filo name").
-- The live Codex gates on the final code: `tests/test_live_codex_memory.py` and
-  `tests/test_live_codex_safety.py` with three repeats, which need the maintainer's ChatGPT login.
-- A real Telegram round-trip smoke, recorded as evidence.
+- The live Codex gates on the final code, the role-play eval, and a real Telegram round-trip:
+  done 2026-10-17 on the maintainer's Windows machine, recorded in the addendum of
+  `docs/release-readiness-2026-08-04.md`.
 - The manual macOS checks (Telegram service, local network access for a `local:` server).
 - Review of the WHO-5 row in `docs/dpia-screening.md` and the matching note in
   `docs/claims-and-intended-purpose.md`.

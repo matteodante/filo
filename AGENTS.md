@@ -119,13 +119,6 @@ let them accumulate silently.
   2026-10-17 and the old URL redirects. On release day, confirm the redirect and that
   `https://raw.githubusercontent.com/matteodante/filo/main/install.sh` resolves (`RELEASING.md`,
   step 0).
-- The live Codex gates (`tests/test_live_codex_memory.py`, `tests/test_live_codex_safety.py` with
-  three repeats, and the role-play eval) have not been re-run on the final code of the October 2026
-  improvement program. They need the maintainer's ChatGPT login and must pass before the first Filo
-  release.
-- A real Telegram message round-trip is still undocumented. The 2026-08-11 evidence reaches an
-  established polling connection, not a delivered exchange, and the bot is now configured on the
-  maintainer machine, so complete the smoke and record it.
 - A claim counts as relevant on a single shared lexical word (rounds and sessions need two), so at
   scale claims fill the case envelope up to its character cap
   (`docs/evidence/offline-instruments-2026-10.md`, section 3). Requiring two shared tokens for
