@@ -29,7 +29,6 @@ from pydantic_ai import (
     TextPartDelta,
     UsageLimits,
 )
-from pydantic_ai.exceptions import AgentRunError
 from pydantic_ai.messages import (
     RetryPromptPart,
     TextPart,
@@ -42,7 +41,7 @@ from pydantic_ai.models import Model
 
 from filo.failures import ContextFull
 from filo.memory import (
-    FORMULATION_FIELDS,
+    FORMULATION_LIST_FIELDS,
     MIN_FORGET_QUOTE_WORDS,
     CaseContextResult,
     ClaimCorrection,
@@ -211,8 +210,10 @@ class FormulationLink(StrictModel):
     @field_validator("field")
     @classmethod
     def validate_field(cls, value: str) -> str:
-        if value not in FORMULATION_FIELDS:
-            raise ValueError(f"Unknown formulation field; use one of {list(FORMULATION_FIELDS)}.")
+        if value not in FORMULATION_LIST_FIELDS:
+            raise ValueError(
+                f"Unknown formulation field; use one of {list(FORMULATION_LIST_FIELDS)}."
+            )
         return value
 
 
@@ -1224,17 +1225,20 @@ class ChatSession:
         *,
         end_reason: SessionEndReason,
     ) -> SessionRecord:
-        formulation = self.memory.load_formulation()
         if self.memory_mode is not MemoryMode.STANDARD:
             with self.memory.transaction():
                 return self.memory.close_session(session, end_reason=end_reason, now=now)
-        formulation.proposed_focus = None
+        # Read only to show the model; what is written back is rebuilt inside the closing
+        # transaction from the claims still active then.
+        formulation = self.memory.load_formulation()
+        # Taken before the rounds are read, so a round forgotten in between is still caught.
+        summarized = self.memory.consolidation_round_ids(session.id)
         chunks = _transcript_chunks(self.memory.consolidation_rounds(session.id))
         # A session in which something was forgotten gets no reflection, as a closed one would
         # lose it: a summary can paraphrase the story from rounds that never repeat its words.
         if not chunks or self.memory.reflection_withheld(session.id):
             with self.memory.transaction():
-                self.memory.save_formulation(formulation, now)
+                self._expire_proposed_focus(now)
                 return self.memory.close_session(session, end_reason=end_reason, now=now)
         claims = self.memory.consolidation_claims(session.id)
         instructions = (
@@ -1248,7 +1252,9 @@ class ChatSession:
             "absolute date of the round in which it was said, and keep the user's own wording "
             "for any time they mention; never turn a vague phrase into a date. A long episode "
             "arrives in parts: when the case data holds reflection_so_far, return it updated "
-            "with this part, keeping what earlier parts established."
+            "with this part, keeping what earlier parts established. If the user said they are "
+            "under 18, record nothing about them: return the summary 'Not recorded.' with every "
+            "other field and link empty."
         )
         agent = Agent[None, SessionReflection](
             self.model,
@@ -1295,9 +1301,14 @@ class ChatSession:
                     unlinks[field_name] = [
                         item for item in unlinks.get(field_name, []) if item not in ids
                     ]
-        except AgentRunError as error:
+        # Any failure, a login or network error at /end included, keeps the transcript and
+        # closes the session without a reflection instead of propagating.
+        except Exception as error:
+            # An evaluation budget cap and the like must stop the run, not close the session.
+            if getattr(error, "fatal", False):
+                raise
             with self.memory.transaction():
-                self.memory.save_formulation(formulation, now)
+                self._expire_proposed_focus(now)
                 return self.memory.close_session(
                     session,
                     consolidation_error=type(error).__name__,
@@ -1328,8 +1339,13 @@ class ChatSession:
                 open_questions=reflection.open_questions,
                 risk_notes=reflection.risk_notes,
                 end_reason=end_reason,
+                summarized_round_ids=summarized,
                 now=now,
             )
+
+    def _expire_proposed_focus(self, now: datetime | None) -> None:
+        """Clear an unaccepted proposed focus, keeping the links of claims still active."""
+        self.memory.save_formulation_links({}, proposed_focus=None, merge_existing=True, now=now)
 
     def _retrieval_query(self, session: SessionRecord, text: str) -> str:
         """Build the envelope query from the recent user turns, not the last message alone."""
