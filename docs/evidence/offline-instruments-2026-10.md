@@ -23,7 +23,7 @@ The gate precision corpus was not built; see the deviation in the program.
   ranks first by a wide margin.
 - **Scale.** On a three-year archive of 150 sessions and 4,551 rounds, a warm envelope takes about
   0.55 s per message, almost all of it the query embedding. A cold first message after opening the
-  store takes about 1 s, the store opens in 2 ms, and the database is 32 MB. Indexing runs at 3.6
+  store takes about 1 s, the store opens in 2–3 ms, and the database is 32 MB. Indexing runs at 3.6
   rounds/s on this CPU, so an archive written before round indexing takes about 21 minutes of turns
   to catch up. The envelope stays bounded by the 16,000-character cap, but only because the cap
   trims it. The unbounded envelope grows with the archive (2.5k → 19k → 29k characters), mostly
@@ -167,14 +167,30 @@ against the W1 memory probes, and was not made here.
 It indexes the archive through ordinary retrievals, which embed at most 64 new rounds each, as
 production does. Then it reopens the store and measures envelope builds: `retrieve_case_context`
 plus `_bounded_context_json`, cold for the first message after opening and warm over the next 20.
-Model load and first embedding take 7.5 s; a query embedding alone takes 456 ms (median).
+Model load and first embedding take 7.5 s; a query embedding alone takes 439 ms (median).
 
-SCALE_TABLE
+| Sessions | Rounds | Claims | Write s | Index s (new rounds) | Rounds/s | DB MB | Open ms | Cold ms | Warm p50 / p95 ms |
+|---|---|---|---|---|---|---|---|---|---|
+| 10 | 361 | 4 | 0.8 | 104.5 | 3.5 | 2.6 | 2 | 762 | 464 / 669 |
+| 50 | 1,493 | 16 | 2.6 | 326.2 | 3.5 | 10.5 | 2 | 757 | 545 / 622 |
+| 150 | 4,551 | 48 | 6.5 | 847.1 | 3.6 | 31.9 | 3 | 1,098 | 560 / 907 |
+
+Envelope size and the items the model receives for the last warm query ("My back is better since I
+walk more"). Counts are before → after trimming to the 16,000-character cap.
+
+| Sessions | Unbounded chars | Sent chars | Excerpts | Claims | Excerpts before the fix | Claims before the fix |
+|---|---|---|---|---|---|---|
+| 10 | 2,532 | 2,532 | 5 → 5 | 1 → 1 | 5 → 5 | 1 → 1 |
+| 50 | 19,067 | 15,430 | 5 → 5 | 12 → 7 | 5 → **0** | 12 → 9 |
+| 150 | 28,924 | 15,033 | 5 → 5 | 20 → 5 | 5 → **0** | 20 → 7 |
+
+Timings are from the run after the fix. The run before it, on the same seed, measured within 10%
+of these, apart from p95 noise.
 
 **Reading.**
-- **Latency** is dominated by the query embedding. Retrieval itself adds about 100 ms over the
+- **Latency** is dominated by the query embedding. Retrieval itself adds about 120 ms over the
   whole three-year archive, and it barely grows with archive size. The cold first message pays
-  about 0.4 s more, to load and decrypt the vector matrix. Opening the store is negligible.
+  about 0.3–0.5 s more, to load and decrypt the vector matrix. Opening the store is negligible.
 - **Indexing** costs about 0.28 s per round on this CPU. In normal use that is one or two rounds
   per turn. An archive that predates round indexing catches up 64 rounds per turn, about 18 s of
   extra embedding on each of the first ~70 turns. AGENTS.md describes that path; this measures it.
