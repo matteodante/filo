@@ -286,8 +286,8 @@ ffbf4b4ecb4067e9a03dcf64ec9d25d90a93117263bd7adca0b8da659bcf0eed  therapist_cli-
 
 ## Addendum — 2026-10-17: `v0.4.0` candidate
 
-**Gates:** all mandatory live gates pass. The go/no-go decision, the signed tag, and the prerelease
-stay with the maintainer.
+**Tagged GitHub prerelease:** **GO**, published on 2026-10-17 with the maintainer's authorization  
+**Public installer switch to `v0.4.0`:** **GO**; the bootstrap on `main` installs it
 
 The live gates ran on the maintainer's Windows 11 machine with `codex:gpt-5.6-sol` through the
 personal ChatGPT login and the maintainer's private bot, on the candidate branch of PR #72. The
@@ -322,14 +322,26 @@ cfcdd748e8a41601aeb89fe17eba8adc9cff0b2993beee6618a7ad3832c9a40b  filo_cli-0.4.0
 7cc32bacf44737d176c612d9ba0e8c5d3fb440c42b9c7f813a7e35f8532e141e  filo-0.4.0.cdx.json
 ```
 
-### Not verified on this machine
+### Publication
+
+- `v0.4.0` is an annotated tag on `cc12bbd`, SSH-signed with the maintainer's registered signing
+  key `SHA256:1rEaA+NONsbT6hAELCK0gkXfz2fXkIHllr6fUm+geW8`; GitHub reports it verified.
+- The prerelease attaches the four bundle files, and the downloaded copies match `SHA256SUMS`.
+- The old repository URL redirects to `matteodante/filo`, and the raw `install.sh` on `main` pins
+  `v0.4.0`.
+- The public bootstrap, run in a clean `debian:bookworm-slim` container, installed `filo` 0.4.0
+  from the tag; `protocol validate` and `doctor` ran from it before the interactive setup, which
+  was not completed there. Interactive setup was exercised on the maintainer's Windows machine.
+
+### Not verified
 
 - The Windows background service is covered by a unit test only; the maintainer chose a
   foreground listener and no installed service.
-- The signed tag on `cc12bbd`, the prerelease, and the bootstrap from a clean account stay with
-  the maintainer.
+- The bootstrap on Windows and macOS from a clean account.
 
 ### Observations
 
 - The consent notice is English only, in the terminal and in Telegram, even when the
   conversation language is Italian.
+- Where `$SHELL` is unset, the installer stops at `uv tool update-shell` after installing `filo`
+  (see the AGENTS.md open work).

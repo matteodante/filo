@@ -719,7 +719,7 @@ The program ran on 2026-10-16 and 2026-10-17. Pull requests are numbered as merg
 
 **Wave 4**
 - W4.1 rename to Filo: done, #51; the maintainer renamed the GitHub repository on 2026-10-17.
-- W4.2 release: not done; it is the first Filo release below.
+- W4.2 release: `v0.4.0` published as a prerelease on 2026-10-17.
 
 **Wave 5**
 - W5.1–W5.3 experiment follow-up, `/recap`, optional WHO-5 `/wellbeing`: done, #62.
@@ -730,9 +730,5 @@ and forgetting gaps), #69 (conversation tool fixes, consolidation through a non-
 Italian register without assumed gender).
 
 **What remains for the maintainer**
-- The first Filo release, following `RELEASING.md` ("First release under the Filo name"): the
-  live gates have passed, so what is left is the merge, the `Release candidate` workflow, the
-  signed tag, the prerelease, and the bootstrap from a clean account. On release day, confirm
-  that the old repository URL still redirects.
 - The manual macOS checks (Telegram service, local network access for a `local:` server).
 - Reinstall or relink the Claude GitHub App on the renamed repository.

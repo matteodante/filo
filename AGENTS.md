@@ -115,10 +115,9 @@ operation.
 Known gaps in the current state of the repository. Close them or record why they stay open; do not
 let them accumulate silently.
 
-- The GitHub repository was renamed from `matteodante/therapist` to `matteodante/filo` on
-  2026-10-17 and the old URL redirects. On release day, confirm the redirect and that
-  `https://raw.githubusercontent.com/matteodante/filo/main/install.sh` resolves (`RELEASING.md`,
-  step 0).
+- `install.sh` runs `uv tool update-shell` under `set -e`, so where `$SHELL` is unset, as in a bare
+  container, uv cannot pick a shell to update and the installer stops after installing `filo` and
+  before `filo setup`. An interactive login shell always sets it.
 - A claim counts as relevant on a single shared lexical word (rounds and sessions need two), so at
   scale claims fill the case envelope up to its character cap
   (`docs/evidence/offline-instruments-2026-10.md`, section 3). Requiring two shared tokens for
