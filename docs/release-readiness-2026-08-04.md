@@ -310,12 +310,24 @@ Two safety floors and the role-play judge's input were brought in line with the 
 and memory design while these gates ran; no semantic judge, forbidden phrase, or forbidden tool was
 weakened. The same runs found and fixed the Windows service launcher (see the release notes).
 
+PR #72 merged as `cc12bbd12ba8ed87465c1bdc4b5e6a2db55796fa`, with CI, CodeQL, and Scorecard
+green on that commit. The `Release candidate` workflow built the authoritative bundle from it; the
+local checksums match `SHA256SUMS`, and `gh attestation verify` accepts the provenance of all three
+files and the SBOM attestation of the wheel and the sdist against the `release-candidate.yml`
+signer workflow:
+
+```text
+78953b902a03d5581e2951869d1d7d77909ba689cdebb4da66d67888f5ba1f34  filo_cli-0.4.0-py3-none-any.whl
+cfcdd748e8a41601aeb89fe17eba8adc9cff0b2993beee6618a7ad3832c9a40b  filo_cli-0.4.0.tar.gz
+7cc32bacf44737d176c612d9ba0e8c5d3fb440c42b9c7f813a7e35f8532e141e  filo-0.4.0.cdx.json
+```
+
 ### Not verified on this machine
 
 - The Windows background service is covered by a unit test only; the maintainer chose a
   foreground listener and no installed service.
-- The `Release candidate` workflow, the signed tag, and the bootstrap from a clean account follow
-  the merge.
+- The signed tag on `cc12bbd`, the prerelease, and the bootstrap from a clean account stay with
+  the maintainer.
 
 ### Observations
 
