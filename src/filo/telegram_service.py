@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import plistlib
+import re
 import subprocess
 import sys
 import time
@@ -14,6 +15,10 @@ from pathlib import Path
 SERVICE_LABEL = "io.github.matteodante.filo.telegram"
 SYSTEMD_UNIT = "filo-telegram.service"
 WINDOWS_TASK = "Filo Telegram"
+# Therapist, the product's earlier name, installed its listener under these names. An upgrade
+# leaves it running, and two listeners on one bot make each other fail.
+LEGACY_LAUNCHD_PLIST = "io.github.matteodante.therapist.telegram.plist"
+LEGACY_SYSTEMD_UNIT = "therapist-telegram.service"
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 
@@ -121,8 +126,13 @@ def uninstall(
     home = home or Path.home()
     if platform == "darwin":
         path = home / "Library" / "LaunchAgents" / f"{SERVICE_LABEL}.plist"
-        current = status(platform=platform, home=home, runner=runner)
-        if current.running:
+        # Booted out whenever launchd holds it, including a job throttled between crashes.
+        loaded = runner(
+            ["launchctl", "print", f"gui/{os.getuid()}/{SERVICE_LABEL}"],
+            capture_output=True,
+            text=True,
+        )
+        if loaded.returncode == 0:
             _run(
                 runner,
                 ["launchctl", "bootout", f"gui/{os.getuid()}/{SERVICE_LABEL}"],
@@ -178,6 +188,18 @@ def restart(
         )
 
 
+def legacy_definition(*, platform: str = sys.platform, home: Path | None = None) -> Path | None:
+    """The Therapist listener definition still installed on this machine, if any."""
+    home = home or Path.home()
+    if platform == "darwin":
+        path = home / "Library" / "LaunchAgents" / LEGACY_LAUNCHD_PLIST
+    elif platform.startswith("linux"):
+        path = home / ".config" / "systemd" / "user" / LEGACY_SYSTEMD_UNIT
+    else:
+        return None
+    return path if path.exists() else None
+
+
 def status(
     *,
     platform: str = sys.platform,
@@ -217,7 +239,12 @@ def status(
         )
     result = runner(command, capture_output=True, text=True)
     detail = (result.stdout or result.stderr or "").strip()
-    return ServiceStatus(path.exists(), result.returncode == 0, detail)
+    running = result.returncode == 0
+    if platform == "darwin":
+        # `launchctl print` succeeds for any loaded job, including one launchd is throttling
+        # between crashes, so only its reported state says whether it is running.
+        running = running and re.search(r"^\s*state = running\s*$", result.stdout or "", re.M)
+    return ServiceStatus(path.exists(), bool(running), detail)
 
 
 def _await_launchd_unload(runner: Runner, domain: str, attempts: int = 40) -> None:

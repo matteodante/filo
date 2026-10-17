@@ -21,7 +21,12 @@ import questionary
 from huggingface_hub import HfApi, scan_cache_dir, snapshot_download
 from huggingface_hub.errors import CacheNotFound
 from pydantic_ai import Embedder
-from pydantic_ai.embeddings import EmbeddingModel, EmbeddingResult, EmbeddingSettings
+from pydantic_ai.embeddings import (
+    EmbeddingModel,
+    EmbeddingResult,
+    EmbeddingSettings,
+    infer_embedding_model,
+)
 from pydantic_ai.embeddings.result import EmbedInputType
 from pydantic_ai.models import Model
 from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
@@ -290,6 +295,13 @@ def _main(argv: Sequence[str] | None = None) -> int:
         print(f"Telegram: {telegram}")
         if telegram == "configured":
             print(f"Telegram service: {_service_report()}")
+            legacy = telegram_service.legacy_definition()
+            if legacy is not None:
+                print(
+                    f"Old Therapist Telegram service found at {legacy}: run "
+                    "`thera telegram-service uninstall` (or remove that file and stop it) so "
+                    "only one listener polls the bot."
+                )
         if model.startswith(LOCAL_PREFIX):
             print(f"Local server: {_local_endpoint_report()}")
         failure = store.last_failure() if store else None
@@ -587,7 +599,7 @@ def _setup(store: MemoryStore, args: argparse.Namespace) -> int:
                         f"{model_context_window} for {model}"
                     ),
                     validate=lambda value: (
-                        value.strip().isdigit()
+                        value.strip().isdecimal()
                         and MIN_CONTEXT_WINDOW_TOKENS <= int(value.strip()) <= model_context_window
                     ),
                 )
@@ -1052,12 +1064,15 @@ class _LocalEmbeddingModel(EmbeddingModel):
                     )
                 try:
                     model = _default_embedder(local_files_only=True).model
+                    # Embedder defers resolving a model given by name, so its `.model` is
+                    # still that name until first use.
+                    if isinstance(model, str):
+                        model = infer_embedding_model(model)
                 except Exception as error:
                     raise SetupProblem(
                         "Semantic memory is unavailable. "
                         "Run `filo memory model install` on the computer that runs Filo."
                     ) from error
-                assert isinstance(model, EmbeddingModel)
                 self._model = model
             return self._model
 

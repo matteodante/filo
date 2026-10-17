@@ -86,6 +86,13 @@ The installers pin a tag, and every tag up to `v0.3.1` ships the Therapist packa
 command. The first Filo release therefore moves the installer pin and the public install path
 together:
 
+0. Rename the GitHub repository from `therapist` to `filo` first, then confirm that
+   `https://github.com/matteodante/therapist` redirects and that
+   `https://raw.githubusercontent.com/matteodante/filo/main/install.sh` resolves. Until then the
+   README checkout command, the policy links, and the installers' source URL all point at a
+   repository that does not exist yet. On `main`, the installers fail closed in the meantime:
+   their `filo` URL 404s before the rename, and after it the pinned `v0.3.1` tag still ships
+   Therapist, which the installer reports instead of installing.
 1. Bump the version in `pyproject.toml`, `src/filo/__init__.py`, `install.sh`, and `install.ps1`.
 2. Restore the one-line bootstrap commands in the README `Install` section, replacing the checkout
    installation, and drop the matching item from the AGENTS.md open work.
