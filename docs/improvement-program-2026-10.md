@@ -731,4 +731,6 @@ Italian register without assumed gender).
 
 **What remains for the maintainer**
 - The manual macOS checks (Telegram service, local network access for a `local:` server).
-- Reinstall or relink the Claude GitHub App on the renamed repository.
+- Check in GitHub Settings > Applications > Installed GitHub Apps > Claude that `filo` is still
+  under Repository access. Only Auto-fix in cloud sessions needs the app; desktop sessions read PR
+  and CI status through the local `gh` CLI.
