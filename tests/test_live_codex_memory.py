@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import tempfile
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -168,7 +169,8 @@ def test_configured_codex_longitudinal_memory(tmp_path: Path) -> None:
                 started_at + timedelta(days=inputs["return_after_days"]),
             )
             restarted.retrieve_case_context(inputs["return_message"])
-            with sqlite3.connect(restarted.database_path) as database:
+            # Closed explicitly: Windows cannot remove the temporary store while it is open.
+            with closing(sqlite3.connect(restarted.database_path)) as database:
                 indexed = database.execute(
                     "SELECT COUNT(*) FROM semantic_index WHERE entity_type = 'claim'"
                 ).fetchone()[0]
