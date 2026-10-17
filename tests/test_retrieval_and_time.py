@@ -23,6 +23,7 @@ from filo.memory import (
     ROUND_TEXT_CACHE_SIZE,
     ClaimCorrection,
     InterventionState,
+    MemoryItem,
     MemoryKind,
     MemoryMode,
     MemoryStore,
@@ -923,3 +924,56 @@ def _indexed(store: MemoryStore) -> set[tuple[str, str]]:
     with store._connect() as database:
         rows = database.execute("SELECT entity_type, entity_id FROM semantic_index").fetchall()
     return {(row[0], row[1]) for row in rows}
+
+
+def _corrected_claim(store: MemoryStore) -> tuple[MemoryItem, int]:
+    session = store.start_session()
+    old = "I drink coffee at midnight every day"
+    first = store.save_turn(session, old, "Noted.", [])
+    claim = store.add_user_reports(
+        [UserReport(kind=MemoryKind.PATTERN, content=old, evidence_quote=old)], first, old
+    )[0]
+    return claim, first
+
+
+def _correct(store: MemoryStore, claim_id: str) -> None:
+    correction = "No, these days I only drink tea"
+    message_id = store.save_turn(store.start_session(), correction, "Thanks.", [])
+    store.correct_claim(
+        ClaimCorrection(
+            memory_id=claim_id,
+            correction_quote=correction,
+            replacement_quote="these days I only drink tea",
+        ),
+        message_id,
+        correction,
+    )
+
+
+def test_a_hypothesis_linked_after_a_correction_copies_no_old_quote(tmp_path) -> None:
+    store = _store(tmp_path)
+    claim, first = _corrected_claim(store)
+    _correct(store, claim.id)
+    corrected = next(item for item in store.list_claims() if item.id == claim.id)
+    text = "I sleep badly on the nights I drink anything late"
+    message_id = store.save_turn(store.start_session(), text, "Noted.", [])
+    hypothesis = store.add_hypothesis(
+        "Drinks may be tied to sleep",
+        linked_claim_ids=[claim.id],
+        evidence_message_ids=[first, *(ref.message_id for ref in corrected.evidence)],
+        evidence_message_id=message_id,
+        evidence_quote=text,
+        evidence_text=text,
+    )
+    assert all("coffee" not in (ref.quote or "") for ref in hypothesis.evidence)
+    assert "coffee" not in _visible(store, "drinks and sleep tea")
+
+
+def test_a_hypothesis_linked_before_a_correction_stops_showing_the_old_quote(tmp_path) -> None:
+    store = _store(tmp_path)
+    claim, first = _corrected_claim(store)
+    store.add_hypothesis(
+        "Drinks may be tied to sleep", linked_claim_ids=[claim.id], evidence_message_ids=[first]
+    )
+    _correct(store, claim.id)
+    assert "coffee" not in _visible(store, "drinks and sleep tea")

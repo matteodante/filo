@@ -13,6 +13,7 @@ from pydantic_ai import models
 from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 
+from evals.costs import BudgetExceeded
 from filo.chat import ChatSession
 from filo.memory import ClaimCorrection, MemoryKind, MemoryStore, UserReport
 from filo.protocol import ProtocolPack
@@ -149,3 +150,66 @@ def test_consolidation_records_nothing_after_an_under_18_disclosure(tmp_path) ->
     assert any("under 18, record nothing" in item for item in instructions)
     assert closed is not None and closed.summary == "Not recorded." and closed.themes == []
     assert store.load_formulation().evidence == {}
+
+
+def test_correcting_an_earlier_sessions_claim_keeps_this_sessions_reflection(tmp_path) -> None:
+    store = MemoryStore(tmp_path)
+    old = "I drink coffee at midnight every day"
+    earlier = store.start_session()
+    first = store.save_turn(earlier, old, "Noted.", [])
+    claim = store.add_user_reports(
+        [UserReport(kind=MemoryKind.PATTERN, content=old, evidence_quote=old)], first, old
+    )[0]
+    store.close_session(earlier, summary="Late caffeine came up.")
+    correction = "No, I only drink tea now"
+    session = store.start_session()
+    second = store.save_turn(session, correction, "Thanks for correcting me.", [])
+    store.correct_claim(
+        ClaimCorrection(
+            memory_id=claim.id, correction_quote=correction, replacement_quote="I only drink tea"
+        ),
+        second,
+        correction,
+    )
+
+    async def stream(_messages: list[Any], _info: Any):
+        yield _reflection("The user corrected an earlier habit: tea only.")
+
+    chat = ChatSession(
+        FunctionModel(stream_function=stream), ProtocolPack.load(ROOT), store, "en-US"
+    )
+    closed = chat.end()
+    assert closed is not None and closed.summary == "The user corrected an earlier habit: tea only."
+
+
+def test_a_fatal_error_during_consolidation_is_not_swallowed(tmp_path) -> None:
+    class Fatal(RuntimeError):
+        fatal = True
+
+    store = MemoryStore(tmp_path)
+    store.save_turn(store.start_session(), "Busy week at work", "Sounds full.", [])
+
+    async def stream(_messages: list[Any], _info: Any):
+        raise Fatal("budget cap")
+        yield  # pragma: no cover - makes this an async generator
+
+    chat = ChatSession(
+        FunctionModel(stream_function=stream), ProtocolPack.load(ROOT), store, "en-US"
+    )
+    with pytest.raises(Fatal):
+        chat.end()
+    assert BudgetExceeded.fatal is True
+
+
+def test_a_stale_turn_never_reopens_a_session_another_process_closed(tmp_path) -> None:
+    store = MemoryStore(tmp_path)
+    session = store.start_session()
+    store.save_turn(session, "Busy week at work", "Sounds full.", [])
+    other = MemoryStore(tmp_path)
+    stored = other.active_session()
+    assert stored is not None
+    other.close_session(stored, summary="Work was busy.")
+    store.save_turn(session, "Anyway", "Okay.", [])
+    [reloaded] = [item for item in store.list_sessions() if item.id == session.id]
+    assert reloaded.ended_at is not None and reloaded.summary == "Work was busy."
+    assert store.active_session() is None

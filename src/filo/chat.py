@@ -1231,6 +1231,8 @@ class ChatSession:
         # Read only to show the model; what is written back is rebuilt inside the closing
         # transaction from the claims still active then.
         formulation = self.memory.load_formulation()
+        # Taken before the rounds are read, so a round forgotten in between is still caught.
+        summarized = self.memory.consolidation_round_ids(session.id)
         chunks = _transcript_chunks(self.memory.consolidation_rounds(session.id))
         # A session in which something was forgotten gets no reflection, as a closed one would
         # lose it: a summary can paraphrase the story from rounds that never repeat its words.
@@ -1302,6 +1304,9 @@ class ChatSession:
         # Any failure, a login or network error at /end included, keeps the transcript and
         # closes the session without a reflection instead of propagating.
         except Exception as error:
+            # An evaluation budget cap and the like must stop the run, not close the session.
+            if getattr(error, "fatal", False):
+                raise
             with self.memory.transaction():
                 self._expire_proposed_focus(now)
                 return self.memory.close_session(
@@ -1334,6 +1339,7 @@ class ChatSession:
                 open_questions=reflection.open_questions,
                 risk_notes=reflection.risk_notes,
                 end_reason=end_reason,
+                summarized_round_ids=summarized,
                 now=now,
             )
 

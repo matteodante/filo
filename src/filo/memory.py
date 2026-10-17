@@ -1054,7 +1054,7 @@ class MemoryStore:
 
     def save_session(self, session: SessionRecord) -> None:
         with self.transaction(), self._connect() as database:
-            self._keep_withheld(database, session)
+            self._keep_stored(database, session)
             database.execute(
                 "UPDATE sessions SET last_activity_at = ?, ended_at = ?, payload = ? WHERE id = ?",
                 (
@@ -1065,17 +1065,30 @@ class MemoryStore:
                 ),
             )
 
-    def _keep_withheld(self, database: sqlite3.Connection, session: SessionRecord) -> None:
-        """Carry over a withheld reflection that another process stored since this was read.
+    def _keep_stored(self, database: sqlite3.Connection, session: SessionRecord) -> None:
+        """Carry over what another process stored since this session was read.
 
-        A turn or a consolidation writes back the session it read earlier, so without this a
-        forget landing in between would be undone and its story summarized after all.
+        A turn or a consolidation writes back the session it read earlier. Without this, a
+        forget landing in between would be undone and its story summarized after all, and a
+        stale turn would reopen a session another process closed, dropping its reflection.
         """
         row = database.execute(
             "SELECT payload FROM sessions WHERE id = ?", (session.id,)
         ).fetchone()
-        if row is not None and self._decrypt_model(row[0], SessionRecord).reflection_withheld:
+        if row is None:
+            return
+        stored = self._decrypt_model(row[0], SessionRecord)
+        if stored.reflection_withheld:
             session.reflection_withheld = True
+        if stored.ended_at and not session.ended_at:
+            for field_name in (
+                "ended_at",
+                "end_reason",
+                "consolidation_error",
+                "summary",
+                *SESSION_REFLECTION_LIST_FIELDS,
+            ):
+                setattr(session, field_name, getattr(stored, field_name))
 
     def close_session(
         self,
@@ -1095,8 +1108,15 @@ class MemoryStore:
         risk_notes: list[str] | None = None,
         consolidation_error: str | None = None,
         end_reason: SessionEndReason | None = None,
+        summarized_round_ids: Iterable[int] = (),
         now: datetime | None = None,
     ) -> SessionRecord:
+        """Close a session with its reflection.
+
+        ``summarized_round_ids`` are the rounds the reflection was written from. If a forget or
+        correction excluded any of them since, the reflection may carry that content, so it is
+        dropped. Rounds excluded before it was written were never shown to the model.
+        """
         session.ended_at = _iso(now)
         session.last_activity_at = session.ended_at
         session.summary = summary
@@ -1114,16 +1134,11 @@ class MemoryStore:
         session.consolidation_error = consolidation_error
         session.end_reason = end_reason
         with self.transaction(), self._connect() as database:
-            self._keep_withheld(database, session)
-            # A forget or correction may have landed while the reflection was being written.
-            session_rounds = {
-                row[0]
-                for row in database.execute(
-                    "SELECT id FROM messages WHERE session_id = ? AND role = 'user'",
-                    (session.id,),
-                )
-            }
-            if session.reflection_withheld or session_rounds & self._excluded_round_ids():
+            self._keep_stored(database, session)
+            if (
+                session.reflection_withheld
+                or set(summarized_round_ids) & self._excluded_round_ids()
+            ):
                 _clear_session_reflection(session)
             self.save_session(session)
         return session
@@ -1170,7 +1185,7 @@ class MemoryStore:
                 "VALUES (?, 'assistant', ?, ?)",
                 (session.id, timestamp, self._encrypt_json(assistant_payload)),
             )
-            self._keep_withheld(database, session)
+            self._keep_stored(database, session)
             database.execute(
                 "UPDATE sessions SET last_activity_at = ?, payload = ? WHERE id = ?",
                 (timestamp, self._encrypt_model(session), session.id),
@@ -1375,7 +1390,7 @@ class MemoryStore:
         evidence = [
             reference.model_copy(update={"relation": EvidenceRelation.SUPPORTS})
             for item_id in linked_claim_ids
-            for reference in active[item_id].evidence
+            for reference in _current_support(active[item_id])
             if reference.message_id in evidence_message_ids
         ]
         if evidence_message_id is not None and evidence_quote and evidence_text:
@@ -2093,6 +2108,11 @@ class MemoryStore:
         for field_name, ids in formulation.evidence.items():
             for item_id in ids:
                 formulation_fields.setdefault(item_id, []).append(field_name)
+        linked = {
+            item.id: item
+            for item in self.list_claims(include_inactive=True)
+            if item.superseded_content
+        }
         ranked: list[ContextClaim] = []
         for index, item in enumerate(claims):
             semantic = semantic_scores.get(item.id)
@@ -2108,7 +2128,13 @@ class MemoryStore:
             )
             if not relevant:
                 continue
-            superseded = {wording.casefold() for wording in item.superseded_content}
+            # A hypothesis carries quotes copied from its linked claims, which a later correction
+            # of those claims supersedes.
+            superseded = {
+                wording.casefold()
+                for source in [item, *(linked[i] for i in item.linked_claim_ids if i in linked)]
+                for wording in source.superseded_content
+            }
             ranked.append(
                 ContextClaim(
                     id=item.id,
@@ -2462,13 +2488,20 @@ class MemoryStore:
         Rounds suppressed by forgetting or correction are left out, so closing a session cannot
         write forgotten or superseded content back into its summary.
         """
+        refs = self._consolidation_refs(session_id)
+        return [(item.created_at, item.user, item.assistant) for item in self._decrypt_rounds(refs)]
+
+    def consolidation_round_ids(self, session_id: str) -> set[int]:
+        """IDs of the rounds ``consolidation_rounds`` returns, for checking them at close."""
+        return {item.id for item in self._consolidation_refs(session_id)}
+
+    def _consolidation_refs(self, session_id: str) -> list[_RoundRef]:
         excluded = self._excluded_round_ids()
-        refs = [
+        return [
             item
             for item in self._round_refs()
             if item.session_id == session_id and item.id not in excluded
         ]
-        return [(item.created_at, item.user, item.assistant) for item in self._decrypt_rounds(refs)]
 
     def consolidation_claims(self, session_id: str) -> list[MemoryItem]:
         """Active claims for consolidation: this session's own first, then the most recent."""
@@ -2895,12 +2928,18 @@ class MemoryStore:
         return None if row is None else row[0]
 
     def _excluded_round_ids(self) -> set[int]:
-        """Rounds no retrieval or consolidation may return: forgotten or superseded provenance."""
+        """Rounds no retrieval or consolidation may return: forgotten or superseded provenance.
+
+        A forgotten claim takes every evidence round with it. A corrected one takes only the
+        rounds that supported its old wording: the correcting round holds the current account.
+        """
         return self._suppressed_round_ids() | {
             reference.message_id
             for item in self.list_claims(include_inactive=True)
-            if item.lifecycle is not ClaimLifecycle.ACTIVE or item.superseded_content
+            if item.lifecycle is ClaimLifecycle.ARCHIVED or item.superseded_content
             for reference in item.evidence
+            if item.lifecycle is ClaimLifecycle.ARCHIVED
+            or reference.relation is EvidenceRelation.SUPPORTS
         }
 
     def _suppressed_round_ids(self) -> set[int]:
@@ -3768,6 +3807,17 @@ def _replace_derived(value: str, old: str, new: str) -> str:
     if _lexical_score(old, value) >= 2:
         return ""
     return value
+
+
+def _current_support(item: MemoryItem) -> list[EvidenceRef]:
+    """A claim's supporting references whose wording a correction has not superseded."""
+    superseded = {wording.casefold() for wording in item.superseded_content}
+    return [
+        reference
+        for reference in item.evidence
+        if reference.relation is EvidenceRelation.SUPPORTS
+        and (reference.quote or "").casefold() not in superseded
+    ]
 
 
 def _clear_session_reflection(session: SessionRecord) -> None:

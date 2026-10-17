@@ -337,9 +337,12 @@ claim. If any part fails, with any exception (a login or network error at `/end`
 preserve the transcript, record a content-free error class, and leave the formulation as it is
 then, rebuilt only from claims still active. The formulation shown to the model is read before it
 runs, but nothing written back comes from that snapshot. A session is written back carrying any
-`reflection_withheld` flag another process stored meanwhile, and closing drops the reflection when
-that flag is set or any of the session's rounds is excluded by then, so a forget or correction
-landing during the model call cannot be summarized. When the user said they are under 18, the
+`reflection_withheld` flag another process stored meanwhile, and never reopens a session another
+process closed. Closing drops the reflection when that flag is set or a round the model summarized
+was excluded since, so a forget or correction landing during the model call cannot be summarized;
+a round excluded before the call was never shown to the model and costs nothing. A
+consolidation error marked `fatal`, such as the evaluation budget cap, is raised instead. When the
+user said they are under 18, the
 instructions ask for the reflection "Not recorded." with nothing else. Both agent runs use
 PydanticAI's complete synchronous API with an event stream handler so the
 experimental ChatGPT Codex backend can require `stream=true`; conversation transports stream
@@ -491,7 +494,11 @@ at least three quarters of its content words), and clears the reflection of ever
 holding such a round. A correction does the same for the rounds repeating the superseded wording
 and for the claim's supporting rounds, so a paraphrased summary does not survive a correction. The
 suppressed round IDs live in encrypted state, are included in export, and are honored by
-retrieval and consolidation alike. Current-session
+retrieval and consolidation alike. A forgotten claim excludes every round it cites; a corrected
+claim excludes only the rounds that supported its old wording, so the correcting round, which
+holds the current account, stays retrievable and is consolidated. A hypothesis copies only its
+linked claims' current support, and retrieval drops any quote a later correction of a linked
+claim superseded. Current-session
 model history retains every complete successful run, including tool exchanges, until the context
 boundary; long-term continuity across the resulting sessions comes from structured context and
 relevant excerpts.
