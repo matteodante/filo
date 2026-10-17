@@ -3,11 +3,11 @@ status: experimental
 locales: [it-IT, en-US]
 population: adults-18-plus
 intended_use: Adult self-reflection and organization of user-provided thoughts; not diagnosis, treatment, monitoring, or emergency care.
-root_sha256: f15fa38f7d051beb5d62eac0e8a6183ff2621b1a3d20d221b41db05d7ac18a2c
+root_sha256: 7c592f08cd563555c0629ff3aa4bdd20d133126c829c504bada0785e8b1178ff
 skills:
   - id: stay-with-emotion
     path: skills/stay-with-emotion/SKILL.md
-    sha256: c91ef865b22fb0d8e782aa5dd5704fb52238db981644b4bc6b3757371e2c12bd
+    sha256: fa64f0f0b7776ab8d40ebeeda5f2b74e32e02f56ba4fe8e2077e20763d197e2a
     category: core
     description: Use when a feeling is present but unclear, named only in passing, kept abstract, or covering another feeling, and the person needs it understood before anything changes.
     locales: [it-IT, en-US]

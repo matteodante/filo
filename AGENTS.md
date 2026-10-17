@@ -154,7 +154,8 @@ Behavioral rules:
 - respond in the user's language;
 - in Italian, use idiomatic contemporary standard Italian, informal address unless the user chooses
   formality, direct conversational syntax, and specific rather than formulaic warmth; avoid literal
-  English calques and bureaucratic, academic, clinical, theatrical, or overly solemn register;
+  English calques and bureaucratic, academic, clinical, theatrical, or overly solemn register; do
+  not assume the user's grammatical gender until they show it;
 - respond to the user's immediate meaning before suggesting an action, without mechanically
   paraphrasing every message;
 - ask at most one brief, concrete question per reply, and often none; when several compete, safety
@@ -226,8 +227,8 @@ Behavioral rules:
   for hidden devices or the person; keeping a plain record of events and contacting 1522, the US
   Hotline, or the police stay open. A stored claim holding that premise records what was said, not
   a fact.
-- on a turn carrying one of those risks the agent makes no durable write, except stopping or pausing
-  an intervention the user says is causing harm, with its unwanted effects. This is a protocol
+- on a turn carrying one of those risks the agent makes no durable write, except stopping an
+  intervention the user says is causing harm, with its unwanted effects. This is a protocol
   instruction, not a code gate: detecting such a turn deterministically would need the keyword
   classifier the project rules out. A consented safety record is not built; if one is added it must
   never apply to a user who said they are under 18.
@@ -384,7 +385,7 @@ Semantic retrieval is a required memory capability: setup downloads and verifies
 and conversation fails closed with setup guidance when embeddings are unavailable rather than
 silently switching to lexical-only ranking. Historical excerpts use the same hybrid ranking and a
 minimum semantic relevance threshold; lexical tokenization adds standard-library character bigrams
-for Chinese, Japanese, and Thai text without spaces. Context is reduced by complete structured items
+for Chinese, Japanese, and Thai text without spaces. Context is reduced by complete structured items, further still when a small model window needs it,
 and serialized only as valid JSON; model history and consolidation retain complete turns instead of
 slicing messages mid-run. There is no intra-session compaction. Successful-run history grows until a
 conservative estimate reaches 80% of the input budget, when the user receives one warning. Before a

@@ -167,5 +167,6 @@ def _usage_message(reset: datetime | None, now: datetime) -> str:
 def _context_message() -> str:
     return (
         "This conversation no longer fits the model's context window. "
-        "Send /end to close the session, then send your message again."
+        "Send /end to close the session, then send your message again; if it still does not "
+        "fit, send a shorter message or choose a model with a larger context window."
     )

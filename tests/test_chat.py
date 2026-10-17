@@ -15,6 +15,8 @@ from filo.chat import CASE_CONTEXT_PREAMBLE, MAX_REPLY_CHARS, ChatSession
 from filo.memory import (
     ClaimFit,
     ClaimOrigin,
+    InterventionDecision,
+    InterventionRecord,
     InterventionState,
     MemoryKind,
     MemoryMode,
@@ -806,3 +808,249 @@ def test_ephemeral_mode_answers_when_a_read_tool_runs_in_a_worker_thread() -> No
         memory_mode=MemoryMode.EPHEMERAL,
     ).respond("Do you remember where I work?")
     assert turn.text
+
+
+def _agreed(store: MemoryStore, description: str, when: datetime) -> InterventionRecord:
+    session = store.start_session(when)
+    message_id = store.save_turn(session, "yes, I will try that", "Good.", [], when)
+    record = store.create_intervention(
+        skill="take-a-small-step",
+        description=description,
+        state=InterventionState.AGREED,
+        linked_claim_ids=[],
+        evidence_message_id=message_id,
+        consent_quote="yes, I will try that",
+        evidence_text="yes, I will try that",
+        now=when,
+    )
+    store.close_session(session, now=when + timedelta(minutes=5))
+    return record
+
+
+def _update_stream(action: dict[str, Any]):
+    async def stream(messages: list[Any], _info: Any):
+        yield (
+            "Noted." if _has_return(messages) else _tool("record_intervention", {"action": action})
+        )
+
+    return stream
+
+
+def test_an_intervention_outside_the_case_data_can_be_updated_and_its_record_kept(
+    tmp_path,
+) -> None:
+    store = MemoryStore(tmp_path)
+    earlier = datetime.now(UTC) - timedelta(days=3)
+    record = _agreed(store, "Write three lines in a journal before bed", earlier)
+    _agreed(store, "Call the bank on Tuesday morning", earlier + timedelta(hours=1))
+    # The record is not in this turn's case data, so it is looked up in the store.
+    chat = ChatSession(
+        FunctionModel(
+            stream_function=_update_stream(
+                {
+                    "record_id": record.id,
+                    "skill": record.skill,
+                    "description": record.description,
+                    "state": "tried",
+                    "consent_evidence_quote": "I did it twice",
+                    "outcome": "I did it twice",
+                }
+            )
+        ),
+        _pack(),
+        store,
+        "en-US",
+    )
+    chat.respond("Unrelated weather chat first, and I did it twice")
+
+    updated = next(item for item in store.list_interventions() if item.id == record.id)
+    assert updated.state is InterventionState.TRIED
+    assert updated.outcome == "I did it twice"
+    # The update named no decision or claims and keeps what the person agreed to.
+    assert updated.decision is InterventionDecision.UNDECIDED
+    assert updated.consent_evidence is not None
+    assert updated.consent_evidence.quote == "yes, I will try that"
+
+
+def test_a_duplicate_new_intervention_is_retried_as_an_update(tmp_path) -> None:
+    store = MemoryStore(tmp_path)
+    record = _agreed(store, "Take a short walk after lunch", datetime.now(UTC) - timedelta(days=1))
+    calls: list[str] = []
+
+    async def stream(messages: list[Any], _info: Any):
+        retries = [
+            part
+            for message in messages
+            for part in message.parts
+            if getattr(part, "part_kind", "") == "retry-prompt"
+        ]
+        if _has_return(messages):
+            yield "Noted."
+        elif retries:
+            calls.append(str(retries[-1].content))
+            yield _tool(
+                "record_intervention",
+                {
+                    "action": {
+                        "record_id": record.id,
+                        "skill": record.skill,
+                        "description": record.description,
+                        "state": "tried",
+                        "consent_evidence_quote": "I walked after lunch",
+                    }
+                },
+                "second",
+            )
+        else:
+            yield _tool(
+                "record_intervention",
+                {
+                    "action": {
+                        "skill": "take-a-small-step",
+                        "description": "Take a short walk after lunch",
+                        "state": "agreed",
+                        "consent_evidence_quote": "I walked after lunch",
+                    }
+                },
+            )
+
+    ChatSession(FunctionModel(stream_function=stream), _pack(), store, "en-US").respond(
+        "I walked after lunch"
+    )
+
+    assert record.id in calls[0]
+    assert [item.state for item in store.list_interventions()] == [InterventionState.TRIED]
+
+
+def _pattern(store: MemoryStore) -> str:
+    session = store.start_session()
+    text = "I always put off calls when I feel judged"
+    message_id = store.save_turn(session, text, "I see.", [])
+    [claim] = store.add_user_reports(
+        [UserReport(kind=MemoryKind.PATTERN, content=text, evidence_quote=text)],
+        message_id,
+        text,
+    )
+    return claim.id
+
+
+def test_a_hypothesis_linked_only_to_claims_is_recorded(tmp_path) -> None:
+    store = MemoryStore(tmp_path)
+    claim_id = _pattern(store)
+
+    async def stream(messages: list[Any], _info: Any):
+        yield (
+            "Could the fear of judgment be what makes calls hard?"
+            if _has_return(messages)
+            else _tool(
+                "record_hypothesis",
+                {
+                    "hypothesis": {
+                        "content": "Fear of judgment may drive the avoided calls",
+                        "linked_claim_ids": [claim_id],
+                    }
+                },
+            )
+        )
+
+    ChatSession(FunctionModel(stream_function=stream), _pack(), store, "en-US").respond(
+        "Calls again today, I put off calls when I feel judged"
+    )
+
+    [hypothesis] = [
+        item for item in store.list_claims() if item.origin is ClaimOrigin.AGENT_HYPOTHESIS
+    ]
+    assert hypothesis.evidence
+
+
+def test_linking_a_claim_the_same_turn_retires_is_retried(tmp_path) -> None:
+    store = MemoryStore(tmp_path)
+    claim_id = _pattern(store)
+    retries: list[str] = []
+
+    async def stream(messages: list[Any], _info: Any):
+        parts = [part for message in messages for part in message.parts]
+        retries[:] = [
+            str(p.content) for p in parts if getattr(p, "part_kind", "") == "retry-prompt"
+        ]
+        if _has_return(messages, "record_hypothesis") or retries:
+            yield "Thanks for correcting me."
+        elif _has_return(messages, "correct_claim"):
+            yield _tool(
+                "record_hypothesis",
+                {
+                    "hypothesis": {
+                        "content": "Fear of judgment may drive the avoided calls",
+                        "linked_claim_ids": [claim_id],
+                    }
+                },
+                "second",
+            )
+        else:
+            yield _tool(
+                "correct_claim",
+                {
+                    "correction": {
+                        "memory_id": claim_id,
+                        "correction_quote": "that is not true anymore",
+                    }
+                },
+            )
+
+    ChatSession(FunctionModel(stream_function=stream), _pack(), store, "en-US").respond(
+        "Actually that is not true anymore"
+    )
+
+    assert any("retires" in item for item in retries)
+
+
+def test_a_small_model_window_gets_less_case_data_instead_of_failing(tmp_path) -> None:
+    store = MemoryStore(tmp_path)
+    for index in range(40):
+        session = store.start_session()
+        text = f"Pattern number {index}: I avoid the phone whenever my manager writes late"
+        message_id = store.save_turn(session, text, "I see.", [])
+        store.add_user_reports(
+            [UserReport(kind=MemoryKind.PATTERN, content=text, evidence_quote=text)],
+            message_id,
+            text,
+        )
+        store.close_session(session)
+    seen: list[int] = []
+
+    async def stream(messages: list[Any], _info: Any):
+        seen.append(sum(len(str(getattr(p, "content", ""))) for m in messages for p in m.parts))
+        yield "Here."
+
+    chat = ChatSession(
+        FunctionModel(stream_function=stream),
+        _pack(),
+        store,
+        "en-US",
+        context_window_tokens=16_000,
+    )
+    chat.input_token_budget = 12000  # tighter than any real model, so trimming must happen
+
+    assert chat.respond("my manager writes late and I avoid the phone").text == "Here."
+    # Later turns keep the smaller case data instead of rolling over every time.
+    chat.respond("and then I check my mail instead")
+    chat.respond("it happened again today")
+    assert len([item for item in store.list_sessions() if item.ended_at is None]) == 1
+    assert len(store.list_sessions()) == 41
+
+
+def test_consolidation_asks_for_a_plain_output_tool(tmp_path) -> None:
+    # Strict native structured output rejects the reflection schema on some providers.
+    store = MemoryStore(tmp_path)
+    session = store.start_session()
+    store.save_turn(session, "Calls were hard again", "That sounds tiring.", [])
+    strict: list[object] = []
+
+    async def stream(_messages: list[Any], info: Any):
+        strict.extend(tool.strict for tool in info.output_tools)
+        yield _tool("final_result", {"summary": "Calls came up."})
+
+    closed = ChatSession(FunctionModel(stream_function=stream), _pack(), store, "en-US").end()
+
+    assert closed is not None and closed.summary == "Calls came up."
+    assert strict == [False]

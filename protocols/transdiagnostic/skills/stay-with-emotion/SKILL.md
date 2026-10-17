@@ -27,5 +27,5 @@ recognized, or deepen affect they are stepping back from.
 ## Following up
 
 Next time, notice whether the same feeling returns around similar situations; that recurrence is
-often what an observation is built on. A feeling the person named for themselves is worth
-recording as their report.
+often what an observation is built on. A feeling the person names as recurring, in their own
+words, is worth recording as their report of a pattern.
