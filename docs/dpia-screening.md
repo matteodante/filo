@@ -33,8 +33,10 @@ against official screening criteria and records the proportionate release decisi
 | Telegram transport | Messages, replies, tool events, and requested memory views | Deliver the private bot conversation | Telegram plus selected model provider | Telegram and provider terms apply; local deletion cannot delete their copies |
 | Public support | Synthetic reproduction and repository metadata only | Maintain the project | GitHub | GitHub terms and repository history apply |
 
-The wellbeing self-check row was added on 2026-10-16 with Wave 5 of the improvement program and
-awaits the maintainer's review of this screening.
+The wellbeing self-check row was added on 2026-10-16 with Wave 5 of the improvement program. The
+maintainer reviewed it on 2026-10-17 and approved it as written: the five answers are a personal
+record the user sends, kept encrypted on the local machine and never sent to the model provider,
+so the processing stays within the screening above.
 
 The public channels prohibit real conversations, health information, secrets, identifiers, database
 files, and exports. The application has no telemetry, advertising, analytics, automatic crash

@@ -115,24 +115,10 @@ operation.
 Known gaps in the current state of the repository. Close them or record why they stay open; do not
 let them accumulate silently.
 
-- The installers pin the release named in `pyproject.toml`. Until the first release tagged under
-  the Filo name exists, that tag still contains the Therapist package and the installers cannot
-  complete, so `README.md` documents the checkout installation instead of the bootstrap. The
-  first Filo release restores the README bootstrap commands in the same change that moves the
-  pin; `RELEASING.md` carries that step.
 - The GitHub repository was renamed from `matteodante/therapist` to `matteodante/filo` on
   2026-10-17 and the old URL redirects. On release day, confirm the redirect and that
   `https://raw.githubusercontent.com/matteodante/filo/main/install.sh` resolves (`RELEASING.md`,
   step 0).
-- The live Codex gates (`tests/test_live_codex_memory.py`, `tests/test_live_codex_safety.py` with
-  three repeats, and the role-play eval) have not been re-run on the final code of the October 2026
-  improvement program. They need the maintainer's ChatGPT login and must pass before the first Filo
-  release.
-- A real Telegram message round-trip is still undocumented. The 2026-08-11 evidence reaches an
-  established polling connection, not a delivered exchange, and the bot is now configured on the
-  maintainer machine, so complete the smoke and record it.
-- The WHO-5 row of the DPIA processing map (`docs/dpia-screening.md`) and the matching change
-  trigger in `docs/claims-and-intended-purpose.md` await the maintainer's review.
 - A claim counts as relevant on a single shared lexical word (rounds and sessions need two), so at
   scale claims fill the case envelope up to its character cap
   (`docs/evidence/offline-instruments-2026-10.md`, section 3). Requiring two shared tokens for

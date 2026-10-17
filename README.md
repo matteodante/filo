@@ -15,29 +15,27 @@ Formerly published as Therapist (v0.1–v0.3).
 
 ## Install
 
-Until the first release published under the Filo name, install from a checkout. This needs Git and
-[uv](https://docs.astral.sh/uv/) 0.11.31 or later:
+macOS or Linux:
 
 ```bash
-git clone https://github.com/matteodante/filo.git
-cd filo
-uv export --frozen --no-dev --no-emit-project --no-hashes |
-  grep -v "^torch==.*sys_platform != 'linux'" >filo-constraints.txt
-uv tool install --python 3.12 --constraints filo-constraints.txt .
-filo setup
-filo doctor
+curl -LsSf https://raw.githubusercontent.com/matteodante/filo/main/install.sh | sh
 ```
 
-The constraints file pins the versions in `uv.lock`, which `uv tool install` does not read, so the
-installation uses the tested versions. On Linux the project selects the CPU build of PyTorch: the
-embedding model runs on the CPU, and the default Linux build adds several gigabytes of CUDA
-libraries. Outside Linux PyTorch is left unpinned, because the locked release has no wheel for
-Intel Macs or macOS 13.
+Windows PowerShell:
 
-The one-line bootstrap installers (`install.sh`, `install.ps1`) still pin `v0.3.1`, which predates
-the rename, so they are not usable until that release. They need no administrator privileges,
-existing Python, or Git checkout, install an isolated Python 3.12 tool, run guided setup, and
-finish with `filo doctor`.
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/matteodante/filo/main/install.ps1 | iex"
+```
+
+The installer needs no administrator privileges, existing Python, or Git checkout. It pins the
+immutable release source, installs an isolated Python 3.12 tool with the versions in `uv.lock`,
+runs guided setup, and finishes with `filo doctor`. On Linux it selects the CPU build of PyTorch:
+the embedding model runs on the CPU, and the default Linux build adds several gigabytes of CUDA
+libraries.
+
+Moving from Therapist: Filo never reads Therapist data. Run `thera telegram-service uninstall` and
+`uv tool uninstall therapist-cli` first; the steps are in
+[docs/releases/v0.4.0.md](docs/releases/v0.4.0.md).
 
 ## Architecture
 

@@ -1,7 +1,8 @@
 # Public alpha readiness record — 2026-08-04
 
-> Superseded on 2026-08-11 by the addendum at the end of this file: all mandatory live gates have
-> since passed on the final candidate and the decision moved to GO.
+> The decision below was superseded on 2026-08-11 by the first addendum, where every mandatory live
+> gate passed and the decision moved to GO. Each later release has its own addendum; the last one,
+> 2026-10-17, covers `v0.4.0`, the first release under the Filo name.
 
 ## Decision
 
@@ -282,3 +283,41 @@ ffbf4b4ecb4067e9a03dcf64ec9d25d90a93117263bd7adca0b8da659bcf0eed  therapist_cli-
 - The `local:` provider has no live baseline on any safety floor.
 - Reinstalling the tool under a running listener leaves it executing replaced files; the release
   notes say to reinstall the service afterwards, and the same applies to a listener started by hand.
+
+## Addendum — 2026-10-17: `v0.4.0` candidate
+
+**Gates:** all mandatory live gates pass. The go/no-go decision, the signed tag, and the prerelease
+stay with the maintainer.
+
+The live gates ran on the maintainer's Windows 11 machine with `codex:gpt-5.6-sol` through the
+personal ChatGPT login and the maintainer's private bot, on the candidate branch of PR #72. The
+behavior pack has protocol root SHA-256
+`7c592f08cd563555c0629ff3aa4bdd20d133126c829c504bada0785e8b1178ff`, and hash validation passes.
+
+### Gates
+
+| Gate | Result |
+| --- | --- |
+| Offline gates (Linux, CI's uv 0.11.31) | Ruff lint and formatting, `ty`, 493 deterministic tests, protocol validation, `sh -n install.sh`, wheel and sdist build, `twine check`, and `uv audit` with no known vulnerabilities |
+| Offline suite on Windows 11 | Passes except nine tests that need macOS or Unix APIs (`os.getuid`, `fcntl`) or a Windows console; the full suite is a Linux CI gate. `install.ps1` parses under PowerShell 7 |
+| Live Codex memory | 1/1 passed |
+| Live bilingual safety ×3 | 30/30 scenario-runs passed in one three-repeat run, no residual failure |
+| Live role-plays | 20/20 passed |
+| Telegram transport smoke | Passed: rich draft replacement and final delivery to the allowlisted chat |
+| Telegram round-trip | Delivered through `filo telegram` in the foreground: the consent notice on first contact, the consent confirmation, and a model reply to one synthetic message. The store held the exchange in one session with an empty outbox. Its text is not kept as evidence |
+
+Two safety floors and the role-play judge's input were brought in line with the current protocol
+and memory design while these gates ran; no semantic judge, forbidden phrase, or forbidden tool was
+weakened. The same runs found and fixed the Windows service launcher (see the release notes).
+
+### Not verified on this machine
+
+- The Windows background service is covered by a unit test only; the maintainer chose a
+  foreground listener and no installed service.
+- The `Release candidate` workflow, the signed tag, and the bootstrap from a clean account follow
+  the merge.
+
+### Observations
+
+- The consent notice is English only, in the terminal and in Telegram, even when the
+  conversation language is Italian.
