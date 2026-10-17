@@ -296,6 +296,27 @@ manual smoke on macOS.
 
 *Check:* the numbers themselves, recorded in `docs/evidence/`.
 
+*Outcome:* the three offline parts are done; the numbers are in
+`docs/evidence/offline-instruments-2026-10.md`.
+- Mutation testing killed 56.3% of the gate and supersession mutants before the new direct tests
+  and 78.5% after. Every remaining survivor either only changes a message or is equivalent. The
+  forgetting path that cleans up intervention records had no test at all; it has now.
+- The retrieval benchmark finds that the 0.40 floor still suits claims and sessions. For rounds,
+  now the primary memory, it is too strict: it keeps 60% of relevant pairs, and it drops 6 of 10
+  cross-lingual memory rounds that rank first.
+- On the three-year archive, a warm message takes about 0.55 s, almost all of it the query
+  embedding. The envelope stays bounded only through the character cap, and the trimming drops
+  excerpts first.
+- Each of these three is recorded there as a measured follow-up, not changed here.
+- Setting up the benchmark also exposed a real bug, now fixed: the Telegram listener failed every
+  embedding call once the model was installed.
+
+*Deviation:* the gate precision corpus was not built. It needs one Claude generation call, and the
+evaluation budget is spent (US$71.53 of the US$80 cap, see `docs/evidence/results-2026-10.md`), so
+nothing else could be run. The mutation run covers the gates' code paths but not their precision
+on realistic messages, and leaves the negation and clause-boundary regular expressions themselves
+unmeasured. The corpus stays the instrument for both once budget is available.
+
 ### Wave 1 — measurement system (Anthropic API key)
 
 **W1.1 Longitudinal simulator and memory probes.**
