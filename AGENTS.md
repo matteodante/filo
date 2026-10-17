@@ -1239,6 +1239,15 @@ FILO_RUN_MULTILINGUAL_EMBEDDING_EVALS=1 \
 `FILO_MULTILINGUAL_EVAL_OFFSET` and `FILO_MULTILINGUAL_EVAL_LIMIT` can split the matrix into
 resource-bounded batches without changing the dataset.
 
+The W0.6 offline instruments run on the maintainer machine without any model provider:
+mutation testing of the quote gates with mutmut, run ad hoc through `uv run --with mutmut` and
+configured in `[tool.mutmut]`; `scripts/benchmark_retrieval.py`, recall@k for claims, rounds and
+sessions with the real local embedding model on `tests/cases/retrieval_benchmark.yaml`; and
+`scripts/benchmark_scale.py`, store, envelope and indexing cost on a generated three-year
+archive. Commands are in `tests/TEST_PLAN.md`, results in
+`docs/evidence/offline-instruments-2026-10.md`. The tool-side quote checks are undecorated
+module-level functions in `filo.chat` so mutmut can reach them.
+
 The Wave 1 measurement system in the top-level `evals/` package is evaluation-only and is not
 packaged in the wheel. It replays pre-generated synthetic personas through `ephemeral`,
 `transcript_only`, and `standard` memory arms of the production `ChatSession` with simulated time,

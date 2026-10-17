@@ -728,19 +728,7 @@ class ChatSession:
             At most one new hypothesis per turn. Link available claim IDs, or give evidence_quote,
             an exact span of the current user message that keeps the negation qualifying it.
             """
-            if set(hypothesis.linked_claim_ids) - set(ctx.deps.available_claims):
-                raise ModelRetry("Hypothesis claim links must come from available context.")
-            if not hypothesis.linked_claim_ids and not _quote_in_text(
-                hypothesis.evidence_quote, ctx.deps.user_text
-            ):
-                raise ModelRetry(
-                    "A hypothesis needs linked claims or an exact quote from this message."
-                )
-            if hypothesis.evidence_quote and not quote_keeps_clause_polarity(
-                hypothesis.evidence_quote, ctx.deps.user_text
-            ):
-                raise ModelRetry("A hypothesis quote may not cross the negation that qualified it.")
-            _check_aliases(hypothesis.aliases, ctx.deps.user_text, "a hypothesis")
+            _check_hypothesis(hypothesis, ctx.deps.user_text, ctx.deps.available_claims)
             if (
                 ctx.deps.actions.hypothesis is not None
                 and ctx.deps.actions.hypothesis != hypothesis
@@ -763,30 +751,7 @@ class ChatSession:
             separately as a user report. Every quote is an exact span of the current user message
             that keeps the negation qualifying it.
             """
-            target = ctx.deps.available_claims.get(correction.memory_id)
-            if target is None:
-                raise ModelRetry("A correction requires an available active claim.")
-            if correction.replacement_quote and target.origin is ClaimOrigin.AGENT_HYPOTHESIS:
-                raise ModelRetry(
-                    "Do not turn an agent hypothesis into a user statement through correction. "
-                    "Use review_hypotheses for accepted wording, or supersede it without a "
-                    "replacement and record a separate user report."
-                )
-            if not _quote_in_text(correction.correction_quote, ctx.deps.user_text):
-                raise ModelRetry("A correction requires an exact current-message quote.")
-            if correction.replacement_quote and not _quote_in_text(
-                correction.replacement_quote, ctx.deps.user_text
-            ):
-                raise ModelRetry("A replacement requires an exact current-message quote.")
-            for quoted, label in (
-                (correction.correction_quote, "correction"),
-                (correction.replacement_quote, "replacement"),
-            ):
-                if quoted and not quote_keeps_clause_polarity(quoted, ctx.deps.user_text):
-                    raise ModelRetry(
-                        f"A {label} quotes across the negation that qualified it. Include what "
-                        "the user was denying or ruling out."
-                    )
+            _check_correction(correction, ctx.deps.user_text, ctx.deps.available_claims)
             if correction.memory_id in {
                 item.memory_id for item in ctx.deps.actions.hypothesis_reviews
             }:
@@ -823,28 +788,7 @@ class ChatSession:
             if set(ids) & {item.memory_id for item in ctx.deps.actions.corrections}:
                 raise ModelRetry("Do not review and correct the same claim in one turn.")
             for review in reviews:
-                item = ctx.deps.available_claims.get(review.memory_id)
-                if item is None or item.origin is not ClaimOrigin.AGENT_HYPOTHESIS:
-                    raise ModelRetry("Review requires an available agent hypothesis.")
-                if review.fit in {ClaimFit.NOT_APPLICABLE, ClaimFit.NOT_REVIEWED}:
-                    raise ModelRetry("Use an explicit hypothesis fit result.")
-                if not _quote_in_text(review.evidence_quote, ctx.deps.user_text):
-                    raise ModelRetry("Each review requires its own exact evidence quote.")
-                if not quote_keeps_clause_polarity(review.evidence_quote, ctx.deps.user_text):
-                    raise ModelRetry(
-                        "A review quote crosses the negation that qualified it; a rejection is "
-                        "not a confirmation."
-                    )
-                if review.accepted_wording_quote and not _quote_in_text(
-                    review.accepted_wording_quote, ctx.deps.user_text
-                ):
-                    raise ModelRetry("Accepted wording must be an exact user quote.")
-                if review.accepted_wording_quote and not quote_keeps_clause_polarity(
-                    review.accepted_wording_quote, ctx.deps.user_text
-                ):
-                    raise ModelRetry(
-                        "Accepted wording quotes across the negation that qualified it."
-                    )
+                _check_review(review, ctx.deps.user_text, ctx.deps.available_claims)
             staged = {item.memory_id: item for item in ctx.deps.actions.hypothesis_reviews}
             for review in reviews:
                 existing = staged.get(review.memory_id)
@@ -870,17 +814,8 @@ class ChatSession:
             An accepted focus and its evidence_quote are exact spans of the current user message
             that keep the negation qualifying them.
             """
-            if mode is FocusMode.ACCEPT and (
-                not _quote_in_text(focus, ctx.deps.user_text)
-                or not _quote_in_text(evidence_quote, ctx.deps.user_text)
-            ):
-                raise ModelRetry("Accepted focus and evidence must be exact current-user text.")
-            if mode is FocusMode.ACCEPT and not all(
-                quote_keeps_clause_polarity(quoted, ctx.deps.user_text)
-                for quoted in (focus, evidence_quote)
-                if quoted
-            ):
-                raise ModelRetry("An accepted focus may not quote across its negation.")
+            if mode is FocusMode.ACCEPT:
+                _check_accepted_focus(focus, evidence_quote, ctx.deps.user_text)
             ctx.deps.actions.focus_mode = mode
             ctx.deps.actions.focus = focus
             ctx.deps.actions.focus_evidence_quote = evidence_quote
@@ -899,16 +834,7 @@ class ChatSession:
             no-op and creates no durable state.
             """
             if feedback.reusable:
-                if not _quote_in_text(feedback.evidence_quote, ctx.deps.user_text):
-                    raise ModelRetry(
-                        "Reusable process feedback requires an exact current-message quote."
-                    )
-                _check_wording(
-                    feedback.content,
-                    feedback.evidence_quote,
-                    ctx.deps.user_text,
-                    subject="A process preference",
-                )
+                _check_process_feedback(feedback, ctx.deps.user_text)
             if feedback.reusable and feedback not in ctx.deps.actions.process_feedback:
                 ctx.deps.actions.process_feedback.append(feedback)
             _record_tool_call(ctx.deps.actions, "record_process_feedback")
@@ -949,21 +875,7 @@ class ChatSession:
                 ctx.deps.actions.referenced_intervention_ids.add(action.record_id)
             elif action.state not in {InterventionState.OFFERED, InterventionState.AGREED}:
                 raise ModelRetry("A new intervention must be offered or agreed.")
-            if (
-                action.record_id is not None or action.state is InterventionState.AGREED
-            ) and not _quote_in_text(action.consent_evidence_quote, ctx.deps.user_text):
-                raise ModelRetry("Agreement or update requires an exact current-user quote.")
-            if action.consent_evidence_quote and not _quote_in_text(
-                action.consent_evidence_quote, ctx.deps.user_text
-            ):
-                raise ModelRetry("A consent quote must be exact current-user text.")
-            if action.consent_evidence_quote and not quote_keeps_clause_polarity(
-                action.consent_evidence_quote, ctx.deps.user_text
-            ):
-                raise ModelRetry(
-                    "Consent quotes across the negation that qualified it. A refusal is not "
-                    "consent: include what the user was declining."
-                )
+            _check_consent(action, ctx.deps.user_text)
             if (
                 ctx.deps.actions.intervention is not None
                 and ctx.deps.actions.intervention != action
@@ -984,23 +896,7 @@ class ChatSession:
             that keep the negation qualifying them; content is that quote or a shortening of it
             that only drops words.
             """
-            if not _quote_in_text(choice.evidence_quote, ctx.deps.user_text):
-                raise ModelRetry("A support choice requires exact current-message evidence.")
-            _check_wording(
-                choice.content,
-                choice.evidence_quote,
-                ctx.deps.user_text,
-                subject="A support choice",
-            )
-            if choice.barrier and not _quote_in_text(choice.barrier, ctx.deps.user_text):
-                raise ModelRetry("A support barrier must use exact current-message wording.")
-            if choice.preference and not _quote_in_text(choice.preference, ctx.deps.user_text):
-                raise ModelRetry("A support preference must use exact current-message wording.")
-            for quoted, label in ((choice.barrier, "barrier"), (choice.preference, "preference")):
-                if quoted and not quote_keeps_clause_polarity(quoted, ctx.deps.user_text):
-                    raise ModelRetry(
-                        f"A support {label} quotes across the negation that qualified it."
-                    )
+            _check_support_choice(choice, ctx.deps.user_text)
             if choice not in ctx.deps.actions.support_choices:
                 ctx.deps.actions.support_choices.append(choice)
             _record_tool_call(ctx.deps.actions, "record_support_choice")
@@ -1597,6 +1493,122 @@ def _check_wording(content: str, quote: str, evidence: str, *, subject: str) -> 
             "order with every negation. Remove the added or reordered words, or set content to "
             "exactly the evidence_quote text."
         )
+
+
+def _check_hypothesis(
+    hypothesis: HypothesisAction, user_text: str, available_claims: dict[str, ContextClaim]
+) -> None:
+    if set(hypothesis.linked_claim_ids) - set(available_claims):
+        raise ModelRetry("Hypothesis claim links must come from available context.")
+    if not hypothesis.linked_claim_ids and not _quote_in_text(hypothesis.evidence_quote, user_text):
+        raise ModelRetry("A hypothesis needs linked claims or an exact quote from this message.")
+    if hypothesis.evidence_quote and not quote_keeps_clause_polarity(
+        hypothesis.evidence_quote, user_text
+    ):
+        raise ModelRetry("A hypothesis quote may not cross the negation that qualified it.")
+    _check_aliases(hypothesis.aliases, user_text, "a hypothesis")
+
+
+def _check_correction(
+    correction: ClaimCorrection, user_text: str, available_claims: dict[str, ContextClaim]
+) -> None:
+    target = available_claims.get(correction.memory_id)
+    if target is None:
+        raise ModelRetry("A correction requires an available active claim.")
+    if correction.replacement_quote and target.origin is ClaimOrigin.AGENT_HYPOTHESIS:
+        raise ModelRetry(
+            "Do not turn an agent hypothesis into a user statement through correction. "
+            "Use review_hypotheses for accepted wording, or supersede it without a "
+            "replacement and record a separate user report."
+        )
+    if not _quote_in_text(correction.correction_quote, user_text):
+        raise ModelRetry("A correction requires an exact current-message quote.")
+    if correction.replacement_quote and not _quote_in_text(correction.replacement_quote, user_text):
+        raise ModelRetry("A replacement requires an exact current-message quote.")
+    for quoted, label in (
+        (correction.correction_quote, "correction"),
+        (correction.replacement_quote, "replacement"),
+    ):
+        if quoted and not quote_keeps_clause_polarity(quoted, user_text):
+            raise ModelRetry(
+                f"A {label} quotes across the negation that qualified it. Include what "
+                "the user was denying or ruling out."
+            )
+
+
+def _check_review(
+    review: HypothesisReview, user_text: str, available_claims: dict[str, ContextClaim]
+) -> None:
+    item = available_claims.get(review.memory_id)
+    if item is None or item.origin is not ClaimOrigin.AGENT_HYPOTHESIS:
+        raise ModelRetry("Review requires an available agent hypothesis.")
+    if review.fit in {ClaimFit.NOT_APPLICABLE, ClaimFit.NOT_REVIEWED}:
+        raise ModelRetry("Use an explicit hypothesis fit result.")
+    if not _quote_in_text(review.evidence_quote, user_text):
+        raise ModelRetry("Each review requires its own exact evidence quote.")
+    if not quote_keeps_clause_polarity(review.evidence_quote, user_text):
+        raise ModelRetry(
+            "A review quote crosses the negation that qualified it; a rejection is "
+            "not a confirmation."
+        )
+    if review.accepted_wording_quote and not _quote_in_text(
+        review.accepted_wording_quote, user_text
+    ):
+        raise ModelRetry("Accepted wording must be an exact user quote.")
+    if review.accepted_wording_quote and not quote_keeps_clause_polarity(
+        review.accepted_wording_quote, user_text
+    ):
+        raise ModelRetry("Accepted wording quotes across the negation that qualified it.")
+
+
+def _check_accepted_focus(focus: str, evidence_quote: str | None, user_text: str) -> None:
+    if not _quote_in_text(focus, user_text) or not _quote_in_text(evidence_quote, user_text):
+        raise ModelRetry("Accepted focus and evidence must be exact current-user text.")
+    if not all(
+        quote_keeps_clause_polarity(quoted, user_text)
+        for quoted in (focus, evidence_quote)
+        if quoted
+    ):
+        raise ModelRetry("An accepted focus may not quote across its negation.")
+
+
+def _check_process_feedback(feedback: ProcessFeedbackAction, user_text: str) -> None:
+    if not _quote_in_text(feedback.evidence_quote, user_text):
+        raise ModelRetry("Reusable process feedback requires an exact current-message quote.")
+    _check_wording(
+        feedback.content, feedback.evidence_quote, user_text, subject="A process preference"
+    )
+
+
+def _check_consent(action: InterventionAction, user_text: str) -> None:
+    if (
+        action.record_id is not None or action.state is InterventionState.AGREED
+    ) and not _quote_in_text(action.consent_evidence_quote, user_text):
+        raise ModelRetry("Agreement or update requires an exact current-user quote.")
+    if action.consent_evidence_quote and not _quote_in_text(
+        action.consent_evidence_quote, user_text
+    ):
+        raise ModelRetry("A consent quote must be exact current-user text.")
+    if action.consent_evidence_quote and not quote_keeps_clause_polarity(
+        action.consent_evidence_quote, user_text
+    ):
+        raise ModelRetry(
+            "Consent quotes across the negation that qualified it. A refusal is not "
+            "consent: include what the user was declining."
+        )
+
+
+def _check_support_choice(choice: SupportChoiceAction, user_text: str) -> None:
+    if not _quote_in_text(choice.evidence_quote, user_text):
+        raise ModelRetry("A support choice requires exact current-message evidence.")
+    _check_wording(choice.content, choice.evidence_quote, user_text, subject="A support choice")
+    if choice.barrier and not _quote_in_text(choice.barrier, user_text):
+        raise ModelRetry("A support barrier must use exact current-message wording.")
+    if choice.preference and not _quote_in_text(choice.preference, user_text):
+        raise ModelRetry("A support preference must use exact current-message wording.")
+    for quoted, label in ((choice.barrier, "barrier"), (choice.preference, "preference")):
+        if quoted and not quote_keeps_clause_polarity(quoted, user_text):
+            raise ModelRetry(f"A support {label} quotes across the negation that qualified it.")
 
 
 def _record_tool_call(actions: TurnActions, name: str) -> None:

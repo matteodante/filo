@@ -1,0 +1,228 @@
+# Synthetic labeled set for the W0.6 retrieval benchmark (scripts/benchmark_retrieval.py).
+# Invented people and events only. Each topic is one conversation session: its rounds hold the
+# concrete details, as conversations are the primary memory after W2.5, and only some topics
+# also carry a pattern or preference claim quoted from their first user message. Queries are
+# paraphrases with little shared vocabulary, often in the other language, and every query is
+# labeled relevant to its own topic's claim, rounds and session only.
+name: retrieval_benchmark
+topics:
+  - id: work_calls
+    claim:
+      kind: pattern
+      quote: I keep postponing calls with my manager
+    rounds:
+      - user: I keep postponing calls with my manager, and now Paolo wants the quarterly report by Friday.
+        assistant: What makes the call itself harder than writing to him?
+      - user: I wrote the email three times and deleted it, then I just didn't phone.
+        assistant: So the moment of dialing is where it stops.
+    summary: Avoidance of phone calls with the manager Paolo about the late quarterly report.
+    queries:
+      - Domani devo telefonare al mio capo e ho già voglia di rimandare.
+      - I'm dreading talking to my boss about the deadline.
+
+  - id: sleep
+    claim:
+      kind: pattern
+      quote: mi sveglio alle quattro e non riesco più a dormire
+    rounds:
+      - user: Da quando faccio i turni di notte mi sveglio alle quattro e non riesco più a dormire.
+        assistant: Quante notti questa settimana è successo?
+      - user: Quasi tutte. Poi al lavoro sono uno zombie.
+        assistant: La stanchezza del giorno dopo pesa quanto la notte stessa.
+    summary: Early waking at four since starting night shifts, with daytime exhaustion.
+    queries:
+      - I was awake again before dawn and couldn't drift off.
+      - Stanotte ho fissato il soffitto per ore.
+
+  - id: sister
+    rounds:
+      - user: Al pranzo della domenica Giulia mi ha accusato di non occuparmi mai della mamma.
+        assistant: Cosa hai risposto in quel momento?
+      - user: Niente, sono uscito a fumare e me ne sono andato prima del dolce.
+        assistant: Andartene è stato il modo di non litigare davanti a tutti.
+    summary: Conflict with the sister Giulia at Sunday lunch about caring for their mother.
+    queries:
+      - My sibling blamed me in front of the family again.
+      - Litigo sempre con mia sorella per nostra madre.
+
+  - id: running
+    rounds:
+      - user: I started running in the park on Saturdays and did five kilometres without stopping.
+        assistant: How did you feel in the hours after?
+      - user: Lighter, honestly. The worry about work didn't follow me there.
+        assistant: That lightness is worth noticing.
+    summary: Running in the park on Saturdays and feeling lighter afterwards.
+    queries:
+      - Sono uscito a correre e dopo stavo meglio.
+      - Exercise outdoors seems to clear my head.
+
+  - id: rent
+    rounds:
+      - user: The landlord's letter says the rent goes up by 150 euros from next month.
+        assistant: What does that do to your monthly budget?
+      - user: It eats everything I was saving. I don't know how I'll manage.
+        assistant: The worry is about the whole month, not just this bill.
+    summary: Rent increase of 150 euros announced by the landlord, threatening savings.
+    queries:
+      - Non so se riesco a pagare la casa questo mese.
+      - Money is tight and the flat costs more now.
+
+  - id: grief
+    rounds:
+      - user: Mia nonna è morta la primavera scorsa e oggi sono passato davanti al suo orto.
+        assistant: Che cosa ti è tornato in mente lì davanti?
+      - user: Le sue mani nella terra, i pomodori che mi dava ogni agosto.
+        assistant: È un ricordo pieno di lei.
+    summary: Grief for the grandmother who died last spring, remembered through her vegetable garden.
+    queries:
+      - I miss my grandma so much these days.
+      - È un anno che non c'è più la nonna.
+
+  - id: exam
+    claim:
+      kind: pattern
+      quote: studio solo la notte prima dell'esame
+    rounds:
+      - user: Come sempre studio solo la notte prima dell'esame, e venerdì c'è diritto privato.
+        assistant: Cosa succede quando apri il libro con più anticipo?
+      - user: Leggo una pagina, mi sento stupido, e chiudo tutto.
+        assistant: Quindi il blocco arriva insieme a quel giudizio su di te.
+    summary: Last-minute studying for the private law exam on Friday and feeling stupid when starting.
+    queries:
+      - I have a test next week and I haven't opened the book.
+      - Rimando sempre lo studio all'ultimo.
+
+  - id: move
+    rounds:
+      - user: I accepted the job in Bologna, so I'm moving there in March.
+        assistant: What are you most unsure about in the move?
+      - user: Leaving my friends behind. I won't know anyone in the new city.
+        assistant: A new job and an empty social life at once is a lot.
+    summary: Upcoming move to Bologna in March for a new job, worried about leaving friends.
+    queries:
+      - Trasferirmi in un'altra città mi spaventa.
+      - I'm nervous about relocating for work.
+
+  - id: dog
+    rounds:
+      - user: Pepe ha smesso di mangiare e il veterinario vuole fare altre analisi.
+        assistant: Come stai tu mentre aspetti i risultati?
+      - user: Male. È il mio cane da dodici anni, e le visite costano tantissimo.
+        assistant: Paura per lui e per i soldi insieme.
+    summary: The twelve-year-old dog Pepe is ill, with costly vet tests and fear for him.
+    queries:
+      - My pet is sick and I'm scared.
+      - Le spese dal veterinario mi stanno rovinando.
+
+  - id: friend
+    rounds:
+      - user: Marco got married on Saturday and didn't invite me.
+        assistant: What went through your mind when you found out?
+      - user: That I'm the one people forget. We were best friends at school.
+        assistant: It touched an old fear of being left out.
+    summary: Not being invited to the wedding of the school friend Marco, feeling forgotten.
+    queries:
+      - Un amico mi ha escluso da un evento importante.
+      - I felt left out by someone I was close to.
+
+  - id: panic
+    rounds:
+      - user: Sulla metro stamattina il cuore ha cominciato a battere fortissimo e sono sceso alla prima fermata.
+        assistant: Cosa hai fatto appena sceso?
+      - user: Mi sono seduto su una panchina finché le mani hanno smesso di tremare.
+        assistant: Sei rimasto lì finché è passato.
+    summary: Panic on the metro with a racing heart, getting off at the first stop.
+    queries:
+      - I got really anxious on the subway and had to get out.
+      - Ho paura di prendere i mezzi pubblici.
+
+  - id: short_replies
+    claim:
+      kind: preference
+      quote: preferisco risposte brevi e niente esercizi
+    rounds:
+      - user: Te lo dico subito, preferisco risposte brevi e niente esercizi.
+        assistant: Va bene, sarò breve.
+    summary: Stated preference for short replies without exercises.
+    queries:
+      - Please keep your answers short.
+      - I don't want homework or worksheets.
+
+  - id: wine
+    claim:
+      kind: pattern
+      quote: the evenings I spend alone I drink more wine
+    rounds:
+      - user: I noticed that the evenings I spend alone I drink more wine than I meant to.
+        assistant: How many evenings a week are like that?
+      - user: Three or four. It starts with one glass while cooking.
+        assistant: So it begins as something ordinary.
+    summary: Drinking more wine than intended on evenings alone.
+    queries:
+      - Bevo troppo quando sono da solo la sera.
+      - Alcohol has crept up when I'm by myself.
+
+  - id: partner
+    rounds:
+      - user: Luca vuole un figlio entro un anno e io non so cosa voglio.
+        assistant: Cosa ti fa più paura in questa decisione?
+      - user: Di dirgli di no e perderlo, o di dirgli di sì e pentirmene.
+        assistant: Due paure che tirano in direzioni opposte.
+    summary: Uncertainty about having a child as the partner Luca wishes.
+    queries:
+      - My boyfriend wants kids and I'm not sure.
+      - Non so se voglio diventare genitore.
+
+  - id: father
+    rounds:
+      - user: My father has heart surgery next Tuesday and I'm the one driving him to the hospital.
+        assistant: How are you holding up before it?
+      - user: I keep checking the clinic's website at night.
+        assistant: The waiting is hard.
+    summary: The father's heart surgery next Tuesday and anxious waiting.
+    queries:
+      - Papà deve essere operato e sono in ansia.
+      - Worried about my dad's operation.
+
+  - id: interview
+    rounds:
+      - user: Al colloquio con lo studio di design mi sono bloccato quando mi hanno chiesto quanto volevo guadagnare.
+        assistant: Cosa avresti voluto rispondere?
+      - user: Una cifra giusta, ma mi sembrava di chiedere troppo.
+        assistant: Chiedere sembra quasi una pretesa.
+    summary: Freezing at the design studio interview when asked about salary expectations.
+    queries:
+      - I froze when they asked about pay in the job interview.
+      - Non riesco a negoziare lo stipendio.
+
+# Near misses: about something close to a topic but not what its queries ask about.
+near_misses:
+  - user: My cousin's wedding was lovely, we danced all night.
+    assistant: It sounds like a good evening.
+  - user: Mio fratello ha cambiato lavoro e sembra contento.
+    assistant: Una buona notizia in famiglia.
+  - user: I watched a documentary about marathon runners.
+    assistant: What caught your attention?
+  - user: Ho pagato la bolletta della luce in tempo.
+    assistant: Una cosa in meno a cui pensare.
+  - user: The neighbour's cat sleeps on my balcony.
+    assistant: A quiet visitor.
+  - user: Ho letto un libro sul sonno dei bambini per mia cugina.
+    assistant: Era utile?
+
+# Filler rounds are generated from these parts, combining every subject with every detail.
+filler:
+  subjects:
+    - It rained all day here
+    - Ho finito una serie su un museo di Parigi
+    - I repotted the basil on the windowsill
+    - Abbiamo giocato a un gioco da tavolo nuovo
+    - I tried a new route to the library
+    - Ho sistemato le foto delle vacanze
+  details:
+    - and it was fine.
+    - e non è successo niente di speciale.
+    - which took most of the afternoon.
+    - ma niente di importante.
+    - nothing more to say about it.
+  assistant: Thanks for telling me.

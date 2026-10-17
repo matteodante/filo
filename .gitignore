@@ -9,3 +9,4 @@ __pycache__/
 *.key
 dist/
 filo-constraints.txt
+mutants/
