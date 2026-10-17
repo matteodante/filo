@@ -28,6 +28,24 @@ Both arms remain far above the floor: with no memory (`ephemeral`), 28% of probe
 correctly against 72–78% with either kind of memory. Most of the value comes from keeping and
 retrieving the conversation, not from the extracted claims.
 
+## Measurement caveat found after the runs
+
+Found on 2026-10-17, after every run below. With PydanticAI 2.57, Anthropic received strict native
+structured output for the session reflection and rejected its schema as too complex (HTTP 400).
+Each affected session closed without a reflection, recording `consolidation_error`
+`ModelHTTPError` and keeping its transcript:
+
+- in the final test-split runs (`20261016T192248-*`), 24 of the 28 closed sessions in the
+  `standard` arm stores;
+- in the MP01 sanity run after W2.5 (`20261016T232424-acd0a5`), 5 of 6 closed sessions.
+
+The morning runs, on PydanticAI 2.22, were not affected. Both memory arms consolidate, so the
+standard-against-transcript-only comparison is, in effect, between two arms that mostly lacked
+session summaries, not of the full designed memory. The ephemeral arm keeps no sessions and is
+unaffected. The fix
+(#69) returns the reflection through a plain, non-strict output tool and was verified live. The
+results are not re-run, because the budget is spent.
+
 ## Memory study, test split MP09–MP16, final code (main at 15ee168)
 
 Runs `20261016T192248-4e2612` and `20261016T192248-f40e51`, generated with

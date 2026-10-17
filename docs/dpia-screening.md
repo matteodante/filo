@@ -83,7 +83,8 @@ and their legal position depends on actual use.
 - opt-in remote providers with disclosed external data flow.
 - strict separation of protocol instructions from a separately labelled JSON case-data envelope;
 - standard, transcript-only, and ephemeral modes, plus disabled-by-default retention periods;
-- no migration or plaintext migration backup; incompatible stores fail closed.
+- no plaintext migration backup; a Therapist data directory is never read, Filo stores migrate
+  forward in one verified transaction, and unknown or newer stores fail closed.
 
 These controls reduce exposure but do not establish GDPR compliance, anonymity, confidentiality, or
 provider deletion.

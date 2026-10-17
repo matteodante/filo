@@ -671,3 +671,71 @@ conversations.
 - **The literature cited is mostly preprints and vendor reports.** Every remedy is treated as a
   hypothesis and kept only if the measurements support it.
 - **Evaluation can over-fit.** The frozen split and the change log on floors guard against it.
+
+## 9. Status at 2026-10-17
+
+The program ran on 2026-10-16 and 2026-10-17. Pull requests are numbered as merged on `main`.
+
+**Wave 0**
+- W0.1 Documentation structure: this program and the research notes are committed (#47). The split
+  of `AGENTS.md` into a short guide and `docs/*.md` specifications, and `CLAUDE.md`, were not done;
+  `AGENTS.md` stays the single canonical guide.
+- W0.2 Install footprint and tested dependencies: done, #55 (lock-constrained installs, CPU torch on
+  Linux, PydanticAI 2.57).
+- W0.2b Embeddings without torch: measured and not adopted (#58).
+- W0.3 Forward schema migrations: done, #63.
+- W0.4 Telegram turn idempotency and delivery: the outbox and the update offset commit in one
+  transaction, mode-aware, with a refreshed typing indicator (#48); poison-message handling
+  followed in #67. Merging message bursts, a single compact tool trace, and running consolidation
+  from the idle loop were not built.
+- W0.5 Long-running process safety: done, #49 (per-request token refresh) and #59 (single poller
+  lock, failure classification, `/retry`, `doctor` checks, PydanticAI's `openai-codex` provider).
+  #67 added the macOS service status fix and detection of a leftover Therapist listener.
+- W0.6 Offline quality instruments: mutation testing, the retrieval benchmark, and the scale
+  benchmark are done (#70), with the excerpt-trimming fix and a 0.35 relevance floor for archived
+  rounds. Deviation: the gate precision corpus was skipped for budget.
+
+**Wave 1**
+- W1.1–W1.3 measurement system, judges, statistics, and safety suite v2: done, #50.
+- W1.4 report: `docs/evidence/results-2026-10.md`. Deviations: the `claude-sonnet-5-5`
+  confirmation and the full safety re-run on the final code were not run, by the maintainer's
+  direction; the Codex and `local:` confirmations were not run. H1–H4 were not supported, which
+  led to W2.5. A measurement caveat found afterwards (session reflections rejected as strict
+  native output, fixed in #69) is recorded in the results and in the preregistration amendments.
+
+**Wave 2**
+- W2.1–W2.2 retrieval engine, time and continuity: done, #56.
+- W2.3 memory writing: done, #53; the `split` arm it added was measured, not adopted, and removed in
+  #65.
+- W2.4 memory guards: done, #60.
+- W2.5 simpler memory: done, #65, with the MP01 sanity run archived in #66.
+
+**Wave 3**
+- W3.1–W3.2 risk scope, precedence, `/crisis`, honest disagreement: done, #54.
+- W3.3 skill consolidation: done, #61 (eleven skills, short root).
+- W3.4 use-pattern awareness: minimal, #61 (a periodic reminder that Filo is an AI in long
+  sessions). Local usage statistics and a late-night check-in were not built.
+- The formulation links became a list for strict structured output (#64).
+
+**Wave 4**
+- W4.1 rename to Filo: done, #51; the maintainer renamed the GitHub repository on 2026-10-17.
+- W4.2 release: not done; it is the first Filo release below.
+
+**Wave 5**
+- W5.1–W5.3 experiment follow-up, `/recap`, optional WHO-5 `/wellbeing`: done, #62.
+
+**Pre-release fixes:** #67 (Telegram listener blockers: the embedder in the listener, poison
+messages, macOS service status, a leftover Therapist listener in `doctor`), #68 (store stale writes
+and forgetting gaps), #69 (conversation tool fixes, consolidation through a non-strict output tool,
+Italian register without assumed gender).
+
+**What remains for the maintainer**
+- Repository rename: done 2026-10-17; confirm the redirect again on release day.
+- The first Filo release, following `RELEASING.md` ("First release under the Filo name").
+- The live Codex gates on the final code: `tests/test_live_codex_memory.py` and
+  `tests/test_live_codex_safety.py` with three repeats, which need the maintainer's ChatGPT login.
+- A real Telegram round-trip smoke, recorded as evidence.
+- The manual macOS checks (Telegram service, local network access for a `local:` server).
+- Review of the WHO-5 row in `docs/dpia-screening.md` and the matching note in
+  `docs/claims-and-intended-purpose.md`.
+- Reinstall or relink the Claude GitHub App on the renamed repository.
