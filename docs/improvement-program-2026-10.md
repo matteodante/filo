@@ -730,12 +730,9 @@ and forgetting gaps), #69 (conversation tool fixes, consolidation through a non-
 Italian register without assumed gender).
 
 **What remains for the maintainer**
-- Repository rename: done 2026-10-17; confirm the redirect again on release day.
-- The first Filo release, following `RELEASING.md` ("First release under the Filo name").
-- The live Codex gates on the final code, the role-play eval, and a real Telegram round-trip:
-  done 2026-10-17 on the maintainer's Windows machine, recorded in the addendum of
-  `docs/release-readiness-2026-08-04.md`.
+- The first Filo release, following `RELEASING.md` ("First release under the Filo name"): the
+  live gates have passed, so what is left is the merge, the `Release candidate` workflow, the
+  signed tag, the prerelease, and the bootstrap from a clean account. On release day, confirm
+  that the old repository URL still redirects.
 - The manual macOS checks (Telegram service, local network access for a `local:` server).
-- Review of the WHO-5 row in `docs/dpia-screening.md` and the matching note in
-  `docs/claims-and-intended-purpose.md`.
 - Reinstall or relink the Claude GitHub App on the renamed repository.

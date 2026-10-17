@@ -89,19 +89,16 @@ The installers pin a tag, and every tag up to `v0.3.1` ships the Therapist packa
 command. The first Filo release therefore moves the installer pin and the public install path
 together:
 
-0. Rename the GitHub repository from `therapist` to `filo`. Done on 2026-10-17: the README
-   checkout command, the policy links, and the installers' source URL now resolve. On release
-   day, confirm again that `https://github.com/matteodante/therapist` redirects and that
-   `https://raw.githubusercontent.com/matteodante/filo/main/install.sh` resolves. Until the
-   release, the installers on `main` fail closed: the pinned `v0.3.1` tag still ships Therapist,
-   which the installer reports instead of installing.
+0. The GitHub repository is renamed from `therapist` to `filo`. On release day, confirm that
+   `https://github.com/matteodante/therapist` redirects and that
+   `https://raw.githubusercontent.com/matteodante/filo/main/install.sh` resolves.
 1. Bump the version in `pyproject.toml`, `src/filo/__init__.py`, `install.sh`, and `install.ps1`.
 2. Restore the one-line bootstrap commands in the README `Install` section, replacing the checkout
-   installation, and drop the matching item from the AGENTS.md open work.
+   installation.
 
-   Steps 1 and 2 are done for `v0.4.0` in one change. Merge it only after the live gates pass on
-   its branch, and tag the merge commit right away: until the tag exists, the README bootstrap on
-   `main` points at a tag that is not there yet and stops with a download error.
+   Make steps 1 and 2 in one change. Merge it only after the live gates pass on its branch, and
+   tag the merge commit right away: until the tag exists, the README bootstrap on `main` points at
+   a tag that is not there yet and stops with a download error.
 3. After publication, run the bootstrap from `main` on a clean account and confirm it installs
    `filo` before announcing the release.
 
