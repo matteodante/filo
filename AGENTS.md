@@ -115,9 +115,6 @@ operation.
 Known gaps in the current state of the repository. Close them or record why they stay open; do not
 let them accumulate silently.
 
-- `install.sh` runs `uv tool update-shell` under `set -e`, so where `$SHELL` is unset, as in a bare
-  container, uv cannot pick a shell to update and the installer stops after installing `filo` and
-  before `filo setup`. An interactive login shell always sets it.
 - A claim counts as relevant on a single shared lexical word (rounds and sessions need two), so at
   scale claims fill the case envelope up to its character cap
   (`docs/evidence/offline-instruments-2026-10.md`, section 3). Requiring two shared tokens for
@@ -613,9 +610,11 @@ require the release checksum manifest to match its repository-pinned SHA-256 dig
 the selected platform archive to match the digest in that verified manifest. They install the
 verified binaries without delegating to another network bootstrap. They select uv's MIT license,
 verify its text from the pinned upstream source commit, and persist it next to the installed binary.
-`uv tool update-shell` handles the application tool path explicitly. Updating the pinned uv version
-requires independently checking the new manifest, license revision, and digests against official
-upstream assets.
+`uv tool update-shell` puts the application tool directory on PATH. Where it fails, as where
+`$SHELL` is unset in a bare container, the installer names that directory for the user to add and
+continues with setup, because `filo` is already installed. Updating the pinned uv version requires
+independently checking the new manifest, license revision, and digests against official upstream
+assets.
 
 Primary commands:
 

@@ -156,9 +156,16 @@ CONSTRAINTS="$TEMP_DIRECTORY/filo-constraints.txt"
     --quiet --output-file "$TEMP_DIRECTORY/locked-versions.txt"
 grep -v "^torch==.*sys_platform != 'linux'" "$TEMP_DIRECTORY/locked-versions.txt" >"$CONSTRAINTS"
 "$UV" tool install --force --python 3.12 --constraints "$CONSTRAINTS" "$TEMP_DIRECTORY"
-"$UV" tool update-shell
 
 TOOL_BIN="$("$UV" tool dir --bin)"
+# uv cannot update a shell it cannot identify, as where $SHELL is unset in a bare container. Filo is
+# already installed by then, so setup still runs and the user is told which directory to add.
+PATH_UPDATED=1
+if ! "$UV" tool update-shell; then
+    PATH_UPDATED=0
+    echo "uv could not add $TOOL_BIN to PATH. Add it yourself to run filo from a new shell." >&2
+fi
+
 FILO="$TOOL_BIN/filo"
 if [ ! -x "$FILO" ]; then
     echo "Filo was installed but $FILO is unavailable." >&2
@@ -173,4 +180,8 @@ esac
 
 echo
 echo "Filo is ready. Start it with: filo chat"
-echo "If filo is not found in a new command, restart your shell."
+if [ "$PATH_UPDATED" = 1 ]; then
+    echo "If filo is not found in a new command, restart your shell."
+else
+    echo "filo is not on PATH yet: add $TOOL_BIN to PATH first."
+fi

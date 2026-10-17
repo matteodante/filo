@@ -343,5 +343,3 @@ cfcdd748e8a41601aeb89fe17eba8adc9cff0b2993beee6618a7ad3832c9a40b  filo_cli-0.4.0
 
 - The consent notice is English only, in the terminal and in Telegram, even when the
   conversation language is Italian.
-- Where `$SHELL` is unset, the installer stops at `uv tool update-shell` after installing `filo`
-  (see the AGENTS.md open work).

@@ -134,15 +134,22 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "uv could not install Filo."
     }
-    & $Uv tool update-shell
-    if ($LASTEXITCODE -ne 0) {
-        throw "uv could not add its tool directory to PATH."
-    }
 
     $ToolBin = (& $Uv tool dir --bin | Out-String).Trim()
     if ($LASTEXITCODE -ne 0) {
         throw "uv could not locate its tool directory."
     }
+    # Filo is already installed when the PATH update runs, so a failure there does not stop setup;
+    # the user is told which directory to add.
+    & $Uv tool update-shell
+    $PathUpdated = $LASTEXITCODE -eq 0
+    if (-not $PathUpdated) {
+        Write-Warning (
+            "uv could not add $ToolBin to PATH. " +
+            "Add it yourself to run filo from a new PowerShell."
+        )
+    }
+
     $Filo = Join-Path $ToolBin "filo.exe"
     if (-not (Test-Path -LiteralPath $Filo -PathType Leaf)) {
         throw "Filo was installed but $Filo is unavailable."
@@ -159,7 +166,11 @@ try {
 
     Write-Host ""
     Write-Host "Filo is ready. Start it with: filo chat"
-    Write-Host "If filo is not found in a new command, restart PowerShell."
+    if ($PathUpdated) {
+        Write-Host "If filo is not found in a new command, restart PowerShell."
+    } else {
+        Write-Host "filo is not on PATH yet: add $ToolBin to PATH first."
+    }
 } finally {
     Remove-Item -LiteralPath $TemporaryDirectory -Recurse -Force -ErrorAction SilentlyContinue
 }
