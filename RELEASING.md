@@ -98,6 +98,10 @@ together:
 1. Bump the version in `pyproject.toml`, `src/filo/__init__.py`, `install.sh`, and `install.ps1`.
 2. Restore the one-line bootstrap commands in the README `Install` section, replacing the checkout
    installation, and drop the matching item from the AGENTS.md open work.
+
+   Steps 1 and 2 are done for `v0.4.0` in one change. Merge it only after the live gates pass on
+   its branch, and tag the merge commit right away: until the tag exists, the README bootstrap on
+   `main` points at a tag that is not there yet and stops with a download error.
 3. After publication, run the bootstrap from `main` on a clean account and confirm it installs
    `filo` before announcing the release.
 

@@ -115,11 +115,6 @@ operation.
 Known gaps in the current state of the repository. Close them or record why they stay open; do not
 let them accumulate silently.
 
-- The installers pin the release named in `pyproject.toml`. Until the first release tagged under
-  the Filo name exists, that tag still contains the Therapist package and the installers cannot
-  complete, so `README.md` documents the checkout installation instead of the bootstrap. The
-  first Filo release restores the README bootstrap commands in the same change that moves the
-  pin; `RELEASING.md` carries that step.
 - The GitHub repository was renamed from `matteodante/therapist` to `matteodante/filo` on
   2026-10-17 and the old URL redirects. On release day, confirm the redirect and that
   `https://raw.githubusercontent.com/matteodante/filo/main/install.sh` resolves (`RELEASING.md`,
