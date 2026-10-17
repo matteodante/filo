@@ -1032,3 +1032,8 @@ def test_a_small_model_window_gets_less_case_data_instead_of_failing(tmp_path) -
     chat.input_token_budget = 12000  # tighter than any real model, so trimming must happen
 
     assert chat.respond("my manager writes late and I avoid the phone").text == "Here."
+    # Later turns keep the smaller case data instead of rolling over every time.
+    chat.respond("and then I check my mail instead")
+    chat.respond("it happened again today")
+    assert len([item for item in store.list_sessions() if item.ended_at is None]) == 1
+    assert len(store.list_sessions()) == 41

@@ -42,7 +42,7 @@ from pydantic_ai.models import Model
 
 from filo.failures import ContextFull
 from filo.memory import (
-    FORMULATION_FIELDS,
+    FORMULATION_LIST_FIELDS,
     MIN_FORGET_QUOTE_WORDS,
     CaseContextResult,
     ClaimCorrection,
@@ -213,15 +213,17 @@ class FormulationLink(StrictModel):
     # Listed in the schema so the model never has to guess a name.
     field: str = Field(
         description="One case-formulation field name.",
-        json_schema_extra={"enum": list(FORMULATION_FIELDS)},
+        json_schema_extra={"enum": list(FORMULATION_LIST_FIELDS)},
     )
     claim_ids: list[str] = Field(min_length=1, max_length=5)
 
     @field_validator("field")
     @classmethod
     def validate_field(cls, value: str) -> str:
-        if value not in FORMULATION_FIELDS:
-            raise ValueError(f"Unknown formulation field; use one of {list(FORMULATION_FIELDS)}.")
+        if value not in FORMULATION_LIST_FIELDS:
+            raise ValueError(
+                f"Unknown formulation field; use one of {list(FORMULATION_LIST_FIELDS)}."
+            )
         return value
 
 
@@ -403,6 +405,9 @@ class ChatSession:
         # it is dropped instead. The counter is the persistent store's, also in ephemeral mode.
         self._deletion_epoch = deletion_epoch or memory.telegram_output_epoch
         self._failed: tuple[str, int] | None = None
+        # A session whose first turn needed less case data keeps that limit, so later turns
+        # fit too instead of rolling over every time.
+        self._context_limit: tuple[str, int] | None = None
 
     @property
     def failed_text(self) -> str | None:
@@ -450,12 +455,17 @@ class ChatSession:
         )
         history = self.memory.load_session_history(session.id)
         instructions = self._instructions(context, session, history, now)
-        context_json = _bounded_context_json(context)
+        limit = MAX_CONTEXT_CHARS
+        if self._context_limit is not None and self._context_limit[0] == session.id:
+            limit = self._context_limit[1]
+        context_json = _bounded_context_json(context, limit)
         estimated_tokens = _estimate_context_tokens(instructions, context_json, history, text)
         notice: str | None = None
         if estimated_tokens > self.input_token_budget and not history:
             # Nothing to roll over: a small model window gets less case data instead.
-            context_json = self._fitted_context_json(context, instructions, history, text)
+            context_json = self._fitted_context_json(
+                context, instructions, history, text, session.id
+            )
         elif estimated_tokens > self.input_token_budget:
             self._consolidate(session, now, end_reason=SessionEndReason.CONTEXT_LIMIT)
             session = self.memory.start_session(now)
@@ -467,7 +477,9 @@ class ChatSession:
             )
             history = []
             instructions = self._instructions(context, session, history, now)
-            context_json = self._fitted_context_json(context, instructions, history, text)
+            context_json = self._fitted_context_json(
+                context, instructions, history, text, session.id
+            )
             notice = self._context_rollover_notice()
 
         available_claims = _context_claims(context)
@@ -1169,6 +1181,7 @@ class ChatSession:
         instructions: str,
         history: list[ModelRequest | ModelResponse],
         text: str,
+        session_id: str,
     ) -> str:
         """Shrink the case data until the turn fits the model, or say the message cannot."""
         limit = MAX_CONTEXT_CHARS
@@ -1177,6 +1190,8 @@ class ChatSession:
             if _estimate_context_tokens(instructions, payload, history, text) <= (
                 self.input_token_budget
             ):
+                # Half again, so the session's growing history still has room.
+                self._context_limit = (session_id, max(MIN_CONTEXT_CHARS, limit // 2))
                 return payload
             limit //= 2
         raise ContextFull("This message does not fit the configured model context window.")
@@ -1731,7 +1746,10 @@ def _bounded_context_json(context: CaseContextResult, max_chars: int = MAX_CONTE
         for field_name in removable:
             values = getattr(bounded, field_name)
             if values:
-                values.pop()
+                dropped = values.pop()
+                # An experiment to follow up on goes out with its record, never as a bare ID.
+                if field_name == "active_interventions" and dropped.id in bounded.follow_up_due:
+                    bounded.follow_up_due.remove(dropped.id)
                 break
         else:
             if bounded.latest_session is not None:
