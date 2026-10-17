@@ -18,6 +18,7 @@ of about 30 rounds each over three years.
 from __future__ import annotations
 
 import argparse
+import json
 import random
 import statistics
 import tempfile
@@ -190,7 +191,8 @@ def main() -> None:
         written = rounds = 0
         print(
             "\nsessions rounds claims | write s | index s rounds/s | db MB | open ms | "
-            "cold ms | warm p50 p95 ms | envelope chars (bound) excerpts sessions claims"
+            "cold ms | warm p50 p95 ms | envelope chars (bound) | "
+            "excerpts, sessions, claims: raw>sent"
         )
         for checkpoint in checkpoints:
             started = time.perf_counter()
@@ -215,6 +217,7 @@ def main() -> None:
                 seconds, payload, context = envelope(store, query, now)
                 warm.append(seconds)
             raw = len(context.model_dump_json())  # type: ignore[attr-defined]
+            bounded = json.loads(payload)
             claims = len(store.list_claims())
             print(
                 f"{checkpoint:8} {rounds:6} {claims:6} | {write_seconds:7.1f} | "
@@ -222,9 +225,11 @@ def main() -> None:
                 f"{statistics.median(opens) * 1e3:7.0f} | {cold * 1e3:7.0f} | "
                 f"{statistics.median(warm) * 1e3:8.0f} "
                 f"{statistics.quantiles(warm, n=20)[-1] * 1e3:4.0f} | "
-                f"{len(payload):6} raw {raw:6} ({MAX_CONTEXT_CHARS}) "
-                f"{len(context.relevant_excerpts):3} {len(context.relevant_sessions):3} "  # type: ignore[attr-defined]
-                f"{len(context.user_reports):3}"  # type: ignore[attr-defined]
+                f"{len(payload):6} raw {raw:6} ({MAX_CONTEXT_CHARS}) | "
+                + " ".join(
+                    f"{len(context.__dict__[name])}>{len(bounded[name])}"
+                    for name in ("relevant_excerpts", "relevant_sessions", "user_reports")
+                )
             )
 
 
