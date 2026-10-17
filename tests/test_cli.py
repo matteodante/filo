@@ -917,6 +917,32 @@ def test_telegram_service_install_uses_saved_configuration(
     assert "installed and started" in capsys.readouterr().out  # type: ignore[attr-defined]
 
 
+def test_telegram_service_install_finds_windows_launcher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.default_model = "test:model"
+    state.default_locale = "en-US"
+    state.embedding_model = DEFAULT_EMBEDDING_MODEL
+    state.telegram_allowed_user_id = 42
+    store.save_secret("telegram_bot_token", b"secret")
+    store.save_app_state(state)
+    captured: list[list[str]] = []
+    monkeypatch.setattr(
+        "filo.cli.telegram_service.install",
+        lambda command, _data_dir, environment: captured.append(command) or "native service",
+    )
+    # The uv and pip launchers on Windows set argv[0] to the script path without `.exe`.
+    monkeypatch.setattr("filo.cli.sys.argv", [str(tmp_path / "filo")])
+    (tmp_path / "filo.exe").write_bytes(b"MZ")
+    (tmp_path / "filo.exe").chmod(0o755)
+
+    assert main(["--data-dir", str(tmp_path), "telegram-service", "install"]) == 0
+
+    assert captured[0][0] == str((tmp_path / "filo.exe").resolve())
+
+
 def test_telegram_service_status_does_not_create_memory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
 ) -> None:

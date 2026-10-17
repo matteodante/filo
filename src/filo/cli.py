@@ -531,6 +531,9 @@ def _telegram_service(args: argparse.Namespace, database_exists: bool) -> int:
 
 def _install_telegram_service(args: argparse.Namespace) -> Path | str:
     executable = Path(sys.argv[0]).resolve()
+    if not executable.is_file():
+        # Windows console-script launchers report argv[0] without their .exe suffix.
+        executable = executable.with_name(f"{executable.name}.exe")
     if not executable.is_file() or not os.access(executable, os.X_OK):
         raise telegram_service.TelegramServiceError(
             "Cannot locate the `filo` executable. Install the project and try again."
