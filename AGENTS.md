@@ -154,7 +154,8 @@ Behavioral rules:
 - respond in the user's language;
 - in Italian, use idiomatic contemporary standard Italian, informal address unless the user chooses
   formality, direct conversational syntax, and specific rather than formulaic warmth; avoid literal
-  English calques and bureaucratic, academic, clinical, theatrical, or overly solemn register;
+  English calques and bureaucratic, academic, clinical, theatrical, or overly solemn register; do
+  not assume the user's grammatical gender until they show it;
 - respond to the user's immediate meaning before suggesting an action, without mechanically
   paraphrasing every message;
 - ask at most one brief, concrete question per reply, and often none; when several compete, safety
@@ -286,7 +287,8 @@ earlier, the model passes the exact current-message wording of the request and o
 quotes, of at least three words each, from earlier user messages. A request quote mined out of a
 refusal ("don't forget it") is rejected like any other quote across its negation. Committing it
 suppresses every round whose user message or assistant reply carries a quote, plus the request's
-own round, archives active claims built on a quote, invalidates overlapping derived text, and
+own round, archives active claims built on a quote, deletes support choices and process preferences
+whose content, barrier, or preference carries a quote, invalidates overlapping derived text, and
 clears the reflection of every closed session that contained a suppressed round, because a summary
 can paraphrase a story without repeating its words. A still-open session holding one is flagged
 and later closes with no reflection at all, since its remaining rounds can paraphrase the story
@@ -332,8 +334,18 @@ part's link by omission. Each run allows two output retries and at most three mo
 session's own first, then the most recently touched, fifty in all. Rounds suppressed by forgetting
 or correction are left out. The reflection carries `risk_notes`: any danger discussed and the
 protective step the user chose, so the next session can follow up. It cannot create a confirmed
-claim. If any part fails, preserve the transcript, record a content-free error class, and leave the
-previous formulation intact. Both agent runs use PydanticAI's complete synchronous API with an event stream handler so the
+claim. If any part fails, with any exception (a login or network error at `/end` included),
+preserve the transcript, record a content-free error class, and leave the formulation as it is
+then, rebuilt only from claims still active. The formulation shown to the model is read before it
+runs, but nothing written back comes from that snapshot. A session is written back carrying any
+`reflection_withheld` flag another process stored meanwhile, and never reopens a session another
+process closed. Closing drops the reflection when that flag is set or a round the model summarized
+was excluded since, so a forget or correction landing during the model call cannot be summarized;
+a round excluded before the call was never shown to the model and costs nothing. A
+consolidation error marked `fatal`, such as the evaluation budget cap, is raised instead. When the
+user said they are under 18, the
+instructions ask for the reflection "Not recorded." with nothing else. Both agent runs use
+PydanticAI's complete synchronous API with an event stream handler so the
 experimental ChatGPT Codex backend can require `stream=true`; conversation transports stream
 cumulative Markdown snapshots while preserving the complete tool graph, then render the validated
 final reply. Consolidation consumes its stream without exposing a draft.
@@ -367,7 +379,7 @@ quote lookup) decrypt as they go and keep nothing. Both caches are cleared when 
 back, because SQLite can hand a rolled-back row ID out again. A retrieval embeds at most 64
 not-yet-indexed rounds, newest first, so an archive that predates round indexing is indexed over
 several turns rather than inside one; until then an old round is reachable only through the claims
-that cite it. Index rows of the earlier `message` entity type are deleted when a store opens.
+that cite it.
 SQLite/Fernet remains the source of truth.
 Semantic retrieval is a required memory capability: setup downloads and verifies the local model,
 and conversation fails closed with setup guidance when embeddings are unavailable rather than
@@ -483,15 +495,22 @@ at least three quarters of its content words), and clears the reflection of ever
 holding such a round. A correction does the same for the rounds repeating the superseded wording
 and for the claim's supporting rounds, so a paraphrased summary does not survive a correction. The
 suppressed round IDs live in encrypted state, are included in export, and are honored by
-retrieval and consolidation alike. Current-session
+retrieval and consolidation alike. A forgotten claim excludes every round it cites; a corrected
+claim excludes only the rounds that supported its old wording, so the correcting round, which
+holds the current account, stays retrievable and is consolidated. A hypothesis copies only its
+linked claims' current support, and retrieval drops any quote a later correction of a linked
+claim superseded. Current-session
 model history retains every complete successful run, including tool exchanges, until the context
 boundary; long-term continuity across the resulting sessions comes from structured context and
 relevant excerpts.
 When generated derived text paraphrases corrected or forgotten evidence, the overlapping derived
 field is conservatively invalidated instead of risking stale personal information returning.
-Explicit corrections target an existing claim ID, retain old wording as superseded provenance,
+Explicit corrections target an existing claim ID, retain old wording as superseded provenance
+(every supporting quote, compared without case, except the replacement),
 clear stale aliases, and derive any replacement only from a second exact quote. A contradiction
 without replacement supersedes the claim without inventing new content.
+Every intervention or session that forgetting or correction rewrites loses its semantic index row,
+so the old wording does not survive in a vector until the next rebuild.
 If forgetting removes the meaningful description of an intervention, its sensitive content is
 replaced with a neutral tombstone and the record is stopped rather than deleted, preserving lifecycle
 and provenance without returning forgotten content.
@@ -519,7 +538,9 @@ ships a forward migration so that years of memory survive upgrades. The schema m
 `filo-<generation>`, currently `filo-1`; the `filo-1` baseline is frozen at the first Filo release,
 and until then schema additions such as the `telegram_outbox` table amend it directly; W2.5 also
 removed the `fact` and `event` kinds and the split arm's session flag from it, so a `filo-1`
-development store created before W2.5 needs a fresh data directory. A later
+development store created before W2.5 needs a fresh data directory. Opening one (it holds the
+`pending_extractions` table, a `fact` or `event` claim, or `message` index rows, all plaintext) is
+refused with that message before anything in it is changed. A later
 change raises `SCHEMA_GENERATION` and registers `MIGRATIONS[n]`, the step from `filo-n` to
 `filo-(n + 1)`, with a test that migrates a store of the previous generation.
 
@@ -1161,7 +1182,9 @@ restart, evidence provenance, fact/hypothesis separation, correction precedence,
 forgetting, semantic reindexing and fail-closed behavior, forgetting that reaches every round and
 summary that carried the content, time fields and most-recent-session continuity, complete
 active-session history beyond ten turns, warning and automatic rollover at hard context bounds,
-and command/output separation. `tests/test_retrieval_and_time.py` asks for forgotten content
+and command/output separation. `tests/test_stale_writes.py` covers writes from a stale snapshot:
+a forget or correction landing during a turn or a consolidation, and a failed consolidation, from a
+second store on the same file. `tests/test_retrieval_and_time.py` asks for forgotten content
 through every retrieval path and expects nothing back. `tests/test_memory_guards.py` covers
 relevance-ranked preferences, third-party attribution, relevant formulation and rejected
 hypotheses, and `superseded_at`. A

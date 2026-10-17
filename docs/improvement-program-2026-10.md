@@ -460,7 +460,8 @@ recall does not fall.
 - A concrete detail the user corrects or retracts is retired with `forget_content` as a correction:
   the rounds and summaries carrying the old wording are suppressed, the correcting message stays.
 - `filo-1` is unreleased, so the schema is amended directly; a `filo-1` development store created
-  before W2.5 needs a fresh data directory. Extraction recall in the memory study now counts only
+  before W2.5 needs a fresh data directory, and opening one is refused unchanged with that message.
+  Extraction recall in the memory study now counts only
   patterns and preferences (see `tests/TEST_PLAN.md`).
 
 ### Wave 3 — behavior pack v2 (sequential; protocol hashes change)

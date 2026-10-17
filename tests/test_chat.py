@@ -1037,3 +1037,20 @@ def test_a_small_model_window_gets_less_case_data_instead_of_failing(tmp_path) -
     chat.respond("it happened again today")
     assert len([item for item in store.list_sessions() if item.ended_at is None]) == 1
     assert len(store.list_sessions()) == 41
+
+
+def test_consolidation_asks_for_a_plain_output_tool(tmp_path) -> None:
+    # Strict native structured output rejects the reflection schema on some providers.
+    store = MemoryStore(tmp_path)
+    session = store.start_session()
+    store.save_turn(session, "Calls were hard again", "That sounds tiring.", [])
+    strict: list[object] = []
+
+    async def stream(_messages: list[Any], info: Any):
+        strict.extend(tool.strict for tool in info.output_tools)
+        yield _tool("final_result", {"summary": "Calls came up."})
+
+    closed = ChatSession(FunctionModel(stream_function=stream), _pack(), store, "en-US").end()
+
+    assert closed is not None and closed.summary == "Calls came up."
+    assert strict == [False]

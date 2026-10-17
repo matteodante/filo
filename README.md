@@ -104,8 +104,8 @@ choices, and a derived semantic index.
 - Claims record when you said something, and when it started only if you named a time; "last
   spring" stays a season, never a guessed date.
 - Asking in the conversation to forget something you said, in any memory mode, stops it coming back
-  through claims, past conversations, and session summaries, even if it never became a claim. The
-  archive keeps it until you delete it locally.
+  through claims, support choices, conversational preferences, past conversations, and session
+  summaries, even if it never became a claim. The archive keeps it until you delete it locally.
 - Correcting a detail you gave earlier ("actually I'm still in Rome") retires the old wording the
   same way, while your correction stays in memory.
 

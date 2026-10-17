@@ -51,6 +51,9 @@ LONG_PROMPT_PRICES: dict[str, tuple[int, Price]] = {
 class BudgetExceeded(RuntimeError):
     """Raised before a call or run that would spend beyond the configured cap."""
 
+    # Product code that keeps a session usable after a model failure re-raises this one.
+    fatal = True
+
 
 def price_for(model: str, prompt_tokens: int) -> Price:
     if model not in PRICES:

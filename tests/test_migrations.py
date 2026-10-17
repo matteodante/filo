@@ -249,11 +249,21 @@ def test_plain_connections_enforce_foreign_keys(tmp_path) -> None:
         assert database.execute("PRAGMA foreign_keys").fetchone() == (1,)
 
 
-def test_reopening_a_development_store_drops_the_split_arm_table(tmp_path) -> None:
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "CREATE TABLE pending_extractions (message_id INTEGER PRIMARY KEY)",
+        "INSERT INTO memory_items VALUES ('a', 'fact', 'user_statement', 'not_applicable', "
+        "'active', '2026-01-01', '2026-01-01', x'00')",
+        "INSERT INTO semantic_index VALUES ('message', '1', 'm', 'h', 1, x'00')",
+    ],
+    ids=["split-arm-table", "fact-claim", "message-vectors"],
+)
+def test_a_development_store_from_before_w2_5_is_refused_unchanged(tmp_path, statement) -> None:
     path = MemoryStore(tmp_path).database_path
     with sqlite3.connect(path) as database:
-        database.execute("CREATE TABLE pending_extractions (message_id INTEGER PRIMARY KEY)")
-    store = MemoryStore(tmp_path)
-    with store._connect() as database:
-        tables = {row[0] for row in database.execute("SELECT name FROM sqlite_master")}
-    assert "pending_extractions" not in tables
+        database.execute(statement)
+    before = path.read_bytes()
+    with pytest.raises(MemoryError, match="fresh data directory"):
+        MemoryStore(tmp_path)
+    assert path.read_bytes() == before

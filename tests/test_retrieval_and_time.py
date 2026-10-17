@@ -22,6 +22,8 @@ from filo.memory import (
     MAX_ROUND_EMBEDDINGS_PER_RETRIEVAL,
     ROUND_TEXT_CACHE_SIZE,
     ClaimCorrection,
+    InterventionState,
+    MemoryItem,
     MemoryKind,
     MemoryMode,
     MemoryStore,
@@ -704,21 +706,6 @@ def test_correction_clears_the_reflection_of_sessions_holding_the_old_wording(tm
     assert closed.summary == "" and closed.themes == []
 
 
-def test_legacy_message_vectors_are_deleted_on_open(tmp_path) -> None:
-    store = _store(tmp_path)
-    with store._connect() as database:
-        database.execute(
-            "INSERT INTO semantic_index(entity_type, entity_id, model, content_hash, dimensions, "
-            "payload) VALUES ('message', '1', 'test:concept', 'h', 1, ?)",
-            (store._cipher.encrypt(b"x"),),
-        )
-    reopened = _store(tmp_path)
-    with reopened._connect() as database:
-        assert not database.execute(
-            "SELECT 1 FROM semantic_index WHERE entity_type = 'message'"
-        ).fetchall()
-
-
 MESSAGE_TIME = datetime(2026, 10, 16, 12, tzinfo=UTC)
 
 
@@ -822,3 +809,171 @@ def test_process_memory_stays_bounded_and_vectors_update_in_place(tmp_path) -> N
     assert str(ids[0]) not in table.rows and len(table.ids) == len(ids) - 1
     # The suppressed row was swapped out of the same matrix, not rebuilt from scratch.
     assert table.matrix is matrix
+
+
+def test_a_correction_retires_supporting_quotes_that_differ_only_in_case(tmp_path) -> None:
+    store = _store(tmp_path)
+    session = store.start_session()
+    first_text = "I wake at four most nights"
+    first = store.save_turn(session, first_text, "Noted.", [])
+    claim = store.add_user_reports(
+        [UserReport(kind=MemoryKind.PATTERN, content=first_text, evidence_quote=first_text)],
+        first,
+        first_text,
+    )[0]
+    again = "i wake at four most nights, again"
+    second = store.save_turn(session, again, "Noted.", [])
+    quote = "i wake at four most nights"
+    [merged] = store.add_user_reports(
+        [UserReport(kind=MemoryKind.PATTERN, content=quote, evidence_quote=quote)], second, again
+    )
+    assert merged.id == claim.id
+    correction = "No, these days I sleep through the night"
+    third = store.save_turn(session, correction, "Thanks.", [])
+    store.correct_claim(
+        ClaimCorrection(
+            memory_id=claim.id,
+            correction_quote=correction,
+            replacement_quote="these days I sleep through the night",
+        ),
+        third,
+        correction,
+    )
+    context = store.retrieve_case_context("sleep through the night")
+    assert context.user_reports, "the corrected claim is still relevant"
+    assert "four" not in context.model_dump_json().casefold()
+
+
+def _choice_and_preference_store(tmp_path) -> tuple[MemoryStore, int]:
+    store = _store(tmp_path)
+    session = store.start_session(datetime.now(UTC) - timedelta(days=2))
+    choice = "I want to tell my sister Anna about the abortion"
+    choice_id = store.save_turn(session, choice, "That matters.", [])
+    store.record_support_choice(choice, choice, choice_id, choice)
+    preference = "please do not mention the abortion again unless I do"
+    preference_id = store.save_turn(session, preference, "Understood.", [])
+    store.record_process_preference(preference, preference, preference_id, preference)
+    return store, choice_id
+
+
+def test_forget_content_reaches_support_choices_and_process_preferences(tmp_path) -> None:
+    store, _ = _choice_and_preference_store(tmp_path)
+    session = store.active_session() or store.start_session()
+    request = "Please forget what I said about the abortion"
+    request_id = store.save_turn(session, request, "Done.", [])
+    store.forget_content(
+        ["tell my sister Anna about the abortion", "do not mention the abortion"],
+        "Please forget",
+        request_id,
+        request,
+    )
+    assert store.list_support_choices() == []
+    assert store.list_process_preferences() == []
+    assert "abortion" not in _visible(store, "my sister Anna and the abortion")
+    with store._connect() as database:
+        kinds = {row[0] for row in database.execute("SELECT entity_type FROM semantic_index")}
+    assert not kinds & {"support", "preference"}
+
+
+def test_forgetting_a_claim_reaches_a_support_choice_carrying_its_wording(tmp_path) -> None:
+    store, choice_id = _choice_and_preference_store(tmp_path)
+    text = "I want to tell my sister Anna about the abortion"
+    claim = store.add_user_reports(
+        [UserReport(kind=MemoryKind.PREFERENCE, content=text, evidence_quote=text)],
+        choice_id,
+        text,
+    )[0]
+    store.forget_claim(claim.id)
+    assert store.list_support_choices() == []
+    assert "anna" not in _visible(store, "my sister Anna")
+
+
+def test_forgetting_drops_index_rows_of_every_record_it_rewrites(tmp_path) -> None:
+    when = datetime.now(UTC) - timedelta(days=5)
+    store, _ = _story_store(tmp_path, when)
+    # A later session whose rounds never repeat the story, but whose summary does; one more
+    # follows it, because the most recent closed session is not indexed.
+    later = store.start_session(when + timedelta(days=1))
+    later_round = store.save_turn(later, "Work was fine", "Good.", [], when + timedelta(days=1))
+    store.close_session(
+        later, summary=f"Recalled that {STORY}.", now=when + timedelta(days=1, minutes=5)
+    )
+    last = store.start_session(when + timedelta(days=2))
+    store.save_turn(last, "Quiet day", "Glad to hear.", [], when + timedelta(days=2))
+    store.close_session(last, summary="A quiet day.", now=when + timedelta(days=2, minutes=5))
+    record = store.create_intervention(
+        skill="take-a-small-step",
+        description=f"Write down how {STORY}",
+        state=InterventionState.OFFERED,
+        linked_claim_ids=[],
+        evidence_message_id=later_round,
+    )
+    store.retrieve_case_context("the boat at the lake")
+    assert {("intervention", record.id), ("session", later.id)} <= _indexed(store)
+
+    session = store.active_session() or store.start_session()
+    request = "Please forget the boat story"
+    request_id = store.save_turn(session, request, "Done.", [])
+    store.forget_content([STORY], "Please forget", request_id, request)
+    indexed = _indexed(store)
+    assert ("intervention", record.id) not in indexed
+    assert ("session", later.id) not in indexed
+
+
+def _indexed(store: MemoryStore) -> set[tuple[str, str]]:
+    with store._connect() as database:
+        rows = database.execute("SELECT entity_type, entity_id FROM semantic_index").fetchall()
+    return {(row[0], row[1]) for row in rows}
+
+
+def _corrected_claim(store: MemoryStore) -> tuple[MemoryItem, int]:
+    session = store.start_session()
+    old = "I drink coffee at midnight every day"
+    first = store.save_turn(session, old, "Noted.", [])
+    claim = store.add_user_reports(
+        [UserReport(kind=MemoryKind.PATTERN, content=old, evidence_quote=old)], first, old
+    )[0]
+    return claim, first
+
+
+def _correct(store: MemoryStore, claim_id: str) -> None:
+    correction = "No, these days I only drink tea"
+    message_id = store.save_turn(store.start_session(), correction, "Thanks.", [])
+    store.correct_claim(
+        ClaimCorrection(
+            memory_id=claim_id,
+            correction_quote=correction,
+            replacement_quote="these days I only drink tea",
+        ),
+        message_id,
+        correction,
+    )
+
+
+def test_a_hypothesis_linked_after_a_correction_copies_no_old_quote(tmp_path) -> None:
+    store = _store(tmp_path)
+    claim, first = _corrected_claim(store)
+    _correct(store, claim.id)
+    corrected = next(item for item in store.list_claims() if item.id == claim.id)
+    text = "I sleep badly on the nights I drink anything late"
+    message_id = store.save_turn(store.start_session(), text, "Noted.", [])
+    hypothesis = store.add_hypothesis(
+        "Drinks may be tied to sleep",
+        linked_claim_ids=[claim.id],
+        evidence_message_ids=[first, *(ref.message_id for ref in corrected.evidence)],
+        evidence_message_id=message_id,
+        evidence_quote=text,
+        evidence_text=text,
+    )
+    assert all("coffee" not in (ref.quote or "") for ref in hypothesis.evidence)
+    assert "coffee" not in _visible(store, "drinks and sleep tea")
+
+
+def test_a_hypothesis_linked_before_a_correction_stops_showing_the_old_quote(tmp_path) -> None:
+    store = _store(tmp_path)
+    claim, first = _corrected_claim(store)
+    store.add_hypothesis(
+        "Drinks may be tied to sleep", linked_claim_ids=[claim.id], evidence_message_ids=[first]
+    )
+    _correct(store, claim.id)
+    assert "coffee" not in _visible(store, "drinks and sleep tea")
