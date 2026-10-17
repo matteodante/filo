@@ -34,10 +34,13 @@ from filo.memory import (
     ClaimLifecycle,
     ClaimOrigin,
     ContextClaim,
+    EvidenceRelation,
     HypothesisReview,
     InterventionState,
     MemoryKind,
     MemoryStore,
+    TimeExpression,
+    TimePrecision,
     UserReport,
     _carries,
     _claims_conflict,
@@ -298,7 +301,9 @@ def _semantic_rows(store: MemoryStore, entity_type: str, entity_id: str) -> int:
 def test_correction_records_its_quotes_and_drops_stale_index_rows(tmp_path) -> None:
     store = _store(tmp_path)
     start = NOW - timedelta(days=3)
-    item = _report(store, "I drink coffee late", "every single night I drink coffee late", start)
+    # "Almost..." sorts after "I drink..." in reverse alphabetical order, so only a sort by
+    # length replaces the whole quote first.
+    item = _report(store, "I drink coffee late", "Almost every night I drink coffee late", start)
     store.retrieve_case_context("coffee late at night", now=start)
     evidence_round = str(item.evidence[0].message_id)
     assert _semantic_rows(store, "claim", item.id) == _semantic_rows(store, "round", evidence_round)
@@ -309,26 +314,30 @@ def test_correction_records_its_quotes_and_drops_stale_index_rows(tmp_path) -> N
         state=InterventionState.OFFERED,
         linked_claim_ids=[item.id],
         evidence_message_id=item.evidence[0].message_id,
-        context="User said every single night I drink coffee late",
+        context="User said Almost every night I drink coffee late",
     )
     text = "That is wrong.   I stopped drinking coffee after lunch"
+    correcting_round = _turn(store, text, NOW)
     corrected = store.correct_claim(
         ClaimCorrection(
             memory_id=item.id,
             correction_quote="That is wrong.",
             replacement_quote="I stopped drinking coffee after lunch",
         ),
-        _turn(store, text, NOW),
+        correcting_round,
         text,
         NOW,
     )
 
     assert corrected.last_reviewed_at == corrected.superseded_at
     assert corrected.last_reviewed_at is not None
-    assert [ref.quote for ref in corrected.evidence[-2:]] == [
-        "That is wrong.",
-        "I stopped drinking coffee after lunch",
+    assert [(ref.quote, ref.relation) for ref in corrected.evidence[-2:]] == [
+        ("That is wrong.", EvidenceRelation.CORRECTS),
+        ("I stopped drinking coffee after lunch", EvidenceRelation.CORRECTS),
     ]
+    # The supporting round holds the old wording; the correcting round holds the current one.
+    assert int(evidence_round) in store._suppressed_round_ids()
+    assert correcting_round not in store._suppressed_round_ids()
     assert _semantic_rows(store, "claim", item.id) == 0
     assert _semantic_rows(store, "round", evidence_round) == 0
     # Longest wording first: the whole quote is replaced, not only the restated part of it.
@@ -443,3 +452,120 @@ def test_correction_suppresses_later_rounds_repeating_a_three_word_wording(tmp_p
     suppressed = store._suppressed_round_ids()
     assert repeat in suppressed
     assert short not in suppressed
+
+
+def test_contradiction_removes_old_wording_from_focus_and_clears_a_pending_hypothesis(
+    tmp_path,
+) -> None:
+    store = _store(tmp_path)
+    start = NOW - timedelta(days=2)
+    message_id = _turn(store, "I think work drains me", start)
+    hypothesis = store.add_hypothesis(
+        "Work stress drives the late coffee habit",
+        linked_claim_ids=[],
+        evidence_message_ids=[message_id],
+        evidence_message_id=message_id,
+        evidence_quote="I think work drains me",
+        evidence_text="I think work drains me",
+        now=start,
+    )
+    state = store.load_app_state()
+    state.pending_hypothesis_id = hypothesis.id
+    store.save_app_state(state)
+    store.set_focus("Look at how the late coffee habit started", accepted=False, now=start)
+    intervention = store.create_intervention(
+        skill="behavioral-step",
+        description="Notice the coffee urge",
+        state=InterventionState.OFFERED,
+        linked_claim_ids=[hypothesis.id],
+        evidence_message_id=message_id,
+        context="Because work stress drives the late coffee habit, try tea",
+    )
+    text = "No, that is not it at all"
+    corrected = store.correct_claim(
+        ClaimCorrection(memory_id=hypothesis.id, correction_quote=text),
+        _turn(store, text, NOW),
+        text,
+        NOW,
+    )
+
+    assert corrected.evidence[-1].relation is EvidenceRelation.CONTRADICTS
+    assert corrected.lifecycle is ClaimLifecycle.SUPERSEDED
+    assert store.load_app_state().pending_hypothesis_id is None
+    # Without a replacement the superseded wording is removed rather than rewritten to itself.
+    (stored,) = [item for item in store.list_interventions() if item.id == intervention.id]
+    assert stored.context == "Because , try tea"
+    assert store.load_formulation().proposed_focus is None
+
+
+def test_correction_rewrites_a_proposed_focus_that_repeats_the_old_wording(tmp_path) -> None:
+    store = _store(tmp_path)
+    start = NOW - timedelta(days=2)
+    item = _report(store, "I skip lunch at work", "I skip lunch at work", start)
+    store.set_focus("Why I skip lunch at work", accepted=False, now=start)
+    text = "Actually I eat lunch at my desk"
+    store.correct_claim(
+        ClaimCorrection(
+            memory_id=item.id,
+            correction_quote="Actually",
+            replacement_quote="I eat lunch at my desk",
+        ),
+        _turn(store, text, NOW),
+        text,
+        NOW,
+    )
+
+    assert store.load_formulation().proposed_focus == "Why I eat lunch at my desk"
+
+
+def test_replace_derived_holds_every_replacement_aside_in_any_case() -> None:
+    old, new = "drink coffee late", "do not drink coffee late"
+    value = "A: I do not drink coffee late. B: I drink coffee late. C: I do not drink coffee late."
+    assert _replace_derived(value, old, new) == (
+        "A: I do not drink coffee late. B: I do not drink coffee late. "
+        "C: I do not drink coffee late."
+    )
+    assert (
+        _replace_derived("I DO NOT DRINK COFFEE LATE.", old, new) == "I DO NOT DRINK COFFEE LATE."
+    )
+
+
+def test_report_time_is_resolved_against_the_message_date() -> None:
+    quote = "Since yesterday I struggle to focus on anything"
+    report = UserReport(
+        kind=MemoryKind.PATTERN,
+        content=quote,
+        evidence_quote=quote,
+        valid_from=TimeExpression(
+            quote="yesterday",
+            precision=TimePrecision.DAY,
+            value=f"{NOW.date() - timedelta(days=1)}",
+        ),
+    )
+    _validate_user_reports([report], quote, CLAIMS, NOW)
+    _rejects(_validate_user_reports, [report], quote, CLAIMS, NOW + timedelta(days=3))
+
+
+def test_only_wordings_of_three_words_or_more_match_rounds_by_content(tmp_path) -> None:
+    store = _store(tmp_path)
+    start = NOW - timedelta(days=5)
+    three = _report(
+        store,
+        "hate Monday mornings",
+        "Honestly I really really hate Monday mornings at the office",
+        start,
+    )
+    two = _report(store, "hate Fridays", "Honestly I really hate Fridays at the office", start)
+    repeats_three = _turn(store, "As usual, hate Monday mornings", start + timedelta(days=1))
+    repeats_two = _turn(store, "Again, hate Fridays", start + timedelta(days=1))
+    for item in (three, two):
+        text = "That is wrong"
+        store.correct_claim(
+            ClaimCorrection(memory_id=item.id, correction_quote=text),
+            _turn(store, text, NOW),
+            text,
+            NOW,
+        )
+    suppressed = store._suppressed_round_ids()
+    assert repeats_three in suppressed
+    assert repeats_two not in suppressed
