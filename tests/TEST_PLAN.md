@@ -51,6 +51,18 @@ opt-in regression aids; they are not clinical validation.
   correcting message stays retrievable;
 - a thread never joins another thread's store transaction.
 
+## Stale writes
+
+- a turn or a consolidation that read a session before another process forgot or corrected part of
+  it keeps that process's withheld reflection and never reopens a session that process closed;
+  closing drops a reflection whose summarized rounds were forgotten or corrected meanwhile, while
+  correcting an earlier session's claim keeps this session's summary;
+- a fatal consolidation error (the evaluation budget cap) is raised, not swallowed;
+- a hypothesis never carries, or shows, a linked claim's superseded quote;
+- a consolidation that fails with any exception keeps the transcript and restores no claim another
+  process forgot meanwhile;
+- after an under-18 disclosure consolidation records only "Not recorded.".
+
 ## Privacy, retention, and clean break
 
 - standard persists every encrypted layer;

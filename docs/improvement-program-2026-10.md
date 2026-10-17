@@ -306,10 +306,11 @@ manual smoke on macOS.
   cross-lingual memory rounds that rank first.
 - On the three-year archive, a warm message takes about 0.55 s, almost all of it the query
   embedding. The envelope stays bounded only through the character cap.
-- Two real bugs were found and fixed.
+- Two real bugs were found.
   - The cap trimmed round excerpts first, so from 50 sessions on the model received none of
-    them. Claims are now trimmed first.
-  - The Telegram listener failed every embedding call once the model was installed.
+    them. Fixed here: claims are now trimmed first.
+  - The Telegram listener failed every embedding call once the model was installed. #67 fixed
+    it independently.
 - The round floor and the claims' one-word lexical match are recorded there as measured
   follow-ups, not changed here.
 
@@ -483,7 +484,8 @@ recall does not fall.
 - A concrete detail the user corrects or retracts is retired with `forget_content` as a correction:
   the rounds and summaries carrying the old wording are suppressed, the correcting message stays.
 - `filo-1` is unreleased, so the schema is amended directly; a `filo-1` development store created
-  before W2.5 needs a fresh data directory. Extraction recall in the memory study now counts only
+  before W2.5 needs a fresh data directory, and opening one is refused unchanged with that message.
+  Extraction recall in the memory study now counts only
   patterns and preferences (see `tests/TEST_PLAN.md`).
 
 ### Wave 3 — behavior pack v2 (sequential; protocol hashes change)

@@ -2,7 +2,7 @@
 
 Item W0.6 of `docs/improvement-program-2026-10.md`. No model provider was called and no API key
 was used. All data is synthetic: template-generated or hand-written invented people and events.
-Measured on 2026-10-16 and 2026-10-17 in a 4-vCPU, 15 GB Linux cloud container, CPU only, with
+Measured on 2026-10-16 and 2026-10-17, before main's #67 and #68 were merged in, in a 4-vCPU, 15 GB Linux cloud container, CPU only, with
 the pinned `Qwen/Qwen3-Embedding-0.6B` revision `97b0c614` that `filo setup` installs. Commands
 are in `tests/TEST_PLAN.md`.
 
@@ -28,16 +28,16 @@ The gate precision corpus was not built; see the deviation in the program.
   to catch up. The envelope stays bounded by the 16,000-character cap, but only because the cap
   trims it. The unbounded envelope grows with the archive (2.5k → 19k → 29k characters), mostly
   from claims that match on a single word.
-- **Two product bugs, found and fixed.**
-  - The cap trimmed `relevant_excerpts` first. From 50 sessions on, the model received none of the
-    five relevant rounds, which since W2.5 are the only place concrete details are kept. Claims,
-    hypotheses, their conflicts and earlier sessions are now trimmed first, in the envelope and in
-    the `retrieve_case_context` tool result, with a regression test.
-  - With the embedding model actually installed, the Telegram listener's lazily resolved
-    embedder hit an `assert isinstance(model, EmbeddingModel)` on every use, because
-    `Embedder.model` is still the `sentence-transformers:` spec string until first use. Every
-    Telegram turn therefore failed as a transient error. CI never saw it because it has no model
-    in its cache. Fixed with `infer_embedding_model`, plus a regression test.
+- **Two product bugs found.**
+  - **Fixed here:** the cap trimmed `relevant_excerpts` first. From 50 sessions on, the model
+    received none of the five relevant rounds, which since W2.5 are the only place concrete details
+    are kept. Claims, hypotheses, their conflicts and earlier sessions are now trimmed first, in
+    the envelope and in the `retrieve_case_context` tool result, with a regression test.
+  - **Already fixed on main:** with the embedding model actually installed, the Telegram listener's
+    lazily resolved embedder hit an `assert isinstance(model, EmbeddingModel)` on every use,
+    because `Embedder.model` is still the `sentence-transformers:` spec string until first use.
+    Every Telegram turn therefore failed as a transient error. CI never saw it because it has no
+    model in its cache. #67 fixed it independently in the meantime, and this branch takes that fix.
 
 ## 1. Mutation testing
 
