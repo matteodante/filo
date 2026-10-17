@@ -100,7 +100,8 @@ access to user data.
 
 Wave 5 of the October 2026 improvement program added an optional WHO-5 wellbeing self-check: five
 self-reported numbers, shown as a score and a trend without cutoffs, labels, or screening, and never
-sent to the model provider. Whether it counts as a symptom scale under the trigger above has not
-been decided; the reassessment, together with the matching row of
-[dpia-screening.md](dpia-screening.md), awaits the maintainer's review before the first Filo
-release.
+sent to the model provider. On 2026-10-17 the maintainer decided that it is not a symptom scale
+under the trigger above: WHO-5 is a positively worded wellbeing index, and here it is only a
+personal record, with no clinical cutoff, screening, diagnostic label, or alert. The matching row
+of [dpia-screening.md](dpia-screening.md) was approved at the same time. Showing a cutoff or a
+label, prompting action from a score, or adding a symptom questionnaire reopens this assessment.

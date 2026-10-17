@@ -126,8 +126,6 @@ let them accumulate silently.
 - A real Telegram message round-trip is still undocumented. The 2026-08-11 evidence reaches an
   established polling connection, not a delivered exchange, and the bot is now configured on the
   maintainer machine, so complete the smoke and record it.
-- The WHO-5 row of the DPIA processing map (`docs/dpia-screening.md`) and the matching change
-  trigger in `docs/claims-and-intended-purpose.md` await the maintainer's review.
 - A claim counts as relevant on a single shared lexical word (rounds and sessions need two), so at
   scale claims fill the case envelope up to its character cap
   (`docs/evidence/offline-instruments-2026-10.md`, section 3). Requiring two shared tokens for
