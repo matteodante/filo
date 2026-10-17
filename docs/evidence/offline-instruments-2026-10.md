@@ -27,12 +27,17 @@ The gate precision corpus was not built; see the deviation in the program.
   rounds/s on this CPU, so an archive written before round indexing takes about 21 minutes of turns
   to catch up. The envelope stays bounded by the 16,000-character cap, but only because the cap
   trims it. The unbounded envelope grows with the archive (2.5k → 19k → 29k characters), mostly
-  from claims that match on a single word, and the trimming drops excerpts first.
-- **A product bug, found and fixed.** With the embedding model actually installed, the Telegram
-  listener's lazily resolved embedder hit an `assert isinstance(model, EmbeddingModel)` on every
-  use, because `Embedder.model` is still the `sentence-transformers:` spec string until first
-  use. Every Telegram turn therefore failed as a transient error. CI never saw it because it has
-  no model in its cache. Fixed with `infer_embedding_model`, plus a regression test.
+  from claims that match on a single word.
+- **Two product bugs, found and fixed.**
+  - The cap trimmed `relevant_excerpts` first. From 50 sessions on, the model received none of the
+    five relevant rounds, which since W2.5 are the only place concrete details are kept. Claims,
+    hypotheses, their conflicts and earlier sessions are now trimmed first, in the envelope and in
+    the `retrieve_case_context` tool result, with a regression test.
+  - With the embedding model actually installed, the Telegram listener's lazily resolved
+    embedder hit an `assert isinstance(model, EmbeddingModel)` on every use, because
+    `Embedder.model` is still the `sentence-transformers:` spec string until first use. Every
+    Telegram turn therefore failed as a transient error. CI never saw it because it has no model
+    in its cache. Fixed with `infer_embedding_model`, plus a regression test.
 
 ## 1. Mutation testing
 
@@ -177,13 +182,15 @@ SCALE_TABLE
 - **Context stays bounded,** but by the 16,000-character cap rather than by the per-type cuts. The
   unbounded envelope reaches 29k characters at 150 sessions. Claims fill it, because a claim
   counts as relevant on a single shared word (rounds and sessions need two), and each claim carries
-  its evidence. `_bounded_context_json` then removes items in a fixed order, and
-  `relevant_excerpts` comes first, so rounds, the primary memory since W2.5, are the first thing
-  dropped. Sessions are absent in this benchmark only because its generated summaries ("Talked
-  about work and sleep.") are too generic to pass either floor.
+  its evidence. `_bounded_context_json` then removes whole items in a fixed order. That order
+  used to start with `relevant_excerpts`, so with 50 or 150 sessions all five relevant rounds were
+  dropped before any claim (the "before fix" rows). Since the fix, claims, hypotheses, their
+  conflicts and earlier sessions go first, and the rounds reach the model. Sessions are absent
+  in this benchmark only because its generated summaries ("Talked about work and sleep.") are too
+  generic to pass either floor.
 
-Recommended follow-ups, not made here because they change retrieval behavior and need their own
-measurement:
-- trim claims before excerpts in `_bounded_context_json`;
-- require the same two-token lexical overlap for claims as for rounds and sessions;
+Recommended follow-ups, not made here because they change which items are retrieved and need
+their own measurement:
+- require the same two-token lexical overlap for claims as for rounds and sessions, so
+  single-word matches stop filling the envelope;
 - give rounds their own semantic floor, as in section 2.

@@ -305,11 +305,13 @@ manual smoke on macOS.
   now the primary memory, it is too strict: it keeps 60% of relevant pairs, and it drops 6 of 10
   cross-lingual memory rounds that rank first.
 - On the three-year archive, a warm message takes about 0.55 s, almost all of it the query
-  embedding. The envelope stays bounded only through the character cap, and the trimming drops
-  excerpts first.
-- Each of these three is recorded there as a measured follow-up, not changed here.
-- Setting up the benchmark also exposed a real bug, now fixed: the Telegram listener failed every
-  embedding call once the model was installed.
+  embedding. The envelope stays bounded only through the character cap.
+- Two real bugs were found and fixed.
+  - The cap trimmed round excerpts first, so from 50 sessions on the model received none of
+    them. Claims are now trimmed first.
+  - The Telegram listener failed every embedding call once the model was installed.
+- The round floor and the claims' one-word lexical match are recorded there as measured
+  follow-ups, not changed here.
 
 *Deviation:* the gate precision corpus was not built. It needs one Claude generation call, and the
 evaluation budget is spent (US$71.53 of the US$80 cap, see `docs/evidence/results-2026-10.md`), so
