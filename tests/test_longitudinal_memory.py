@@ -1,8 +1,10 @@
 """Bounded longitudinal retrieval scenarios using synthetic data only."""
 
+import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
+from filo.chat import MAX_CONTEXT_CHARS, _bounded_context_json
 from filo.memory import (
     ClaimCorrection,
     ClaimFit,
@@ -233,3 +235,24 @@ def test_bounded_result_is_valid_json_with_complete_records(tmp_path) -> None:
     assert len(context.user_reports) <= 20
     assert len(context.relevant_excerpts) <= 5
     assert context.model_validate_json(context.model_dump_json()) == context
+
+
+def test_over_the_cap_claims_are_trimmed_before_conversation_rounds(tmp_path) -> None:
+    # Since W2.5 concrete details live only in the rounds, so the envelope must not lose them to
+    # a long tail of claims (W0.6 found every excerpt dropped at 50 sessions).
+    store = _store(tmp_path)
+    start = datetime.now(UTC) - timedelta(days=100)
+    for index in range(20):
+        _report(
+            store,
+            f"Phone call record {index} " + "about the long and difficult call " * 13,
+            start + timedelta(days=index),
+        )
+    context = store.retrieve_case_context("phone call")
+    assert len(context.model_dump_json()) > MAX_CONTEXT_CHARS
+    assert context.relevant_excerpts
+
+    bounded = json.loads(_bounded_context_json(context))
+
+    assert len(bounded["relevant_excerpts"]) == len(context.relevant_excerpts)
+    assert len(bounded["user_reports"]) < len(context.user_reports)

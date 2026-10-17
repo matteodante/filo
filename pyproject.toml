@@ -89,3 +89,21 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 dev = [
     "pydantic-evals>=2.57.0,<2.58",
 ]
+
+# Ad hoc mutation testing of the quote gates (W0.6); see tests/TEST_PLAN.md for the command.
+[tool.mutmut]
+source_paths = ["src"]
+only_mutate = ["src/filo/memory.py", "src/filo/chat.py"]
+also_copy = ["protocols"]
+# The suites that exercise the gates; the rest read repository files mutmut does not copy.
+pytest_add_cli_args_test_selection = [
+  "tests/test_agent_runtime_contract.py",
+  "tests/test_chat.py",
+  "tests/test_longitudinal_memory.py",
+  "tests/test_memory.py",
+  "tests/test_memory_guards.py",
+  "tests/test_memory_writing.py",
+  "tests/test_process_contracts.py",
+  "tests/test_quote_gates.py",
+  "tests/test_retrieval_and_time.py",
+]

@@ -87,6 +87,11 @@ BUSY_TIMEOUT_SECONDS = 10.0
 # (scripts/calibrate_semantic_floor.py): 0.20 let 90% of unrelated pairs through, 0.40 lets 4%
 # through while keeping 67% of related pairs. Ranking then keeps only the top items above it.
 MIN_SEMANTIC_RELEVANCE = 0.4
+# Rounds are the primary memory and score lower than claims for the same meaning, most of all
+# across languages. On the W0.6 retrieval benchmark (docs/evidence/offline-instruments-2026-10.md)
+# 0.40 kept 60% of relevant round pairs; 0.35 keeps 79% and lets 7% of unrelated ones through, which
+# the per-type cut then bounds.
+MIN_ROUND_RELEVANCE = 0.35
 # A long round shares some four-letter word with almost any query, so one shared token is not
 # evidence of relevance for rounds and sessions the way it is for a short claim.
 MIN_LEXICAL_OVERLAP = 2
@@ -2476,7 +2481,7 @@ class MemoryStore:
             semantic = scores.get(str(item.id))
             overlap = len(query_tokens & item.tokens)
             pointer = claim_round_scores.get(item.id)
-            if pointer is None and not _is_relevant(overlap, semantic):
+            if pointer is None and not _is_relevant(overlap, semantic, MIN_ROUND_RELEVANCE):
                 continue
             lexical = min(overlap, 3) / 3
             score = lexical if semantic is None else 0.7 * max(0.0, semantic) + 0.3 * lexical
@@ -3872,10 +3877,10 @@ def _elapsed(delta: timedelta) -> str:
     return "less than a minute"
 
 
-def _is_relevant(lexical_overlap: int, semantic: float | None) -> bool:
-    return (
-        semantic is not None and semantic >= MIN_SEMANTIC_RELEVANCE
-    ) or lexical_overlap >= MIN_LEXICAL_OVERLAP
+def _is_relevant(
+    lexical_overlap: int, semantic: float | None, floor: float = MIN_SEMANTIC_RELEVANCE
+) -> bool:
+    return (semantic is not None and semantic >= floor) or lexical_overlap >= MIN_LEXICAL_OVERLAP
 
 
 def _carries(wording: str, text: str) -> bool:

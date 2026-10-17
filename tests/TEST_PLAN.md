@@ -159,6 +159,44 @@ reruns.
 Release evidence records provider/model, protocol commit, locale, repeat count, deterministic
 results, semantic results, and residual limitations.
 
+## Offline quality instruments (W0.6)
+
+These run on the maintainer machine with the local embedding model from `filo setup` and make no
+model-provider call. They are not part of the default suite; results are recorded in
+`docs/evidence/offline-instruments-2026-10.md`.
+
+```bash
+# Mutation testing of the quote gates, ad hoc so the lockfile is unchanged. `uvx` cannot run it:
+# mutmut must import the project's own environment. Configuration is `[tool.mutmut]` in
+# pyproject.toml; the function globs below are the gate and supersession code.
+uv run --with mutmut mutmut run "filo.chat.x__check_*" "filo.chat.x__normalized__*" \
+  "filo.chat.x__quote_in_text__*" "filo.chat.x__validate_user_reports__*" \
+  "filo.memory.x__carries__*" "filo.memory.x__claims_conflict__*" \
+  "filo.memory.x__evidence_quality__*" "filo.memory.x__fold_apostrophes__*" \
+  "filo.memory.x__has_broad_negation__*" "filo.memory.x__has_negation__*" \
+  "filo.memory.x__has_uniform_polarity__*" "filo.memory.x__near_duplicate__*" \
+  "filo.memory.x__negation_count__*" "filo.memory.x__normalized__*" \
+  "filo.memory.x__replace_derived__*" "filo.memory.x__require_consent_quote__*" \
+  "filo.memory.x__require_grounded_paraphrase__*" "filo.memory.x__require_quoted_aliases__*" \
+  "filo.memory.x__require_quoted_time__*" "filo.memory.x__supported_quote__*" \
+  "filo.memory.x_is_grounded_paraphrase__*" "filo.memory.x_quote_keeps_clause_polarity__*" \
+  "filo.memory.xǁMemoryStoreǁcorrect_claim__*" "filo.memory.xǁMemoryStoreǁclaims_as_of__*" \
+  "filo.memory.xǁMemoryStoreǁ_invalidate_derived_text__*" \
+  "filo.memory.xǁMemoryStoreǁ_rounds_carrying__*"
+uv run --with mutmut mutmut results
+
+# Retrieval benchmark: recall@k for claims, rounds and sessions on the labeled synthetic set in
+# tests/cases/retrieval_benchmark.yaml, a floor sweep, and the multilingual cases as rounds.
+HF_HUB_OFFLINE=1 uv run python scripts/benchmark_retrieval.py
+
+# Scale and latency on a generated three-year archive (about 150 sessions, 4,500 rounds).
+HF_HUB_OFFLINE=1 uv run python scripts/benchmark_scale.py [--sessions 150] [--rounds 30]
+```
+
+`tests/test_quote_gates.py`, in the default suite, calls each tool and store gate directly, on
+both sides of every condition, and covers the forgetting and correction paths that rewrite
+intervention records.
+
 ## Wave 1 measurement system
 
 Evaluation tooling lives in the top-level `evals/` package, which the wheel does not ship. It

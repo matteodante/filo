@@ -384,9 +384,12 @@ SQLite/Fernet remains the source of truth.
 Semantic retrieval is a required memory capability: setup downloads and verifies the local model,
 and conversation fails closed with setup guidance when embeddings are unavailable rather than
 silently switching to lexical-only ranking. Historical excerpts use the same hybrid ranking and a
-minimum semantic relevance threshold; lexical tokenization adds standard-library character bigrams
-for Chinese, Japanese, and Thai text without spaces. Context is reduced by complete structured items, further still when a small model window needs it,
-and serialized only as valid JSON; model history and consolidation retain complete turns instead of
+minimum semantic relevance threshold (0.40, and 0.35 for archived rounds, which score lower for
+the same meaning, as measured in `docs/evidence/offline-instruments-2026-10.md`); lexical tokenization adds standard-library character bigrams
+for Chinese, Japanese, and Thai text without spaces. Context is reduced by complete structured items,
+further still when a small model window needs it, and serialized only as valid JSON. Over the cap,
+earlier sessions, claims, hypotheses and their conflicts are trimmed before round excerpts, since
+rounds are the primary memory. Model history and consolidation retain complete turns instead of
 slicing messages mid-run. There is no intra-session compaction. Successful-run history grows until a
 conservative estimate reaches 80% of the input budget, when the user receives one warning. Before a
 later user turn would exceed that budget, the old session is consolidated with `context_limit` as
@@ -1268,6 +1271,15 @@ FILO_RUN_MULTILINGUAL_EMBEDDING_EVALS=1 \
 
 `FILO_MULTILINGUAL_EVAL_OFFSET` and `FILO_MULTILINGUAL_EVAL_LIMIT` can split the matrix into
 resource-bounded batches without changing the dataset.
+
+The W0.6 offline instruments run on the maintainer machine without any model provider:
+mutation testing of the quote gates with mutmut, run ad hoc through `uv run --with mutmut` and
+configured in `[tool.mutmut]`; `scripts/benchmark_retrieval.py`, recall@k for claims, rounds and
+sessions with the real local embedding model on `tests/cases/retrieval_benchmark.yaml`; and
+`scripts/benchmark_scale.py`, store, envelope and indexing cost on a generated three-year
+archive. Commands are in `tests/TEST_PLAN.md`, results in
+`docs/evidence/offline-instruments-2026-10.md`. The tool-side quote checks are undecorated
+module-level functions in `filo.chat` so mutmut can reach them.
 
 The Wave 1 measurement system in the top-level `evals/` package is evaluation-only and is not
 packaged in the wheel. It replays pre-generated synthetic personas through `ephemeral`,
