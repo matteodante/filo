@@ -1618,16 +1618,18 @@ def _record_tool_call(actions: TurnActions, name: str) -> None:
 
 def _bounded_lookup(payload: dict[str, object]) -> dict[str, object]:
     result = json.loads(json.dumps(payload, ensure_ascii=False))
+    # Archived rounds are the primary memory: claims, hypotheses, their conflicts and session
+    # summaries are trimmed before them.
     removable = (
-        "relevant_excerpts",
         "relevant_sessions",
         "user_reports",
         "rejected_hypotheses",
         "hypotheses",
+        "conflicts",
+        "relevant_excerpts",
         "active_interventions",
         "support_choices",
         "process_preferences",
-        "conflicts",
     )
     while len(json.dumps(result, ensure_ascii=False)) > MAX_LOOKUP_CHARS:
         for field_name in removable:
@@ -1665,16 +1667,18 @@ def _bounded_recap(recap: dict[str, object]) -> dict[str, object]:
 
 def _bounded_context_json(context: CaseContextResult) -> str:
     bounded = context.model_copy(deep=True)
+    # Archived rounds are the primary memory: claims, hypotheses, their conflicts and session
+    # summaries are trimmed before them.
     removable = (
-        "relevant_excerpts",
         "relevant_sessions",
         "user_reports",
         "rejected_hypotheses",
         "hypotheses",
+        "conflicts",
+        "relevant_excerpts",
         "active_interventions",
         "support_choices",
         "process_preferences",
-        "conflicts",
     )
     while len(payload := bounded.model_dump_json()) > MAX_CONTEXT_CHARS:
         for field_name in removable:

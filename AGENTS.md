@@ -374,8 +374,10 @@ and conversation fails closed with setup guidance when embeddings are unavailabl
 silently switching to lexical-only ranking. Historical excerpts use the same hybrid ranking and a
 minimum semantic relevance threshold; lexical tokenization adds standard-library character bigrams
 for Chinese, Japanese, and Thai text without spaces. Context is reduced by complete structured items
-and serialized only as valid JSON; model history and consolidation retain complete turns instead of
-slicing messages mid-run. There is no intra-session compaction. Successful-run history grows until a
+and serialized only as valid JSON. Over the cap, earlier sessions, claims, hypotheses and their
+conflicts are trimmed before round excerpts, since rounds are the primary memory. Model history
+and consolidation retain complete turns instead of slicing messages mid-run. There is no
+intra-session compaction. Successful-run history grows until a
 conservative estimate reaches 80% of the input budget, when the user receives one warning. Before a
 later user turn would exceed that budget, the old session is consolidated with `context_limit` as
 its end reason and the pending message starts a new session. The effective context window is the
