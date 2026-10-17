@@ -8,7 +8,7 @@ from typing import Any
 from urllib.error import URLError
 
 import pytest
-from pydantic_ai import Embedder, ModelRequest, ModelResponse, UserPromptPart
+from pydantic_ai import ModelRequest, ModelResponse, UserPromptPart
 from pydantic_ai.embeddings import TestEmbeddingModel
 from pydantic_ai.messages import TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models import infer_model
@@ -1007,11 +1007,22 @@ def test_telegram_listener_starts_despite_missing_setup_and_reports_it_per_turn(
     state = store.load_app_state()
     state.embedding_model = DEFAULT_EMBEDDING_MODEL
     store.save_app_state(state)
+
+    def not_installed(*_: Any, **__: Any) -> str:
+        raise OSError("not in the local cache")
+
+    monkeypatch.setattr("filo.cli.snapshot_download", not_installed)
     with pytest.raises(SetupProblem, match="filo memory model install"):
         channel.store._embedder.embed_query_sync("work calls")
+    # The installed model comes back from Embedder as a name, as the real one does.
+    monkeypatch.setattr("filo.cli.snapshot_download", lambda *_, **__: "/cache/qwen")
     monkeypatch.setattr(
-        "filo.cli._default_embedder",
-        lambda **_: Embedder(TestEmbeddingModel(dimensions=8)),
+        "filo.cli.infer_embedding_model",
+        lambda name: (
+            TestEmbeddingModel(dimensions=8)
+            if name == "sentence-transformers:/cache/qwen"
+            else pytest.fail(name)
+        ),
     )
     assert len(channel.store._embedder.embed_query_sync("work calls").embeddings[0]) == 8
 

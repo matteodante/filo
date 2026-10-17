@@ -351,20 +351,61 @@ class TelegramChannel:
         outbox: list[TelegramDelivery] = []
 
         def enqueue(*, consent: bool = False, rendered_at_epoch: int | None = None) -> bool:
-            queued = self.config_store.queue_telegram_output(
-                [] if self._ephemeral else outbox,
-                update_offset=update_id + 1 if isinstance(update_id, int) else None,
-                consent_version=CONSENT_VERSION if consent else None,
-                rendered_at_epoch=rendered_at_epoch,
-            )
+            try:
+                queued = self.config_store.queue_telegram_output(
+                    [] if self._ephemeral else outbox,
+                    update_offset=update_id + 1 if isinstance(update_id, int) else None,
+                    consent_version=CONSENT_VERSION if consent else None,
+                    rendered_at_epoch=rendered_at_epoch,
+                )
+            except sqlite3.OperationalError as error:
+                # An ephemeral turn has already run and its replies live in memory, so a
+                # busy store must not make the update run again; only the offset stays
+                # unsaved, which an ephemeral restart loses anyway.
+                if not (self._ephemeral and _locked(error)):
+                    raise
+                queued = True
             if queued and self._ephemeral:
                 self._ephemeral_outbox.extend(outbox)
             return queued
 
-        handled, queued = self._handle_update(update, outbox, enqueue)
+        try:
+            handled, queued = self._handle_update(update, outbox, enqueue)
+        except (OSError, sqlite3.Error):
+            raise  # the machine, not the update: leave it unconsumed and retry
+        except Exception as error:  # one bad update must never wedge the listener
+            handled, queued = self._failed_update(update, outbox, error)
         if not queued:
             enqueue()
         return handled
+
+    def _failed_update(
+        self, update: dict[str, Any], outbox: list[TelegramDelivery], error: Exception
+    ) -> tuple[bool, bool]:
+        """Consume an update whose handler failed, telling the paired user, never the content."""
+        print(f"Telegram update failed: {type(error).__name__}")
+        outbox.clear()
+        message = update.get("message")
+        message = message if isinstance(message, dict) else {}
+        chat = message.get("chat")
+        chat = chat if isinstance(chat, dict) else {}
+        sender = message.get("from")
+        sender = sender if isinstance(sender, dict) else {}
+        chat_id = chat.get("id")
+        if (
+            chat.get("type") == "private"
+            and isinstance(chat_id, int)
+            and sender.get("is_bot") is not True
+            and self._paired(sender.get("id"))
+        ):
+            outbox.append(
+                TelegramDelivery(
+                    chat_id=chat_id,
+                    text="Something went wrong with that message. Please try again, "
+                    "or check `filo doctor` on the computer that runs Filo.",
+                )
+            )
+        return True, False
 
     def deliver_pending(self) -> None:
         """Send queued replies in order, removing each one only after delivery."""
@@ -676,7 +717,7 @@ class TelegramChannel:
         if command == "/privacy":
             return self._privacy()
         if command == "/recap":
-            weeks = int(argument) if argument and argument.isdigit() else DEFAULT_RECAP_WEEKS
+            weeks = int(argument) if argument and argument.isdecimal() else DEFAULT_RECAP_WEEKS
             return render_recap(build_recap(self.store, weeks))
         if command == "/wellbeing":
             return wellbeing_command(
