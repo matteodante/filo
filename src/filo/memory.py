@@ -552,9 +552,6 @@ class CaseFormulation(StrictModel):
     last_reviewed_at: str | None = None
 
 
-FORMULATION_FIELDS = FORMULATION_LIST_FIELDS
-
-
 class ContextClaim(StrictModel):
     id: str
     kind: MemoryKind
@@ -867,6 +864,11 @@ class MemoryStore:
                 "This data store uses an unknown or newer schema. Use the Filo version that "
                 "wrote it, or a new data directory."
             )
+        if _predates_w2_5(database, tables):
+            raise MemoryError(
+                "This data store is a Filo development store from before W2.5, whose layout the "
+                "unreleased filo-1 schema has since dropped. Use a fresh data directory."
+            )
         if generation < SCHEMA_GENERATION:
             self._migrate(database, generation)
         self._apply_schema(fresh=False)
@@ -883,11 +885,6 @@ class MemoryStore:
             # A plain integer every transaction can check without decrypting, so a process
             # started before an upgrade stops instead of writing the old layout into it.
             database.execute(f"PRAGMA user_version = {SCHEMA_GENERATION}")
-            # Earlier filo-1 development stores indexed user messages as "message"; rounds
-            # replaced them, and nothing else would ever delete those vectors.
-            database.execute("DELETE FROM semantic_index WHERE entity_type = 'message'")
-            # The W2.3 split arm's markers; filo-1 development stores may still hold the table.
-            database.execute("DROP TABLE IF EXISTS pending_extractions")
 
     def _migrate(self, database: sqlite3.Connection, generation: int) -> None:
         """Bring an older store forward inside the caller's write transaction.
@@ -1010,13 +1007,13 @@ class MemoryStore:
                         ]
                     )
                 )[:5]
-                for field_name in FORMULATION_FIELDS
+                for field_name in FORMULATION_LIST_FIELDS
             }
         formulation = CaseFormulation(
             accepted_focus=existing.accepted_focus,
             proposed_focus=proposed_focus,
         )
-        for field_name in FORMULATION_FIELDS:
+        for field_name in FORMULATION_LIST_FIELDS:
             ids = []
             for item_id in links.get(field_name, [])[:5]:
                 item = active.get(item_id)
@@ -1056,7 +1053,8 @@ class MemoryStore:
         return (now or _now()) - datetime.fromisoformat(session.last_activity_at) >= SESSION_GAP
 
     def save_session(self, session: SessionRecord) -> None:
-        with self._connect() as database:
+        with self.transaction(), self._connect() as database:
+            self._keep_withheld(database, session)
             database.execute(
                 "UPDATE sessions SET last_activity_at = ?, ended_at = ?, payload = ? WHERE id = ?",
                 (
@@ -1066,6 +1064,18 @@ class MemoryStore:
                     session.id,
                 ),
             )
+
+    def _keep_withheld(self, database: sqlite3.Connection, session: SessionRecord) -> None:
+        """Carry over a withheld reflection that another process stored since this was read.
+
+        A turn or a consolidation writes back the session it read earlier, so without this a
+        forget landing in between would be undone and its story summarized after all.
+        """
+        row = database.execute(
+            "SELECT payload FROM sessions WHERE id = ?", (session.id,)
+        ).fetchone()
+        if row is not None and self._decrypt_model(row[0], SessionRecord).reflection_withheld:
+            session.reflection_withheld = True
 
     def close_session(
         self,
@@ -1103,7 +1113,19 @@ class MemoryStore:
         session.risk_notes = risk_notes or []
         session.consolidation_error = consolidation_error
         session.end_reason = end_reason
-        self.save_session(session)
+        with self.transaction(), self._connect() as database:
+            self._keep_withheld(database, session)
+            # A forget or correction may have landed while the reflection was being written.
+            session_rounds = {
+                row[0]
+                for row in database.execute(
+                    "SELECT id FROM messages WHERE session_id = ? AND role = 'user'",
+                    (session.id,),
+                )
+            }
+            if session.reflection_withheld or session_rounds & self._excluded_round_ids():
+                _clear_session_reflection(session)
+            self.save_session(session)
         return session
 
     def list_sessions(self, limit: int | None = None) -> list[SessionRecord]:
@@ -1134,7 +1156,7 @@ class MemoryStore:
         }
         if turn_metadata:
             assistant_payload["turn_metadata"] = turn_metadata
-        with self._connect() as database:
+        with self.transaction(), self._connect() as database:
             cursor = database.execute(
                 "INSERT INTO messages(session_id, role, created_at, payload) "
                 "VALUES (?, 'user', ?, ?)",
@@ -1148,6 +1170,7 @@ class MemoryStore:
                 "VALUES (?, 'assistant', ?, ?)",
                 (session.id, timestamp, self._encrypt_json(assistant_payload)),
             )
+            self._keep_withheld(database, session)
             database.execute(
                 "UPDATE sessions SET last_activity_at = ?, payload = ? WHERE id = ?",
                 (timestamp, self._encrypt_model(session), session.id),
@@ -1450,15 +1473,19 @@ class MemoryStore:
             # A restated claim carries wording that differs from its content, so the quotes that
             # supported the superseded content must be retired with it. Otherwise the corrected
             # wording keeps returning through retrieval and derived text.
-            replacement_wording = _normalized(correction.replacement_quote or "")
-            retained = {old.casefold(), replacement_wording.casefold()}
-            superseded_quotes = [
-                reference.quote
-                for reference in item.evidence
-                if reference.quote
-                and reference.relation is EvidenceRelation.SUPPORTS
-                and reference.quote.casefold() not in retained
-            ]
+            # Merged duplicates match by casefold, so a supporting quote can differ from the old
+            # content only in case; it is retired too, and only the replacement is kept.
+            replacement_wording = _normalized(correction.replacement_quote or "").casefold()
+            superseded_quotes = list(
+                dict.fromkeys(
+                    reference.quote
+                    for reference in item.evidence
+                    if reference.quote
+                    and reference.relation is EvidenceRelation.SUPPORTS
+                    and reference.quote.casefold() != replacement_wording
+                    and reference.quote != old
+                )
+            )
             relation = (
                 EvidenceRelation.CORRECTS
                 if correction.replacement_quote
@@ -1529,6 +1556,17 @@ class MemoryStore:
         evidence_message_id: int,
         evidence_text: str,
         now: datetime | None = None,
+    ) -> tuple[list[MemoryItem], list[MemoryItem]]:
+        # One transaction, so a review from the CLI cannot interleave with a turn's writes.
+        with self.transaction():
+            return self._review_hypotheses(reviews, evidence_message_id, evidence_text, now)
+
+    def _review_hypotheses(
+        self,
+        reviews: list[HypothesisReview],
+        evidence_message_id: int,
+        evidence_text: str,
+        now: datetime | None,
     ) -> tuple[list[MemoryItem], list[MemoryItem]]:
         ids = [review.memory_id for review in reviews]
         if len(ids) != len(set(ids)):
@@ -1614,8 +1652,49 @@ class MemoryStore:
         self._forget_rounds(
             {reference.message_id for reference in item.evidence} | self._rounds_carrying(wordings)
         )
+        self._forget_choices_and_preferences(wordings)
         self._clear_pending_hypothesis(item.id)
         return item
+
+    def _forget_choices_and_preferences(self, wordings: Iterable[str]) -> None:
+        """Delete support choices and process preferences that repeat forgotten wording."""
+
+        def carried(*texts: str | None) -> bool:
+            return any(
+                _carries(wording, text) or _carries(text, wording)
+                for wording in wordings
+                for text in texts
+                if text
+            )
+
+        self._delete_preferences(
+            [
+                item.id
+                for item in self.list_process_preferences()
+                if carried(item.content, item.evidence.quote)
+            ]
+        )
+        self._delete_support_choices(
+            [
+                item.id
+                for item in self.list_support_choices()
+                if carried(item.content, item.evidence.quote, item.barrier, item.preference)
+            ]
+        )
+
+    def _delete_preferences(self, ids: list[str]) -> None:
+        with self._connect() as database:
+            database.executemany(
+                "DELETE FROM process_preferences WHERE id = ?", ((item,) for item in ids)
+            )
+        self._delete_semantic_entities("preference", ids)
+
+    def _delete_support_choices(self, ids: list[str]) -> None:
+        with self._connect() as database:
+            database.executemany(
+                "DELETE FROM support_choices WHERE id = ?", ((item,) for item in ids)
+            )
+        self._delete_semantic_entities("support", ids)
 
     def has_user_quote(self, quote: str, *, before_id: int | None = None) -> bool:
         """Whether an archived user message contains this exact wording."""
@@ -1685,6 +1764,7 @@ class MemoryStore:
                 self._forget_claim(item, now)
             for wording in sorted(wordings, key=len, reverse=True):
                 self._invalidate_derived_text(wording, "")
+            self._forget_choices_and_preferences(wordings)
             # A request names what it asks to forget, so its own round goes too; a correction's
             # round holds the current truth and stays.
             rounds = self._rounds_carrying(wordings) | {evidence_message_id}
@@ -2028,6 +2108,7 @@ class MemoryStore:
             )
             if not relevant:
                 continue
+            superseded = {wording.casefold() for wording in item.superseded_content}
             ranked.append(
                 ContextClaim(
                     id=item.id,
@@ -2039,7 +2120,7 @@ class MemoryStore:
                     evidence=[
                         reference
                         for reference in item.evidence
-                        if reference.quote not in item.superseded_content
+                        if (reference.quote or "").casefold() not in superseded
                     ],
                     first_seen_at=item.first_seen_at,
                     last_seen_at=item.last_seen_at,
@@ -2407,6 +2488,14 @@ class MemoryStore:
         *,
         dry_run: bool = False,
         now: datetime | None = None,
+    ) -> dict[str, int]:
+        # Reads and writes share one transaction, so a record changed by another process in
+        # between is not overwritten with the snapshot read here.
+        with self.transaction():
+            return self._apply_retention(policy, dry_run=dry_run, now=now)
+
+    def _apply_retention(
+        self, policy: RetentionPolicy | None, *, dry_run: bool, now: datetime | None
     ) -> dict[str, int]:
         policy = policy or self.load_app_state().retention_policy
         current = now or _now()
@@ -3028,6 +3117,7 @@ class MemoryStore:
             if record.consent_evidence and record.consent_evidence.message_id in message_set:
                 record.consent_evidence = None
             if not record.evidence_message_ids:
+                self._delete_semantic_entities("intervention", [record.id])
                 record.description = "Content removed by retention or selective deletion."
                 record.prediction = None
                 record.planned_for = None
@@ -3038,16 +3128,20 @@ class MemoryStore:
                 record.follow_up_information = None
                 record.state = InterventionState.STOPPED
             self._save_intervention(record)
-        for item in self.list_process_preferences():
-            if item.evidence.message_id in message_set:
-                with self._connect() as database:
-                    database.execute("DELETE FROM process_preferences WHERE id = ?", (item.id,))
-                self._delete_semantic_entities("preference", [item.id])
-        for item in self.list_support_choices():
-            if item.evidence.message_id in message_set:
-                with self._connect() as database:
-                    database.execute("DELETE FROM support_choices WHERE id = ?", (item.id,))
-                self._delete_semantic_entities("support", [item.id])
+        self._delete_preferences(
+            [
+                item.id
+                for item in self.list_process_preferences()
+                if item.evidence.message_id in message_set
+            ]
+        )
+        self._delete_support_choices(
+            [
+                item.id
+                for item in self.list_support_choices()
+                if item.evidence.message_id in message_set
+            ]
+        )
         for session in self.list_sessions():
             if session.id in session_ids:
                 _clear_session_reflection(session)
@@ -3088,7 +3182,10 @@ class MemoryStore:
                 setattr(formulation, field_name, _replace_derived(value, old, new) or None)
         self._save_formulation(formulation)
         stopped: set[str] = set()
+        # A rewritten record's vector still encodes the removed wording until it is rebuilt.
+        rewritten: dict[str, list[str]] = {"intervention": [], "session": []}
         for intervention in self.list_interventions():
+            before = intervention.model_dump()
             if forgotten_id:
                 intervention.linked_claim_ids = [
                     item for item in intervention.linked_claim_ids if item != forgotten_id
@@ -3110,8 +3207,11 @@ class MemoryStore:
                 intervention.description = "Content removed by user request."
                 intervention.state = InterventionState.STOPPED
                 stopped.add(intervention.id)
+            if intervention.model_dump() != before:
+                rewritten["intervention"].append(intervention.id)
             self._save_intervention(intervention)
         for session in self.list_sessions():
+            before = session.model_dump()
             session.summary = _replace_derived(session.summary, old, new)
             for field_name in SESSION_REFLECTION_LIST_FIELDS:
                 setattr(
@@ -3123,7 +3223,11 @@ class MemoryStore:
                         if (updated := _replace_derived(value, old, new))
                     ],
                 )
+            if session.model_dump() != before:
+                rewritten["session"].append(session.id)
             self.save_session(session)
+        for entity_type, ids in rewritten.items():
+            self._delete_semantic_entities(entity_type, ids)
         if stopped:
             app = self.load_app_state()
             if app.pending_intervention_id in stopped:
@@ -3312,6 +3416,9 @@ class MemoryStore:
         )
         # The pragma is a no-op inside a transaction, so it is set before leaving autocommit.
         database.execute("PRAGMA foreign_keys = ON")
+        # Checked before the deferred transaction starts, so an upgrade could in principle land
+        # between this check and the first statement. Accepted: an upgrade from another release
+        # while one connection opens is not a supported path, and transactions recheck it.
         try:
             _require_current_generation(database)
         except BaseException:
@@ -3885,6 +3992,28 @@ def _require_quoted_time(expression: TimeExpression, evidence: str, message_time
     problem = time_expression_problem(expression, evidence, message_time)
     if problem:
         raise ValueError(problem)
+
+
+def _predates_w2_5(database: sqlite3.Connection, tables: set[str]) -> bool:
+    """Whether a filo-1 store holds layout W2.5 removed; checked before anything is changed.
+
+    Only plaintext columns are read: the split arm's marker table, the removed claim kinds, and
+    index rows of the per-message entity that rounds replaced earlier in filo-1.
+    """
+    if "pending_extractions" in tables:
+        return True
+    if (
+        "memory_items" in tables
+        and database.execute(
+            "SELECT 1 FROM memory_items WHERE kind IN ('fact', 'event') LIMIT 1"
+        ).fetchone()
+    ):
+        return True
+    return "semantic_index" in tables and bool(
+        database.execute(
+            "SELECT 1 FROM semantic_index WHERE entity_type = 'message' LIMIT 1"
+        ).fetchone()
+    )
 
 
 def _schema_generation(marker: bytes | None) -> int | None:
