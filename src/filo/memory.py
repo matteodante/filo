@@ -87,6 +87,11 @@ BUSY_TIMEOUT_SECONDS = 10.0
 # (scripts/calibrate_semantic_floor.py): 0.20 let 90% of unrelated pairs through, 0.40 lets 4%
 # through while keeping 67% of related pairs. Ranking then keeps only the top items above it.
 MIN_SEMANTIC_RELEVANCE = 0.4
+# Rounds are the primary memory and score lower than claims for the same meaning, most of all
+# across languages. On the W0.6 retrieval benchmark (docs/evidence/offline-instruments-2026-10.md)
+# 0.40 kept 60% of relevant round pairs; 0.35 keeps 79% and lets 7% of unrelated ones through, which
+# the per-type cut then bounds.
+MIN_ROUND_RELEVANCE = 0.35
 # A long round shares some four-letter word with almost any query, so one shared token is not
 # evidence of relevance for rounds and sessions the way it is for a short claim.
 MIN_LEXICAL_OVERLAP = 2
@@ -1391,7 +1396,8 @@ class MemoryStore:
             reference.model_copy(update={"relation": EvidenceRelation.SUPPORTS})
             for item_id in linked_claim_ids
             for reference in _current_support(active[item_id])
-            if reference.message_id in evidence_message_ids
+            # No message IDs means every current evidence of the linked claims supports it.
+            if not evidence_message_ids or reference.message_id in evidence_message_ids
         ]
         if evidence_message_id is not None and evidence_quote and evidence_text:
             if not _supported_quote(evidence_quote, evidence_text):
@@ -1964,10 +1970,7 @@ class MemoryStore:
         if state not in {InterventionState.OFFERED, InterventionState.AGREED}:
             raise ValueError("A new intervention must be offered or agreed.")
         _require_consent_quote(consent_quote, evidence_text)
-        if any(
-            item.skill == skill and _near_duplicate(item.description, description)
-            for item in self.list_interventions(active_only=True)
-        ):
+        if self.similar_active_intervention(skill, description) is not None:
             raise ValueError("Update the existing similar intervention instead of duplicating it.")
         timestamp = _iso(now)
         active_ids = {item.id for item in self.list_claims()}
@@ -2041,7 +2044,9 @@ class MemoryStore:
         if linked_claim_ids is not None:
             active_ids = {item.id for item in self.list_claims()}
             record.linked_claim_ids = [item for item in linked_claim_ids if item in active_ids][:5]
-        if consent_quote:
+        # The agreement quote stays the record's consent; later updates add their message to
+        # its evidence instead of replacing what the person agreed to.
+        if consent_quote and (record.consent_evidence is None or state is InterventionState.AGREED):
             record.consent_evidence = EvidenceRef(
                 message_id=evidence_message_id,
                 quote=_normalized(consent_quote),
@@ -2056,6 +2061,18 @@ class MemoryStore:
         record.updated_at = _iso(now)
         self._save_intervention(record)
         return record
+
+    def similar_active_intervention(
+        self, skill: str, description: str
+    ) -> InterventionRecord | None:
+        return next(
+            (
+                item
+                for item in self.list_interventions(active_only=True)
+                if item.skill == skill and _near_duplicate(item.description, description)
+            ),
+            None,
+        )
 
     def list_interventions(self, active_only: bool = False) -> list[InterventionRecord]:
         sql = "SELECT payload FROM interventions"
@@ -2464,7 +2481,7 @@ class MemoryStore:
             semantic = scores.get(str(item.id))
             overlap = len(query_tokens & item.tokens)
             pointer = claim_round_scores.get(item.id)
-            if pointer is None and not _is_relevant(overlap, semantic):
+            if pointer is None and not _is_relevant(overlap, semantic, MIN_ROUND_RELEVANCE):
                 continue
             lexical = min(overlap, 3) / 3
             score = lexical if semantic is None else 0.7 * max(0.0, semantic) + 0.3 * lexical
@@ -3860,10 +3877,10 @@ def _elapsed(delta: timedelta) -> str:
     return "less than a minute"
 
 
-def _is_relevant(lexical_overlap: int, semantic: float | None) -> bool:
-    return (
-        semantic is not None and semantic >= MIN_SEMANTIC_RELEVANCE
-    ) or lexical_overlap >= MIN_LEXICAL_OVERLAP
+def _is_relevant(
+    lexical_overlap: int, semantic: float | None, floor: float = MIN_SEMANTIC_RELEVANCE
+) -> bool:
+    return (semantic is not None and semantic >= floor) or lexical_overlap >= MIN_LEXICAL_OVERLAP
 
 
 def _carries(wording: str, text: str) -> bool:

@@ -977,3 +977,11 @@ def test_a_hypothesis_linked_before_a_correction_stops_showing_the_old_quote(tmp
     )
     _correct(store, claim.id)
     assert "coffee" not in _visible(store, "drinks and sleep tea")
+
+
+def test_rounds_use_their_own_lower_semantic_floor() -> None:
+    from filo.memory import MIN_ROUND_RELEVANCE, MIN_SEMANTIC_RELEVANCE, _is_relevant
+
+    assert MIN_ROUND_RELEVANCE < MIN_SEMANTIC_RELEVANCE
+    assert not _is_relevant(0, 0.37)
+    assert _is_relevant(0, 0.37, MIN_ROUND_RELEVANCE)

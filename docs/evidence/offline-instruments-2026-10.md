@@ -210,3 +210,6 @@ their own measurement:
 - require the same two-token lexical overlap for claims as for rounds and sessions, so
   single-word matches stop filling the envelope;
 - give rounds their own semantic floor, as in section 2.
+
+Adopted by the coordinator on 2026-10-17: archived rounds now use their own 0.35 floor
+(`MIN_ROUND_RELEVANCE`); claims and sessions keep 0.40.
