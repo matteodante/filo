@@ -67,6 +67,8 @@ from filo.protocol import ProtocolPack
 from filo.recap import MAX_RECAP_WEEKS, build_recap
 
 MAX_CONTEXT_CHARS = 16_000
+# Below this the case data would hold too little to be worth sending.
+MIN_CONTEXT_CHARS = 1_000
 # The envelope's retrieval query: the current message plus this many earlier user messages of the
 # session, so "and what about her?" still retrieves what "her" referred to.
 RETRIEVAL_QUERY_PRIOR_TURNS = 2
@@ -81,8 +83,9 @@ CONTEXT_OUTPUT_RESERVE_RATIO = 0.1
 CONTEXT_TOOL_RESERVE_TOKENS = 5_000
 CONTEXT_WARNING_RATIO = 0.8
 TOKEN_ESTIMATE_MARGIN = 1.25
-TURN_LIMITS = UsageLimits(request_limit=20, tool_calls_limit=24, output_tokens_limit=4_000)
-# No single request can usefully produce more than a whole run may.
+# Reasoning tokens count towards the run, and a turn may stop an exercise, retrieve and forget
+# in one go, so the run allows more than any single request.
+TURN_LIMITS = UsageLimits(request_limit=20, tool_calls_limit=24, output_tokens_limit=10_000)
 MAX_REQUEST_OUTPUT_TOKENS = 5_000
 CONSOLIDATION_LIMITS = UsageLimits(request_limit=3, output_tokens_limit=MAX_REQUEST_OUTPUT_TOKENS)
 # A periodic reminder that Filo is an AI during long sessions, as companion-chatbot disclosure
@@ -131,7 +134,9 @@ class InterventionAction(StrictModel):
     outcome: ShortText | None = None
     user_appraisal: ShortText | None = None
     unwanted_effects: ShortText | None = None
-    decision: InterventionDecision = InterventionDecision.UNDECIDED
+    decision: InterventionDecision | None = Field(
+        default=None, description="Set only when the person decided; omitted keeps it unchanged."
+    )
     follow_up_information: ShortText | None = None
 
 
@@ -205,7 +210,11 @@ class TurnContext:
 class FormulationLink(StrictModel):
     # A list of these rather than a mapping: strict structured output (Anthropic, and OpenAI
     # strict schemas) cannot express a free-keyed object and silently returns it empty.
-    field: str = Field(description="One case-formulation field name.")
+    # Listed in the schema so the model never has to guess a name.
+    field: str = Field(
+        description="One case-formulation field name.",
+        json_schema_extra={"enum": list(FORMULATION_FIELDS)},
+    )
     claim_ids: list[str] = Field(min_length=1, max_length=5)
 
     @field_validator("field")
@@ -444,9 +453,10 @@ class ChatSession:
         context_json = _bounded_context_json(context)
         estimated_tokens = _estimate_context_tokens(instructions, context_json, history, text)
         notice: str | None = None
-        if estimated_tokens > self.input_token_budget:
-            if not history:
-                raise ContextFull("This message does not fit the configured model context window.")
+        if estimated_tokens > self.input_token_budget and not history:
+            # Nothing to roll over: a small model window gets less case data instead.
+            context_json = self._fitted_context_json(context, instructions, history, text)
+        elif estimated_tokens > self.input_token_budget:
             self._consolidate(session, now, end_reason=SessionEndReason.CONTEXT_LIMIT)
             session = self.memory.start_session(now)
             context = self.memory.retrieve_case_context(
@@ -457,10 +467,7 @@ class ChatSession:
             )
             history = []
             instructions = self._instructions(context, session, history, now)
-            context_json = _bounded_context_json(context)
-            estimated_tokens = _estimate_context_tokens(instructions, context_json, history, text)
-            if estimated_tokens > self.input_token_budget:
-                raise ContextFull("This message does not fit the configured model context window.")
+            context_json = self._fitted_context_json(context, instructions, history, text)
             notice = self._context_rollover_notice()
 
         available_claims = _context_claims(context)
@@ -706,6 +713,8 @@ class ChatSession:
             _validate_user_reports(
                 reports, ctx.deps.user_text, ctx.deps.available_claims, ctx.deps.message_time
             )
+            if {item.merge_into_id for item in reports} & _retired_this_turn(ctx.deps.actions):
+                raise ModelRetry("Do not merge into a claim this turn's correction retires.")
             staged = list(ctx.deps.actions.user_reports)
             staged.extend(report for report in reports if report not in staged)
             if len(staged) > 2:
@@ -730,12 +739,16 @@ class ChatSession:
             """
             if set(hypothesis.linked_claim_ids) - set(ctx.deps.available_claims):
                 raise ModelRetry("Hypothesis claim links must come from available context.")
-            if not hypothesis.linked_claim_ids and not _quote_in_text(
-                hypothesis.evidence_quote, ctx.deps.user_text
-            ):
+            if set(hypothesis.linked_claim_ids) & _retired_this_turn(ctx.deps.actions):
+                raise ModelRetry("Do not link a claim this turn's correction retires.")
+            if not hypothesis.linked_claim_ids and not hypothesis.evidence_quote:
                 raise ModelRetry(
                     "A hypothesis needs linked claims or an exact quote from this message."
                 )
+            if hypothesis.evidence_quote and not _quote_in_text(
+                hypothesis.evidence_quote, ctx.deps.user_text
+            ):
+                raise ModelRetry("A hypothesis quote must be exact text from this message.")
             if hypothesis.evidence_quote and not quote_keeps_clause_polarity(
                 hypothesis.evidence_quote, ctx.deps.user_text
             ):
@@ -801,6 +814,12 @@ class ChatSession:
             )
             if existing is not None and existing != correction:
                 raise ModelRetry("Do not stage incompatible corrections for the same claim.")
+            if not correction.replacement_quote and correction.memory_id in _linked_this_turn(
+                ctx.deps.actions
+            ):
+                raise ModelRetry(
+                    "This turn already links or merges into that claim; do not retire it too."
+                )
             if existing is None:
                 ctx.deps.actions.corrections.append(correction)
             ctx.deps.actions.referenced_claim_ids.add(correction.memory_id)
@@ -939,7 +958,13 @@ class ChatSession:
             if set(action.linked_claim_ids) - set(ctx.deps.available_claims):
                 raise ModelRetry("Linked claims must come from available context.")
             if action.record_id:
-                current = ctx.deps.active_interventions.get(action.record_id)
+                # Any active record can be updated, not only those in this turn's case data:
+                # follow-up answers and stopping a harmful exercise come turns later.
+                current = ctx.deps.active_interventions.get(action.record_id) or (
+                    _find_intervention(ctx.deps.memory, action.record_id)
+                )
+                if current is not None:
+                    ctx.deps.active_interventions[current.id] = current
                 if current is None or not valid_intervention_transition(
                     current.state, action.state
                 ):
@@ -949,6 +974,13 @@ class ChatSession:
                 ctx.deps.actions.referenced_intervention_ids.add(action.record_id)
             elif action.state not in {InterventionState.OFFERED, InterventionState.AGREED}:
                 raise ModelRetry("A new intervention must be offered or agreed.")
+            elif similar := ctx.deps.memory.similar_active_intervention(
+                action.skill, action.description
+            ):
+                raise ModelRetry(
+                    f"Intervention {similar.id} is already recorded; update it with that "
+                    "record_id instead of creating a new one."
+                )
             if (
                 action.record_id is not None or action.state is InterventionState.AGREED
             ) and not _quote_in_text(action.consent_evidence_quote, ctx.deps.user_text):
@@ -1083,7 +1115,8 @@ class ChatSession:
                     state=action.state,
                     evidence_message_id=evidence_id,
                     description=action.description,
-                    linked_claim_ids=action.linked_claim_ids,
+                    # An update that names no claims keeps the record's links.
+                    linked_claim_ids=action.linked_claim_ids or None,
                     consent_quote=action.consent_evidence_quote,
                     evidence_text=user_text,
                     prediction=action.prediction,
@@ -1130,6 +1163,24 @@ class ChatSession:
         latest.pending_intervention_id = app.pending_intervention_id
         self.memory.save_app_state(latest)
 
+    def _fitted_context_json(
+        self,
+        context: CaseContextResult,
+        instructions: str,
+        history: list[ModelRequest | ModelResponse],
+        text: str,
+    ) -> str:
+        """Shrink the case data until the turn fits the model, or say the message cannot."""
+        limit = MAX_CONTEXT_CHARS
+        while limit >= MIN_CONTEXT_CHARS:
+            payload = _bounded_context_json(context, limit)
+            if _estimate_context_tokens(instructions, payload, history, text) <= (
+                self.input_token_budget
+            ):
+                return payload
+            limit //= 2
+        raise ContextFull("This message does not fit the configured model context window.")
+
     def _instructions(
         self,
         context: CaseContextResult,
@@ -1161,8 +1212,9 @@ class ChatSession:
             ) >= timedelta(days=7):
                 long_gap = (
                     "\nThis is the first turn after a long gap. Treat the old formulation as "
-                    "provisional, orient to what changed, and review a prior experiment only when "
-                    "relevant. Do not extend an old pattern to a new event without checking."
+                    "provisional and orient to what changed; follow up on the experiments in "
+                    "follow_up_due as the protocol says. Do not extend an old pattern to a new "
+                    "event without checking."
                 )
         ai_reminder = (
             "\nAn AI reminder is due: in this reply, mention once, naturally, that you are an AI."
@@ -1564,6 +1616,17 @@ def _validate_user_reports(
                 )
 
 
+def _retired_this_turn(actions: TurnActions) -> set[str]:
+    """Claims a staged correction without replacement retires at commit."""
+    return {item.memory_id for item in actions.corrections if not item.replacement_quote}
+
+
+def _linked_this_turn(actions: TurnActions) -> set[str]:
+    """Claims a staged hypothesis links or a staged report merges into."""
+    linked = set(actions.hypothesis.linked_claim_ids) if actions.hypothesis else set()
+    return linked | {item.merge_into_id for item in actions.user_reports if item.merge_into_id}
+
+
 def _check_aliases(aliases: list[str], evidence: str, subject: str) -> None:
     """Validate retrieval aliases here as well as in the store.
 
@@ -1651,7 +1714,7 @@ def _bounded_recap(recap: dict[str, object]) -> dict[str, object]:
     return {"recap": recap}
 
 
-def _bounded_context_json(context: CaseContextResult) -> str:
+def _bounded_context_json(context: CaseContextResult, max_chars: int = MAX_CONTEXT_CHARS) -> str:
     bounded = context.model_copy(deep=True)
     removable = (
         "relevant_excerpts",
@@ -1664,7 +1727,7 @@ def _bounded_context_json(context: CaseContextResult) -> str:
         "process_preferences",
         "conflicts",
     )
-    while len(payload := bounded.model_dump_json()) > MAX_CONTEXT_CHARS:
+    while len(payload := bounded.model_dump_json()) > max_chars:
         for field_name in removable:
             values = getattr(bounded, field_name)
             if values:
