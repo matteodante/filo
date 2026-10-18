@@ -8,6 +8,9 @@ hypotheses.
 
 Formerly published as Therapist (v0.1–v0.3).
 
+[Technical article: what an AI conversation should remember](https://matteodante.it/en/blog/filo-memory)
+covers the memory design, corrections, and the synthetic study behind it.
+
 > [!WARNING]
 > Filo is an AI, not a psychologist or psychotherapist. It is not therapy, diagnosis, medical
 > advice, emergency care, or human monitoring. Its output can be wrong. The protocol is
