@@ -4,8 +4,12 @@ Filo is currently a single-maintainer project. Matteo Dante is the project maint
 final responsibility for scope, releases, security response, repository access, and protocol
 changes.
 
-The public alpha is published by Matteo Dante as an individual. It is free and non-commercial:
-there is no company operator, hosted service, paid support, donation, or sponsorship program.
+The public alpha is published without charge by Matteo Dante as an individual. There is no company
+operator, hosted service, paid support, donation, or sponsorship program. The AGPL permits commercial
+use; the publisher's alpha operating scope is not a non-commercial restriction on original code.
+Separate commercial licensing enquiries follow [COMMERCIAL-LICENSING.md](COMMERCIAL-LICENSING.md).
+No commercial deliverable is pre-cleared, and commercial activity requires reassessing the existing
+release assumptions before proceeding.
 
 ## Decisions
 
@@ -35,9 +39,12 @@ responsibility for users, or promoting beyond a controlled alpha.
 
 ## Contributions and succession
 
-Contributors retain copyright in their work and certify contributions through the Developer
-Certificate of Origin described in [CONTRIBUTING.md](CONTRIBUTING.md). Project roles will be expanded
-only when sustained contribution makes them real rather than aspirational.
+Contributors retain copyright and use the DCO plus explicit, versioned [CLA](CLA.md) acceptance
+under [CONTRIBUTING.md](CONTRIBUTING.md). Matteo Dante receives non-exclusive sublicensing rights
+subject to the CLA's AGPL availability commitment. Prior contributions and third-party material
+require separate rights verification; a policy change grants no retroactive permission.
+Project roles will be expanded only when sustained contribution makes them real rather than
+aspirational. Any successor receiving CLA rights must also assume the CLA obligations.
 
 If the maintainer can no longer maintain the project, they may appoint a successor, add co-maintainers,
 or archive the repository with its status documented publicly. No current successor or recovery

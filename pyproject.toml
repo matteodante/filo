@@ -5,7 +5,7 @@ description = "Open-source AI agent for reflection with encrypted longitudinal m
 authors = [{ name = "Matteo Dante" }]
 readme = "README.md"
 license = "AGPL-3.0-or-later"
-license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+license-files = ["LICENSE", "LICENSING.md", "COMMERCIAL-LICENSING.md", "CLA.md", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.12"
 keywords = ["ai", "mental-wellbeing", "pydantic-ai", "self-hosted", "telegram"]
 classifiers = [

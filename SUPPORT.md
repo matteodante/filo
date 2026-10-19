@@ -17,3 +17,6 @@ instead of a public issue.
 This repository is not a source of psychological care, clinical advice, crisis support, or emergency
 response. Maintainers do not monitor issues for personal safety concerns. If there may be immediate
 danger, contact local emergency services.
+
+For licensing questions or a proposed proprietary use, see [LICENSING.md](LICENSING.md) and
+[COMMERCIAL-LICENSING.md](COMMERCIAL-LICENSING.md). A licensing enquiry is not a support contract.

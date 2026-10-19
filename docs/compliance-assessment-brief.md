@@ -1,5 +1,12 @@
 # Optional external compliance assessment brief
 
+**Licensing update — 2026-10-19:** Original Filo material remains AGPL-3.0-or-later,
+which permits commercial use. [LICENSING.md](../LICENSING.md) now documents a separately negotiated
+commercial route and third-party exceptions, including the bundled WHO-5 text. References below to
+non-commercial operation describe the original alpha assessment, not an AGPL restriction. They do
+not establish clearance for commercial licensing activity or delivery. Reassess the affected
+assumptions before undertaking that activity; this update is not a new regulatory conclusion.
+
 **Prepared:** 2026-07-24
 **Project:** Filo  
 **Publisher:** Matteo Dante, acting as an individual  

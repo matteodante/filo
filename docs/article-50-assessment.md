@@ -1,5 +1,12 @@
 # EU AI Act Article 50 assessment record
 
+**Licensing update — 2026-10-19:** Original Filo material remains AGPL-3.0-or-later,
+which permits commercial use. [LICENSING.md](../LICENSING.md) now documents a separately negotiated
+commercial route and third-party exceptions, including the bundled WHO-5 text. References below to
+non-commercial operation describe the original alpha assessment, not an AGPL restriction. They do
+not establish clearance for commercial licensing activity or delivery. Reassess the affected
+assumptions before undertaking that activity; this update is not a new regulatory conclusion.
+
 **Status:** maintainer assessment recorded; monitor the applicable marking deadline
 **Date:** 2026-07-24
 **Scope:** free, non-commercial, adult-only public alpha published by Matteo Dante

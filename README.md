@@ -16,6 +16,20 @@ covers the memory design, corrections, and the synthetic study behind it.
 > advice, emergency care, or human monitoring. Its output can be wrong. The protocol is
 > experimental and has not been clinically validated.
 
+## License and commercial licensing
+
+Original Filo code, protocol text, and documentation are open source under
+[AGPL-3.0-or-later](LICENSE). Commercial use is allowed when its conditions are met. For uses
+requiring an exception to the copyleft obligations, Matteo Dante can negotiate a
+[separate commercial agreement](COMMERCIAL-LICENSING.md) for material he has rights to license.
+This does not prohibit compliant commercial forks.
+
+**Third-party exception:** the bundled WHO-5 questionnaire has separate non-commercial terms.
+The current package is not cleared for unrestricted commercial reuse; an agreement with Matteo
+cannot override those terms. Read [the licensing guide](LICENSING.md) and
+[third-party notices](THIRD_PARTY_NOTICES.md). Contributors keep their copyright under the
+[contribution process](CONTRIBUTING.md) and [CLA](CLA.md).
+
 ## Install
 
 macOS or Linux:

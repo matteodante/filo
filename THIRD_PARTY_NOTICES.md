@@ -2,7 +2,8 @@
 
 Filo's original code, protocol text, and documentation are licensed under
 `AGPL-3.0-or-later`. The items below remain under their owners' terms and are not
-relicensed by Filo.
+relicensed by Filo. The optional [commercial licensing route](COMMERCIAL-LICENSING.md) covers only
+material Matteo Dante owns or is authorized to sublicense; it does not override these notices.
 
 ## uv
 
@@ -50,7 +51,10 @@ attribution with every `/wellbeing` view.
 
 Source: <https://www.who.int/publications/m/item/WHO-UCN-MSD-MHE-2024.01>, checked 2026-10-16. The
 WHO-5 text stays under its own licence and is not relicensed by this repository; its
-non-commercial term must be reviewed before any commercial or hosted distribution of Filo.
+non-commercial term is not waived by a Filo commercial agreement. The current package is not
+cleared for unrestricted commercial reuse. Obtain the relevant rightsholders' permissions,
+including any translation permissions, or actually omit the restricted text from a commercial
+deliverable; disabling its UI is not a substitute. See [LICENSING.md](LICENSING.md).
 
 ## Local embedding model
 

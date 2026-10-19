@@ -1,5 +1,12 @@
 # Claims and intended purpose
 
+**Licensing update — 2026-10-19:** Original Filo material remains AGPL-3.0-or-later,
+which permits commercial use. [LICENSING.md](../LICENSING.md) now documents a separately negotiated
+commercial route and third-party exceptions, including the bundled WHO-5 text. References below to
+non-commercial operation describe the original alpha assessment, not an AGPL restriction. They do
+not establish clearance for commercial licensing activity or delivery. Reassess the affected
+assumptions before undertaking that activity; this update is not a new regulatory conclusion.
+
 This document is the proposed release baseline for the non-commercial public alpha. It records
 product intent and claim boundaries; it is not legal advice, regulatory approval, or a medical-device
 classification.

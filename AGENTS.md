@@ -29,10 +29,23 @@ the models of a reachable OpenAI-compatible `local:` server, which carries no su
 no release-cleared evaluation baseline. The remaining PydanticAI conversation providers stay
 technical escape hatches, not configurations advertised or release-cleared for the first alpha.
 
-Original code and project content are open source under `AGPL-3.0-or-later`. Linked or referenced
-third-party materials remain under their owners' terms and are not relicensed by this repository.
-The public alpha is published by Matteo Dante as an individual, without charge, donations,
-sponsorship, paid support, hosted operation, or other commercial activity.
+Original code and project content remain open source under `AGPL-3.0-or-later`; keep LICENSE
+unmodified and retain that SPDX identifier for the public package. AGPL-compliant commercial use
+and forks are permitted. LICENSING.md explains the additional, separately negotiated commercial
+route for material Matteo Dante owns or is authorized to sublicense; COMMERCIAL-LICENSING.md grants
+no automatic proprietary rights. The bundled WHO-5 text and other third-party material retain their
+own terms. The current mixed package is not cleared for unrestricted commercial reuse.
+
+Contributors retain copyright. New contributions require DCO provenance sign-offs plus explicit
+versioned acceptance of CLA.md under CONTRIBUTING.md. The non-exclusive CLA permits commercial
+sublicensing subject to continued AGPL availability of accepted contributions; it does not assign
+ownership or retroactively cover earlier work. Review and record rights before accepting external
+contributions or offering any commercial deliverable. Bot and AI attributions are not rights proof.
+
+The public alpha is published by Matteo Dante as an individual without charge, donations,
+sponsorship, paid support, or hosted operation. These operating assumptions are not restrictions on
+AGPL rights. Commercial licensing activity triggers a fresh review of the release and regulatory
+assumptions; no commercial package or customer contract is pre-cleared.
 
 ## Current scope
 
@@ -82,8 +95,8 @@ Explicitly deferred:
 - SaaS, accounts, billing, multi-tenancy, PostgreSQL, workers, and queues;
 - reminders, background jobs, MCP integrations, and external tools;
 - standalone vector databases, knowledge graphs, and multi-agent orchestration;
-- commercial dual licensing, a CLA, a stable release, and PyPI publishing; the first GitHub alpha
-  remains a prerelease;
+- a pre-cleared commercial distribution, a standard customer contract, a stable release, and PyPI
+  publishing; the first GitHub alpha remains a prerelease;
 - clinical ownership, clinical validation, efficacy studies, and formal risk management;
 - MDR, AI Act, FDA, GDPR/HIPAA compliance work;
 - formal threat modeling, penetration tests, audits, and certifications.

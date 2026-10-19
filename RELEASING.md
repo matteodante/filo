@@ -1,7 +1,7 @@
 # Releasing
 
-Filo releases are maintainer-controlled snapshots of an experimental, non-commercial,
-adult-only project. A release is not clinical validation, regulatory approval, or evidence that the
+Filo public alpha releases are maintainer-controlled snapshots of an experimental, adult-only
+project distributed without charge. A release is not clinical validation, regulatory approval, or evidence that the
 software is safe or effective for mental-health treatment.
 
 The first release is a controlled public alpha for technical contributors and informed adult
@@ -10,6 +10,19 @@ as therapy or treatment.
 Its supported configuration is the local CLI and one private Telegram bot using a personal ChatGPT
 Plus/Pro account through the experimental `codex:` OAuth provider. Other conversation providers are
 not part of the first release support claim.
+
+## Licensing scope
+
+The public package retains AGPL-3.0-or-later for original project material. Commercial use under
+that license is permitted; the non-commercial alpha operating assumptions below describe the
+publisher's activity, not an additional AGPL restriction. The current package includes separately
+restricted WHO-5 text and is not cleared for unrestricted commercial reuse.
+
+Before a commercial licensing agreement or deliverable, follow
+[COMMERCIAL-LICENSING.md](COMMERCIAL-LICENSING.md): verify rights for the exact artifact, clear or
+omit restricted third-party material, honor CLA commitments, and reassess the operating assumptions
+in the linked compliance records. Do not silently carry over a non-commercial assessment as
+clearance for a commercial activity. Existing release records and tags remain historical evidence.
 
 ## Release authority
 
@@ -52,8 +65,13 @@ Before creating a tag, link durable evidence for every item below in the release
   deterministic tests;
 - public claims, runtime consent, privacy notice, support guidance, examples, and release notes remain
   consistent with [docs/claims-and-intended-purpose.md](docs/claims-and-intended-purpose.md);
-- license, protocol-source references, bundled embedding-model license, and generated artifacts have
-  been reviewed;
+- license, protocol-source references, downloaded model terms, third-party notices, and generated
+  artifacts have been reviewed, including the WHO-5 restrictions;
+- new external contributions have recorded CLA acceptances and provenance review under
+  CONTRIBUTING.md; no DCO-only or unidentified third-party material is presented as cleared for
+  proprietary sublicensing;
+- wheel and sdist include LICENSE, LICENSING.md, COMMERCIAL-LICENSING.md, CLA.md, and
+  THIRD_PARTY_NOTICES.md;
 - the package version, tag, installer channel, supported revision, and rollback target are explicit;
 - the pinned uv version and checksum-manifest SHA-256 match uv's immutable official release assets.
 
