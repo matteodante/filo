@@ -6,6 +6,12 @@ Filo runs in a terminal or one private, allowlisted Telegram chat. It supports I
 English, keeps local state encrypted, and separates direct user reports from tentative agent
 hypotheses.
 
+![Filo terminal demo: a user discusses postponing a project, and Filo helps explore what makes starting difficult.](docs/assets/filo-demo.gif)
+
+*Illustrative conversation in the actual terminal UI. Messages are scripted and synthetic;
+this is not a live model recording.* [Static image](docs/assets/filo-demo.png) ·
+[Transcript](docs/assets/README.md)
+
 Formerly published as Therapist (v0.1–v0.3).
 
 [Technical article: what an AI conversation should remember](https://matteodante.it/en/blog/filo-memory)
