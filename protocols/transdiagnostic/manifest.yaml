@@ -1,6 +1,6 @@
 id: filo.transdiagnostic
 status: experimental
-locales: [it-IT, en-US]
+locales: [en-US, it-IT]
 population: adults-18-plus
 intended_use: Adult self-reflection and organization of user-provided thoughts; not diagnosis, treatment, monitoring, or emergency care.
 root_sha256: 7c592f08cd563555c0629ff3aa4bdd20d133126c829c504bada0785e8b1178ff
@@ -10,67 +10,67 @@ skills:
     sha256: fa64f0f0b7776ab8d40ebeeda5f2b74e32e02f56ba4fe8e2077e20763d197e2a
     category: core
     description: Use when a feeling is present but unclear, named only in passing, kept abstract, or covering another feeling, and the person needs it understood before anything changes.
-    locales: [it-IT, en-US]
+    locales: [en-US, it-IT]
   - id: agree-help-and-direction
     path: skills/agree-help-and-direction/SKILL.md
     sha256: b60afb8c856ac4d27b5921bc849b0b62ce5be33c02900af9da6f4f789039132f
     category: core
     description: Use when the kind of help wanted is unclear, several concerns compete, the work has drifted, or the person says how they want to be talked to; agree what help fits and a light direction.
-    locales: [it-IT, en-US]
+    locales: [en-US, it-IT]
   - id: build-shared-formulation
     path: skills/build-shared-formulation/SKILL.md
     sha256: 0c67504babd65690f77e8e22bfd2812a48685a3d138578237a55cbd83455a155
     category: core
     description: Use when a pattern shows across more than one account, the person asks why this keeps happening, or an existing understanding no longer fits; build one shared, evidence-linked reading.
-    locales: [it-IT, en-US]
+    locales: [en-US, it-IT]
   - id: repair-misattunement
     path: skills/repair-misattunement/SKILL.md
     sha256: f12c161b19a475059e539d6fe1e2e4bf0d2fc8c398717c79e84f9f2639abb2ee
     category: repair
     description: Use when your reply did not fit, because the person corrects your pace, tone, or reading of their experience, goes flat or formal, or answers with less than before.
-    locales: [it-IT, en-US]
+    locales: [en-US, it-IT]
   - id: review-and-follow-up
     path: skills/review-and-follow-up/SKILL.md
     sha256: c94d1ab35a95de20fa1a0904f3b018125e34d8f7bddcbfd2d3e4b2e6240e3d5f
     category: review
     description: Use when something offered, agreed, or tried has had time to happen, the person reports back, replies have grown shorter or more compliant, or a stretch of work is closing; review what happened and decide what next.
-    locales: [it-IT, en-US]
+    locales: [en-US, it-IT]
   - id: work-with-thinking
     path: skills/work-with-thinking/SKILL.md
     sha256: 2c5333bce0e9da50c6d8c06cf88fb83eb8deda07b1d187753330aa159064d22e
     category: intervention
     description: Use when one specific thought is driving a feeling or decision and treated as fact, or when thinking loops without arriving (rumination, worry); examine the thought or change how the loop runs.
-    locales: [it-IT, en-US]
+    locales: [en-US, it-IT]
   - id: meet-self-criticism
     path: skills/meet-self-criticism/SKILL.md
     sha256: 9f8622a7563cba580d436e9147446ee88e9746b105539530ae82994893129947
     category: intervention
     description: Use when an event becomes a verdict about who the person is, they are far harsher on themselves than on anyone else, shame is present, or reassurance has already bounced off.
-    locales: [it-IT, en-US]
+    locales: [en-US, it-IT]
   - id: increase-psychological-flexibility
     path: skills/increase-psychological-flexibility/SKILL.md
     sha256: 9d5fa4c6a6547712c8ae3b777e43189139646f4a787a2bdd93f71e5083ad279f
     category: intervention
     description: Use when the struggle is with an inner experience (fighting a thought, pushing a feeling away, avoiding an internal state, acting against what matters to stay comfortable); offer one consented exercise.
-    locales: [it-IT, en-US]
+    locales: [en-US, it-IT]
   - id: take-a-small-step
     path: skills/take-a-small-step/SKILL.md
     sha256: 40b0274c006fa3658fd717ef3631421478c62ca6900c2795c880866ddffaf295
     category: intervention
     description: Use when something is avoided at a cost, a fear has never been tested, the days have shrunk while waiting for energy, or the person keeps not doing what they want to; agree one small behavioral step.
-    locales: [it-IT, en-US]
+    locales: [en-US, it-IT]
   - id: solve-practical-problems
     path: skills/solve-practical-problems/SKILL.md
     sha256: 7b27f3e3d0f96f3c833b73801de27c6c0699fffdf2813355b1f21a582c70d085
     category: intervention
     description: Use when the person asks for practical help, a concrete external obstacle blocks something that matters, or a solvable problem is being carried as a mood; work one bounded problem to a chosen step.
-    locales: [it-IT, en-US]
+    locales: [en-US, it-IT]
   - id: support-referral-and-closure
     path: skills/support-referral-and-closure/SKILL.md
     sha256: 1d0376258a667d1aa028d69c19843e9f7586be7ec931bfe102a10aa164dc7572
     category: support
     description: Use when a need falls outside this conversation, isolation is part of the picture, the person raises professional help or says this is not enough, or a session or stretch of work is ending.
-    locales: [it-IT, en-US]
+    locales: [en-US, it-IT]
 references:
   - path: references/risk-resources.md
     sha256: 19defc0cfc8ef64cecc101d24eae454ce5159686fe2c158150401de3f1afd321

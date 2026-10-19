@@ -119,7 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     chat = commands.add_parser("chat", help="Start an interactive conversation")
     chat.add_argument("--model")
-    chat.add_argument("--locale", choices=("it-IT", "en-US"))
+    chat.add_argument("--locale", choices=("en-US", "it-IT"))
     chat.add_argument("--context-window-tokens", type=_context_window_tokens)
     chat.add_argument("--memory-mode", type=_memory_mode_arg, choices=tuple(MemoryMode))
     chat.add_argument(
@@ -130,7 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     telegram = commands.add_parser("telegram", help="Run a private single-user Telegram bot")
     telegram.add_argument("--model")
-    telegram.add_argument("--locale", choices=("it-IT", "en-US"))
+    telegram.add_argument("--locale", choices=("en-US", "it-IT"))
     telegram.add_argument("--allowed-user-id", type=int)
     telegram.add_argument("--context-window-tokens", type=_context_window_tokens)
     telegram.add_argument("--memory-mode", type=_memory_mode_arg, choices=tuple(MemoryMode))
@@ -571,8 +571,8 @@ def _setup(store: MemoryStore, args: argparse.Namespace) -> int:
             questionary.select(
                 "Conversation language",
                 choices=[
-                    questionary.Choice("Italian", value="it-IT"),
                     questionary.Choice("English", value="en-US"),
+                    questionary.Choice("Italian", value="it-IT"),
                 ],
                 default=state.default_locale or "en-US",
             )

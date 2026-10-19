@@ -704,7 +704,9 @@ available range and lets the user replace it. Models below the 16,000-token supp
 rejected.
 
 `filo setup` is the normal first-run path. Questionary arrow-key menus configure the first-alpha
-ChatGPT provider, locale, Telegram, and confirmation choices. ChatGPT uses device-code OAuth; the
+ChatGPT provider, locale, Telegram, and confirmation choices. Locale lists present English first
+and Italian second. New configurations default to `en-US`; an explicitly saved language is
+preserved. CLI and Telegram use `en-US` when no language has been selected. ChatGPT uses device-code OAuth; the
 Telegram bot token uses a no-echo prompt and is stored in the encrypted local store. Other
 PydanticAI model IDs remain available only as explicit temporary `chat` and `telegram` overrides;
 their provider credentials must come from the provider's standard environment configuration.

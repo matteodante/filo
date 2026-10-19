@@ -8,6 +8,7 @@ from typing import Any
 from urllib.error import URLError
 
 import pytest
+import questionary
 from pydantic_ai import ModelRequest, ModelResponse, UserPromptPart
 from pydantic_ai.embeddings import TestEmbeddingModel
 from pydantic_ai.messages import TextPart, ToolCallPart, ToolReturnPart
@@ -168,13 +169,31 @@ def test_local_conversation_model_targets_the_configured_server_with_high_effort
     assert model.settings == {"openai_reasoning_effort": "xhigh"}
 
 
-def test_setup_builds_questionary_selects_with_available_defaults(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("saved_locale", [None, "en-US", "it-IT"])
+def test_setup_defaults_to_english_and_preserves_an_explicit_language(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, saved_locale: str | None
 ) -> None:
-    answers = iter([DEFAULT_CODEX_MODEL, "it-IT", "128000", False, False])
+    store = MemoryStore(tmp_path)
+    state = store.load_app_state()
+    state.default_locale = saved_locale
+    store.save_app_state(state)
+    expected_locale = saved_locale or "en-US"
+    answers = iter([DEFAULT_CODEX_MODEL, expected_locale, "128000", False, False])
     monkeypatch.setattr("filo.cli._ask", lambda _: next(answers))
+    original_select = questionary.select
+    language_choices = []
 
-    assert _setup(MemoryStore(tmp_path), SimpleNamespace()) == 0
+    def select(message: str, **kwargs: Any) -> questionary.Question:
+        if message == "Conversation language":
+            language_choices.extend(choice.value for choice in kwargs["choices"])
+            assert kwargs["default"] == expected_locale
+        return original_select(message, **kwargs)
+
+    monkeypatch.setattr("filo.cli.questionary.select", select)
+
+    assert _setup(store, SimpleNamespace()) == 0
+    assert language_choices == ["en-US", "it-IT"]
+    assert store.load_app_state().default_locale == expected_locale
 
 
 def test_chat_consent_discloses_scope_fallibility_and_data_flow(
