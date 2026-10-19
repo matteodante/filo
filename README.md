@@ -2,9 +2,9 @@
 
 **Experimental, self-hosted AI conversation for adult self-reflection.**
 
-Filo runs in a terminal or one private, allowlisted Telegram chat. It supports Italian and
-English, keeps local state encrypted, and separates direct user reports from tentative agent
-hypotheses.
+Filo runs in a terminal or one private, allowlisted Telegram chat. English is the default
+language, with Italian available as an additional option. Filo keeps local state encrypted
+and separates direct user reports from tentative agent hypotheses.
 
 ![Filo terminal demo: a user discusses postponing a project, and Filo helps explore what makes starting difficult.](docs/assets/filo-demo.gif)
 

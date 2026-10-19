@@ -1101,7 +1101,8 @@ plainly distinguishes AI-supported conversation or self-help from diagnosis and 
 - Write code, documentation, prompts, schema names, protocol content, tests, and test fixtures in
   English. Use another language in a test only when that language is required to verify localized
   behavior or multilingual retrieval.
-- Support Italian and English at runtime.
+- English is the default for the product, documentation, and public demos. Italian is an
+  additional runtime language option; do not make Italian the default in public examples.
 - Before changing code, consult the current official documentation for affected libraries.
 - Work directly on `main` and push commits to `origin/main`. Do not create agent or feature branches
   or open pull requests unless the user explicitly requests that workflow.
