@@ -7,11 +7,12 @@ overview; keep it synchronized with this canonical guide when user-visible behav
 
 Formerly published as Therapist (v0.1–v0.3).
 
-A public technical article, [Filo: teaching an AI conversation to forget Bologna](https://matteodante.it/en/blog/filo-memory)
-(source: `matteodante/matteodante`, `articles/filo-memory.md`), describes the memory design, the correction paths and
-the October 2026 synthetic study with its limits. It quotes the Bologna test, the 80-probe results, the reflection
-bug and the v0.4.0 install command. When those facts or the install command change, update the article or flag it
-as stale; keep its link text in `README.md` equal to the article's title.
+A public article, [Filo: an AI that remembers you, and learns to forget](https://matteodante.it/en/blog/filo-memory)
+(source: `matteodante/matteodante`, `articles/filo-memory.md`), tells the project's story for a general reader: why
+it exists, how memory and forgetting behave for the person using it, the October 2026 study and its result, the
+rename from Therapist. It is deliberately not technical. When the facts it rests on change (the study's reading,
+the memory design, the boundary wording, the current release), update the article or flag it as stale; keep the
+README link text equal to the article's title.
 
 ## Project idea
 
