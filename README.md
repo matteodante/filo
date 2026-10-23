@@ -14,8 +14,8 @@ this is not a live model recording.* [Static image](docs/assets/filo-demo.png) Â
 
 Formerly published as Therapist (v0.1â€“v0.3).
 
-[Technical article: what an AI conversation should remember](https://matteodante.it/en/blog/filo-memory)
-covers the memory design, corrections, and the synthetic study behind it.
+[The story behind Filo: an AI that remembers you, and learns to forget](https://matteodante.it/en/blog/filo-memory)
+covers why it exists, how its memory works for the person using it, and the study that made it simpler.
 
 > [!WARNING]
 > Filo is an AI, not a psychologist or psychotherapist. It is not therapy, diagnosis, medical
