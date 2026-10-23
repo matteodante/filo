@@ -7,6 +7,12 @@ overview; keep it synchronized with this canonical guide when user-visible behav
 
 Formerly published as Therapist (v0.1–v0.3).
 
+A public technical article, [Filo: teaching an AI conversation to forget Bologna](https://matteodante.it/en/blog/filo-memory)
+(source: `matteodante/matteodante`, `articles/filo-memory.md`), describes the memory design, the correction paths and
+the October 2026 synthetic study with its limits. It quotes the Bologna test, the 80-probe results, the reflection
+bug and the v0.4.0 install command. When those facts or the install command change, update the article or flag it
+as stale; keep its link text in `README.md` equal to the article's title.
+
 ## Project idea
 
 Filo is an experimental, self-hosted AI conversation agent for adult self-reflection and the
