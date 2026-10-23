@@ -14,7 +14,7 @@ this is not a live model recording.* [Static image](docs/assets/filo-demo.png) Â
 
 Formerly published as Therapist (v0.1â€“v0.3).
 
-[Technical article: what an AI conversation should remember](https://matteodante.it/en/blog/filo-memory)
+[Technical article: teaching an AI conversation to forget Bologna](https://matteodante.it/en/blog/filo-memory)
 covers the memory design, corrections, and the synthetic study behind it.
 
 > [!WARNING]
